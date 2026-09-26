@@ -1,0 +1,37 @@
+# Private working files — never published
+CLAUDE.local.md
+docs/design/
+references/
+# Evaluation drafts; re-added once converted into a versioned dataset
+docs/evaluation/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment files and local infra settings
+.env
+.env.*
+!.env.example
+infra/env.sh
+
+# Credentials — service account keys must never be committed
+*-sa-key.json
+*service-account*.json
+
+# Firebase client config — regenerate with `flutterfire configure`
+app/lib/firebase_options.dart
+app/ios/Runner/GoogleService-Info.plist
+app/android/app/google-services.json
+app/firebase.json
