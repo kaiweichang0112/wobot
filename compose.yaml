@@ -1,0 +1,23 @@
+# Local PostgreSQL + pgvector matching Cloud SQL (PostgreSQL 18, pgvector 0.8.5).
+# Init scripts run only while the data volume is empty; `docker compose down -v`
+# resets it so the bootstrap runs again.
+services:
+  db:
+    image: pgvector/pgvector:0.8.5-pg18
+    environment:
+      POSTGRES_DB: wobot
+      POSTGRES_PASSWORD: postgres # local only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./infra/sql/bootstrap.sql:/bootstrap/bootstrap.sql:ro
+      - ./infra/sql/local-init.sh:/docker-entrypoint-initdb.d/10-local-init.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "wobot"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  db-data:
