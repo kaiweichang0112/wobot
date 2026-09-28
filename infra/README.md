@@ -55,7 +55,6 @@ gcloud billing projects describe $PROJECT_ID  # billingEnabled: true
 | `run.googleapis.com` | Cloud Run services and jobs |
 | `sqladmin.googleapis.com` | Cloud SQL; the Python Connector also fetches its ephemeral certificates here |
 | `artifactregistry.googleapis.com` | Container images |
-| `cloudbuild.googleapis.com` | Remote amd64 image builds |
 | `secretmanager.googleapis.com` | Provider API keys |
 | `iam.googleapis.com` | Service accounts |
 | `iamcredentials.googleapis.com` | Short-lived service account tokens for Workload Identity Federation |
@@ -67,10 +66,13 @@ Equivalent:
 
 ```sh
 gcloud services enable run.googleapis.com sqladmin.googleapis.com \
-  artifactregistry.googleapis.com cloudbuild.googleapis.com \
-  secretmanager.googleapis.com iam.googleapis.com iamcredentials.googleapis.com \
+  artifactregistry.googleapis.com secretmanager.googleapis.com \
+  iam.googleapis.com iamcredentials.googleapis.com \
   sts.googleapis.com firebase.googleapis.com identitytoolkit.googleapis.com
 ```
+
+`cloudbuild.googleapis.com` was enabled at first as well, but images are built
+outside Cloud Build (section 9), so a new environment can skip it.
 
 Verify:
 
@@ -94,6 +96,12 @@ gcloud services list --enabled --format="value(config.name)" | sort
 Rollbacks can only target revisions whose image is still among those 10.
 
 Image names: `$REGION-docker.pkg.dev/$PROJECT_ID/wobot/<image>:<git-sha>`.
+
+Push with `--provenance=false`. By default buildx attaches a provenance
+attestation, which turns each push into an image index plus two child
+manifests; they may count as three versions against `keep-recent-10`. Children
+of a kept index are never deleted, so this shortens the rollback window rather
+than breaking images.
 
 Equivalent:
 
@@ -366,7 +374,148 @@ Cloud SQL.
 
 ## 9. First deployment
 
-_Pending._
+Cloud SQL must be running: `gcloud sql instances describe wobot-pg
+--format="value(state)"` prints `RUNNABLE`.
+
+### Image
+
+Built locally, not with Cloud Build: Cloud Build would run as the default
+compute service account, which holds no roles here, and CI builds on GitHub
+runners anyway (section 11). Cloud Run needs `linux/amd64`, so an Apple Silicon
+Mac cross-builds:
+
+```sh
+cd backend
+git status --short   # must print nothing: the tag names this commit
+IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/api:$(git rev-parse HEAD)"
+gcloud auth configure-docker $REGION-docker.pkg.dev   # once
+docker buildx build --platform linux/amd64 --provenance=false -t "$IMAGE" --push .
+```
+
+The credential helper hands docker a short-lived token from the gcloud login;
+no password is stored.
+
+Verify:
+
+```sh
+gcloud artifacts docker images list $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO --include-tags
+```
+
+### Migration job
+
+**Console:** Cloud Run → Jobs → Deploy container.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Image | `api` at the commit's tag | The console pins its digest; same image as the API |
+| Name / region | `wobot-migrate`, `asia-east1` | |
+| Tasks | 1 | Migrations never run in parallel |
+| Command / arguments | `alembic` / `upgrade`, `head` | |
+| Retries per failed task | 0 | A failed migration needs a person; a retry fails the same way and buries the first error |
+| Task timeout | 10 minutes | |
+| Environment | `GOOGLE_CLOUD_PROJECT`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-migrator@$PROJECT_ID.iam` | No secrets |
+| Service account | `wobot-migrator` | ADC in the job, and therefore the database login |
+| Cloud SQL connections | None | The app connects through the Python Connector |
+
+Equivalent:
+
+```sh
+gcloud run jobs deploy wobot-migrate --image "$IMAGE" --region $REGION \
+  --command alembic --args upgrade,head --tasks 1 --max-retries 0 --task-timeout 10m \
+  --service-account wobot-migrator@$PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-migrator@$PROJECT_ID.iam"
+gcloud run jobs execute wobot-migrate --region $REGION --wait
+```
+
+`execute --wait` exits non-zero when the migration fails, which is what stops a
+deploy before the API changes. Later deploys only swap the image with
+`gcloud run jobs update wobot-migrate --image "$IMAGE"`.
+
+Verify:
+
+```sh
+gcloud run jobs executions list --job wobot-migrate --region $REGION   # 1 / 1 complete
+```
+
+Then in Cloud SQL Studio, signed in as the developer with IAM authentication:
+
+```sql
+SELECT version_num FROM ops.alembic_version;
+-- every table owned by wobot_migrator
+SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname IN ('app', 'ops');
+```
+
+### API service
+
+**Console:** Cloud Run → Services → Deploy container.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Image | The job's digest | |
+| Name / region | `wobot-api`, `asia-east1` | |
+| Authentication | Allow public access | Users hold Firebase identities, not IAM ones; the app checks the token and the allowlist |
+| Billing | Request-based | CPU only while serving, hence the connector's lazy refresh |
+| Service scaling | Auto, min 0, max 3 | Scales to zero when idle; 3 × 4 pooled connections fit the budget |
+| Ingress | All | Phones reach it over the internet |
+| Port / command | 8080 / image default | |
+| Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit |
+| Secret as variable | `OPENAI_API_KEY` from `openai-api-key`, version `1` | A pinned version changes only with a deploy, for every instance at once |
+| Service account | `wobot-api` | |
+| Cloud SQL connections | None | |
+
+"Allow public access" disables the invoker IAM check
+(`run.googleapis.com/invoker-iam-disabled`) instead of granting
+`roles/run.invoker` to `allUsers`, so the service's IAM policy stays empty.
+
+Equivalent:
+
+```sh
+gcloud run deploy wobot-api --image "$IMAGE" --region $REGION \
+  --no-invoker-iam-check --ingress all --cpu-throttling --min 0 --max 3 \
+  --service-account wobot-api@$PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam" \
+  --set-secrets OPENAI_API_KEY=openai-api-key:1
+```
+
+`--cpu-throttling` is request-based billing. `--min` and `--max` apply to the
+whole service; `--min-instances` and `--max-instances` would be per revision.
+
+Verify:
+
+```sh
+URL=$(gcloud run services describe wobot-api --region $REGION --format="value(status.url)")
+curl -s "$URL/health"    # version is the deployed commit
+curl -si "$URL/v1/me"    # 401
+gcloud run services describe wobot-api --region $REGION
+# Scaling: Auto (Min: 0, Max: 3); the secret appears only as openai-api-key:1
+gcloud run services get-iam-policy wobot-api --region $REGION   # no bindings
+```
+
+### Allowlist
+
+Cloud SQL Studio, signed in as the developer with IAM authentication. The
+developer edits the table through `wobot_migrator`; the API can only read it.
+
+```sql
+INSERT INTO app.allowed_emails (email) VALUES ('<email in lowercase>');
+```
+
+Emails never go into the repository. Deleting a row locks that account out on
+its next request.
+
+### Rollback
+
+Traffic follows the latest ready revision. To move it back:
+
+```sh
+gcloud run revisions list --service wobot-api --region $REGION
+gcloud run services update-traffic wobot-api --region $REGION --to-revisions <revision>=100
+```
+
+While traffic is pinned to a revision, new deploys receive none; hand it back
+with `gcloud run services update-traffic wobot-api --region $REGION --to-latest`.
+A rollback does not undo migrations, which is why schema changes follow
+expand/contract: the previous revision must keep working on the newer schema.
 
 ## 10. Firebase Authentication
 
@@ -403,4 +552,6 @@ usage stays well below the table. If connection-slot errors appear, lower
   scaled to zero. Stop it when not developing: SQL → `wobot-pg` → Stop
   (`gcloud sql instances patch wobot-pg --activation-policy=NEVER`; `ALWAYS`
   starts it again). Storage and backups are still billed while it is stopped.
+- Cloud Run bills only while handling requests (request-based billing, minimum
+  0 instances), so the idle API costs nothing.
 - Artifact Registry keeps only the 10 newest versions of each image.

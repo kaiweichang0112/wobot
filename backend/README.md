@@ -81,7 +81,8 @@ docker build -t wobot-api:local .
 - One image serves both roles: its default command starts the API, and the migration
   job runs `alembic upgrade head`.
 - `.dockerignore` is an allowlist. Add any new file the image needs to it.
-- Cloud Run needs `linux/amd64` images, so deployable images are built with Cloud Build.
+- Cloud Run needs `linux/amd64` images; section 9 of `infra/README.md` cross-builds and
+  pushes one.
 
 ## Configuration
 
