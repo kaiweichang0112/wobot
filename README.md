@@ -34,9 +34,9 @@ flowchart LR
 | Path | Contents |
 | --- | --- |
 | `app/` | Flutter client for iOS and Android (planned) |
-| `backend/` | Python API, LangGraph agents and jobs (planned) |
-| `infra/` | Google Cloud runbook, environment template, database bootstrap |
-| `firmware/` | Raspberry Pi Pico W firmware for a robot head; out of scope for v1 |
+| [`backend/`](backend/README.md) | FastAPI service and database migrations; LangGraph agents and jobs to come |
+| [`infra/`](infra/README.md) | Google Cloud runbook, environment template, database bootstrap |
+| [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for a robot head; out of scope for v1 |
 
 ## Roadmap
 
