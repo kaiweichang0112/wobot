@@ -1,0 +1,11 @@
+# Allowlist: only what the image needs enters the build context, so a stray local file
+# (a .env, a key, a data dump) can never end up in an image.
+*
+!.python-version
+!README.md
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!migrations/
+!src/
+**/__pycache__/
