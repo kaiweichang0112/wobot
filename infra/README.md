@@ -157,7 +157,11 @@ Verify:
 gcloud iam service-accounts list --format="table(email,displayName)"
 # No project-level roles yet — expect empty output:
 gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
-  --filter="bindings.members:wobot-" --format="table(bindings.role,bindings.members)"
+  --filter="bindings.members~^serviceAccount:wobot-" --format="table(bindings.role,bindings.members)"
+# No account has a key, now or later — expect empty output:
+for sa in $(gcloud iam service-accounts list --format="value(email)"); do
+  gcloud iam service-accounts keys list --iam-account "$sa" --managed-by=user --format="value(name)"
+done
 ```
 
 ## 5. Secret Manager
@@ -302,8 +306,9 @@ Verify:
 gcloud sql instances describe wobot-pg
 gcloud sql users list --instance=wobot-pg
 gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
-  --filter="bindings.members:wobot-" --format="table(bindings.role,bindings.members)"
+  --filter="bindings.members~^serviceAccount:wobot-" --format="table(bindings.role,bindings.members)"
 # 4 rows: cloudsql.client and cloudsql.instanceUser for each service account
+# (a fifth, run.developer for wobot-deployer, once section 11 is done)
 ```
 
 ## 8. Database bootstrap
@@ -599,6 +604,11 @@ the SHA-1 of its signing key.
   account may use Wobot is decided by the allowlist (section 9), on every
   request. The API does not check token revocation, so disabling a Firebase user
   takes up to an hour, until its ID token expires, to lock the account out.
+- Adding Firebase also created the `firebase-adminsdk-fbsvc` service account,
+  with Firebase admin roles and project-level Service Account Token Creator,
+  which lets it act as any service account in the project. Wobot never uses it.
+  Never generate a key for it (Firebase → Project settings → Service accounts);
+  trimming its roles belongs to later hardening.
 - Firebase created an iOS key and an unused Browser key. The iOS key ships inside
   the app, in `GoogleService-Info.plist` and the compiled options: it identifies
   the project to Firebase APIs and is not a secret. Both keys are limited to
