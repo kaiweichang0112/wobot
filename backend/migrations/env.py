@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy.engine import Connection
 
+import wobot.knowledge.models  # noqa: F401
 from wobot.config import get_settings
 from wobot.db import create_engine
 from wobot.models import Base
