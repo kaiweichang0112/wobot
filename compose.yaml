@@ -14,7 +14,9 @@ services:
       - ./infra/sql/bootstrap.sql:/bootstrap/bootstrap.sql:ro
       - ./infra/sql/local-init.sh:/docker-entrypoint-initdb.d/10-local-init.sh:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "wobot"]
+      # Over TCP: while the init scripts run, the entrypoint's temporary server
+      # listens only on the Unix socket, so a socket check passes too early.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "wobot"]
       interval: 2s
       timeout: 3s
       retries: 30

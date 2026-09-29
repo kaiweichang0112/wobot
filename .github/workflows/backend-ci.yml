@@ -1,0 +1,67 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      - infra/sql/**
+      - compose.yaml
+      - .github/workflows/backend-ci.yml
+  # The deploy workflow runs the same checks before it deploys from main.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Only pull request runs share a group, so a new push cancels the outdated run.
+  group: backend-ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The local development database: same image, and the bootstrap run by a
+      # non-superuser admin, as in Cloud SQL.
+      - name: Start PostgreSQL
+        working-directory: .
+        run: docker compose up --detach --wait
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.16" # the Dockerfile's uv
+          working-directory: backend
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: |
+          uv run ruff format --check
+          uv run ruff check
+
+      - name: Migrate an empty database and check for drift
+        env:
+          GOOGLE_CLOUD_PROJECT: wobot-ci
+          DB_USER: wobot_migrator_user
+          DB_PASSWORD: wobot
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Database logs
+        if: failure()
+        working-directory: .
+        run: docker compose logs db
