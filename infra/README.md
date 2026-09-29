@@ -456,6 +456,7 @@ SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname IN ('ap
 | Authentication | Allow public access | Users hold Firebase identities, not IAM ones; the app checks the token and the allowlist |
 | Billing | Request-based | CPU only while serving, hence the connector's lazy refresh |
 | Service scaling | Auto, min 0, max 3 | Scales to zero when idle; 3 × 4 pooled connections fit the budget |
+| Startup CPU boost | On (the default) | Extra CPU while an instance starts shortens cold starts |
 | Ingress | All | Phones reach it over the internet |
 | Port / command | 8080 / image default | |
 | Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit |
@@ -471,7 +472,7 @@ Equivalent:
 
 ```sh
 gcloud run deploy wobot-api --image "$IMAGE" --region $REGION \
-  --no-invoker-iam-check --ingress all --cpu-throttling --min 0 --max 3 \
+  --no-invoker-iam-check --ingress all --cpu-throttling --cpu-boost --min 0 --max 3 \
   --service-account wobot-api@$PROJECT_ID.iam.gserviceaccount.com \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam" \
   --set-secrets OPENAI_API_KEY=openai-api-key:1
@@ -479,6 +480,11 @@ gcloud run deploy wobot-api --image "$IMAGE" --region $REGION \
 
 `--cpu-throttling` is request-based billing. `--min` and `--max` apply to the
 whole service; `--min-instances` and `--max-instances` would be per revision.
+
+Measured on the first deployment: an idle instance stops after about 15 minutes,
+and the next request waits about 7 s, almost all of it before uvicorn starts.
+Warm requests take under 30 ms. `--min 1` would remove the wait at the cost of
+an instance kept running.
 
 Verify:
 
