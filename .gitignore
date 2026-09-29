@@ -30,8 +30,9 @@ infra/env.sh
 *-sa-key.json
 *service-account*.json
 
-# Firebase client config — regenerate with `flutterfire configure`
+# Firebase client config — regenerate as described in app/README.md
 app/lib/firebase_options.dart
 app/ios/Runner/GoogleService-Info.plist
+app/ios/Flutter/Firebase.xcconfig
 app/android/app/google-services.json
 app/firebase.json

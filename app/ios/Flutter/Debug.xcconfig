@@ -1,0 +1,3 @@
+#include "Generated.xcconfig"
+// Gitignored; holds GOOGLE_REVERSED_CLIENT_ID (app/README.md).
+#include? "Firebase.xcconfig"

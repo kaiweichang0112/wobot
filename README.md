@@ -33,7 +33,7 @@ flowchart LR
 
 | Path | Contents |
 | --- | --- |
-| `app/` | Flutter client for iOS and Android (planned) |
+| [`app/`](app/README.md) | Flutter client: Google Sign-In and the account check on iOS; Android follows |
 | [`backend/`](backend/README.md) | FastAPI service and database migrations; LangGraph agents and jobs to come |
 | [`infra/`](infra/README.md) | Google Cloud runbook, environment template, database bootstrap |
 | [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for a robot head; out of scope for v1 |
