@@ -8,7 +8,9 @@ personalized cartoon avatar that speaks with the user's cloned voice.
 
 It is built for an internal pilot of up to ten people.
 
-**Status:** Phase 0 (deployment skeleton) in progress.
+**Status:** Phase 0 (deployment skeleton) is done: the iOS app signs in with
+Google, and the API on Cloud Run checks the Firebase ID token and an allowlist in
+Cloud SQL. CI deploys every merge to `main`. Next: phase A, knowledge ingestion.
 
 ## Architecture
 
@@ -28,6 +30,9 @@ flowchart LR
 - All Google Cloud resources live in `asia-east1` (Taiwan).
 - The app never holds provider secrets or database credentials. The API
   verifies a Firebase ID token and an email allowlist on every request.
+- Each workload runs as its own service account, and no service account key
+  exists: the database accepts IAM logins, and CI deploys through Workload
+  Identity Federation.
 
 ## Repository layout
 
@@ -37,6 +42,25 @@ flowchart LR
 | [`backend/`](backend/README.md) | FastAPI service and database migrations; LangGraph agents and jobs to come |
 | [`infra/`](infra/README.md) | Google Cloud runbook, environment template, database bootstrap |
 | [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for a robot head; out of scope for v1 |
+
+## Development
+
+- Backend: `docker compose up -d` starts PostgreSQL with pgvector, bootstrapped
+  as in Cloud SQL; [`backend/README.md`](backend/README.md) covers the rest.
+- App: [`app/README.md`](app/README.md) generates the Firebase config and runs
+  the app against an API URL.
+- Cloud: [`infra/README.md`](infra/README.md) records every Google Cloud
+  resource, its console path, the equivalent `gcloud` command and a read-only
+  check.
+
+## Delivery
+
+- Pull requests that touch the backend run lint, a migration of an empty
+  database, a check that models and migrations agree, and the tests
+  ([`backend-ci.yml`](.github/workflows/backend-ci.yml)).
+- A merge to `main` deploys ([`backend-deploy.yml`](.github/workflows/backend-deploy.yml)):
+  the same checks, then the image, the migration job and the API, in that order.
+  The run fails unless `/health` reports the merged commit.
 
 ## Roadmap
 
