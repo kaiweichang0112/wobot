@@ -525,7 +525,94 @@ expand/contract: the previous revision must keep working on the newer schema.
 
 ## 10. Firebase Authentication
 
-_Pending._
+Firebase runs on the same project. The app signs in with Google through
+Firebase, and the API verifies the resulting Firebase ID token without any
+Firebase credentials: `firebase_admin` checks it against Google's public keys
+and the project ID in `GOOGLE_CLOUD_PROJECT`.
+
+### Firebase on the project
+
+**Console:** [Firebase console](https://console.firebase.google.com) → Create a
+project → add Firebase to the existing Google Cloud project → Google Analytics
+off. The Firebase page inside the Google Cloud console only links there.
+
+Equivalent:
+
+```sh
+firebase projects:addfirebase $PROJECT_ID
+```
+
+### Google sign-in
+
+**Console:** Authentication → Sign-in method → Google → Enable. Set the
+public-facing name, which Google's sign-in page shows, and the support email.
+Leave every other provider disabled.
+
+Enable it before generating the app's config: only then does the iOS config
+include the OAuth client (`CLIENT_ID`, `REVERSED_CLIENT_ID`) that Google
+Sign-In needs. There is no CLI equivalent short of calling the Identity Toolkit
+admin API with an OAuth client secret.
+
+Verify:
+
+```sh
+TOKEN=$(gcloud auth print-access-token)
+# The response also holds the Google provider's OAuth client secret: keep only name and enabled.
+curl -s -H "Authorization: Bearer $TOKEN" -H "X-Goog-User-Project: $PROJECT_ID" \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/$PROJECT_ID/defaultSupportedIdpConfigs" \
+  | jq '[.defaultSupportedIdpConfigs[] | {name, enabled}]'   # only google.com, enabled
+curl -s -H "Authorization: Bearer $TOKEN" -H "X-Goog-User-Project: $PROJECT_ID" \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/$PROJECT_ID/config" \
+  | jq '.signIn | {email: (.email.enabled // false), phone: (.phoneNumber.enabled // false), anonymous: (.anonymous.enabled // false)}'   # all false
+```
+
+`X-Goog-User-Project` bills the calls to this project, since user credentials
+carry no project of their own.
+
+### iOS app
+
+**Console:** Project settings → General → Your apps → Add app → iOS. Bundle ID
+`com.kaiweichang.wobot`, nickname `Wobot iOS`, no App Store ID. Skip the
+download, SDK and initialization steps: FlutterFire generates the config, and
+the Flutter plugins add and start the SDK.
+
+Equivalent:
+
+```sh
+firebase apps:create IOS "Wobot iOS" --bundle-id com.kaiweichang.wobot --project $PROJECT_ID
+```
+
+Verify:
+
+```sh
+firebase apps:list --project $PROJECT_ID   # Wobot iOS, IOS
+```
+
+The client config is generated into gitignored files, as described in
+[`app/README.md`](../app/README.md). Android is registered before phase C, with
+the SHA-1 of its signing key.
+
+### Access and keys
+
+- Firebase creates a user for every Google account that signs in. Whether the
+  account may use Wobot is decided by the allowlist (section 9), on every
+  request. The API does not check token revocation, so disabling a Firebase user
+  takes up to an hour, until its ID token expires, to lock the account out.
+- Firebase created an iOS key and an unused Browser key. The iOS key ships inside
+  the app, in `GoogleService-Info.plist` and the compiled options: it identifies
+  the project to Firebase APIs and is not a secret. Both keys are limited to
+  Firebase APIs; restricting the iOS key to the bundle ID, and App Check, come
+  later.
+
+```sh
+# Restrictions only; the key strings are not printed.
+gcloud services api-keys list --format="table(displayName, \
+  restrictions.apiTargets.len():label=APIS, \
+  restrictions.iosKeyRestrictions.allowedBundleIds.list():label=BUNDLE_IDS)"
+```
+
+End-to-end check: after signing in on a device, Authentication → Users lists the
+account, and its User UID equals `account_id` in `app.accounts`.
 
 ## 11. CI/CD with Workload Identity Federation
 
