@@ -428,8 +428,8 @@ gcloud run jobs execute wobot-migrate --region $REGION --wait
 ```
 
 `execute --wait` exits non-zero when the migration fails, which is what stops a
-deploy before the API changes. Later deploys only swap the image with
-`gcloud run jobs update wobot-migrate --image "$IMAGE"`.
+deploy before the API changes. Later deploys come from CI (section 11), which
+only swaps the image with `gcloud run jobs update wobot-migrate --image "$IMAGE"`.
 
 Verify:
 
@@ -518,8 +518,9 @@ gcloud run revisions list --service wobot-api --region $REGION
 gcloud run services update-traffic wobot-api --region $REGION --to-revisions <revision>=100
 ```
 
-While traffic is pinned to a revision, new deploys receive none; hand it back
-with `gcloud run services update-traffic wobot-api --region $REGION --to-latest`.
+While traffic is pinned to a revision, new deploys receive none, and the deploy
+workflow's version check fails; hand it back with
+`gcloud run services update-traffic wobot-api --region $REGION --to-latest`.
 A rollback does not undo migrations, which is why schema changes follow
 expand/contract: the previous revision must keep working on the newer schema.
 
@@ -616,7 +617,165 @@ account, and its User UID equals `account_id` in `app.accounts`.
 
 ## 11. CI/CD with Workload Identity Federation
 
-_Pending._
+Pull requests that touch the backend run `.github/workflows/backend-ci.yml`. A
+push to main runs `.github/workflows/backend-deploy.yml`: the same checks, then
+the image, the migration job and the API, as `wobot-deployer`. GitHub's OIDC
+token is exchanged for short-lived credentials; no service account key exists.
+
+Three checks stand between a workflow and the project:
+
+| Check | Where |
+| --- | --- |
+| The token comes from this repository's main branch | The provider's attribute condition |
+| That identity may impersonate `wobot-deployer` | The service account's IAM policy |
+| What `wobot-deployer` may do | Its roles |
+
+### Identity pool and provider
+
+**Console:** IAM & Admin → Workload Identity Federation → Create pool: name
+`GitHub Actions`, ID `github`. Add a provider: OpenID Connect, ID `wobot`,
+issuer `https://token.actions.githubusercontent.com`, default audience.
+
+| Google attribute | Token claim |
+| --- | --- |
+| `google.subject` | `assertion.sub` |
+| `attribute.repository_id` | `assertion.repository_id` |
+| `attribute.repository_owner_id` | `assertion.repository_owner_id` |
+| `attribute.ref` | `assertion.ref` |
+
+Attribute condition, with the IDs from
+`gh api repos/<owner>/<repo> --jq '{repository_id: .id, owner_id: .owner.id}'`:
+
+```
+assertion.repository_owner_id == '<OWNER_ID>' && assertion.repository_id == '<REPO_ID>' && assertion.ref == 'refs/heads/main'
+```
+
+- Numeric IDs, not names: a deleted or renamed account or repository frees its
+  name for someone else, while IDs are never reused. The owner is checked too,
+  because a transferred repository keeps its ID.
+- `ref` limits deploys to main, so a pushed branch cannot deploy what no pull
+  request reviewed. Pull requests from forks get no OIDC token at all.
+
+Equivalent:
+
+```sh
+gcloud iam workload-identity-pools create github --location=global --display-name="GitHub Actions"
+gcloud iam workload-identity-pools providers create-oidc wobot \
+  --location=global --workload-identity-pool=github --display-name="wobot repository" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref" \
+  --attribute-condition="assertion.repository_owner_id == '<OWNER_ID>' && assertion.repository_id == '<REPO_ID>' && assertion.ref == 'refs/heads/main'"
+```
+
+Verify:
+
+```sh
+gcloud iam workload-identity-pools providers describe wobot --location=global \
+  --workload-identity-pool=github \
+  --format="yaml(name,state,oidc.issuerUri,oidc.allowedAudiences,attributeMapping,attributeCondition)"
+# state ACTIVE; no allowedAudiences means the default audience
+```
+
+### Deployer permissions
+
+**Console:**
+
+- The `github` pool → Grant access → using service account impersonation →
+  `wobot-deployer`, only identities whose `repository_id` is `<REPO_ID>`. Close
+  the configuration file download: workflows need only the provider name.
+- IAM → Grant access → `wobot-deployer` → Cloud Run Developer.
+- Artifact Registry → select `wobot` → Permissions → Add principal →
+  Artifact Registry Writer.
+- Service Accounts → `wobot-api`, then `wobot-migrator` → Principals with
+  access → Grant access → `wobot-deployer` → Service Account User.
+
+| Role | Scope | Why |
+| --- | --- | --- |
+| Workload Identity User | `wobot-deployer`, for this repository ID | Workflows impersonate the deployer |
+| Cloud Run Developer | Project | Update and run the job, deploy the service; no IAM changes |
+| Artifact Registry Writer | `wobot` repository | Push images, but not delete them |
+| Service Account User | `wobot-api`, `wobot-migrator` | Deploy code that runs as these two, and no other service account |
+
+Impersonation rather than granting roles to the federated identity directly:
+every API accepts a service account's token, while not every resource accepts
+federated principals, and one named identity holds all deploy rights, so
+disabling it stops every deploy.
+
+`wobot-api` has the invoker IAM check disabled. Changing that setting needs
+`run.services.setIamPolicy`, but a deploy that leaves it alone does not: Cloud
+Run Developer was enough for the first CI deploy. The workflow therefore passes
+no access flags.
+
+Equivalent:
+
+```sh
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+DEPLOYER=wobot-deployer@$PROJECT_ID.iam.gserviceaccount.com
+gcloud iam service-accounts add-iam-policy-binding $DEPLOYER \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/<REPO_ID>"
+gcloud projects add-iam-policy-binding $PROJECT_ID --role=roles/run.developer \
+  --member="serviceAccount:$DEPLOYER"
+gcloud artifacts repositories add-iam-policy-binding $AR_REPO --location=$REGION \
+  --role=roles/artifactregistry.writer --member="serviceAccount:$DEPLOYER"
+for sa in wobot-api wobot-migrator; do
+  gcloud iam service-accounts add-iam-policy-binding $sa@$PROJECT_ID.iam.gserviceaccount.com \
+    --role=roles/iam.serviceAccountUser --member="serviceAccount:$DEPLOYER"
+done
+```
+
+The principal set names the project number, not the project ID.
+
+Verify:
+
+```sh
+gcloud iam service-accounts get-iam-policy $DEPLOYER --format="yaml(bindings)"
+gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
+  --filter="bindings.members:wobot-deployer@" --format="value(bindings.role)"   # only run.developer
+gcloud artifacts repositories get-iam-policy $AR_REPO --location=$REGION --format="yaml(bindings)"
+for sa in wobot-api wobot-migrator; do
+  gcloud iam service-accounts get-iam-policy $sa@$PROJECT_ID.iam.gserviceaccount.com --format="yaml(bindings)"
+done
+```
+
+### Repository variables
+
+**GitHub:** Settings → Secrets and variables → Actions → Variables.
+
+| Variable | Value |
+| --- | --- |
+| `GCP_PROJECT_ID` | The project ID |
+| `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/wobot` |
+| `GCP_DEPLOYER_SA` | `wobot-deployer@<PROJECT_ID>.iam.gserviceaccount.com` |
+
+Variables, not secrets: none of them grants anything, the logs of a public
+repository are public anyway, and masking would blank out image names. Keeping
+them out of the workflow leaves it free of environment identifiers.
+`gh variable set <NAME> --body <VALUE>` is the CLI; `gh variable list` verifies.
+
+### Deploying
+
+Merging a pull request that changes `backend/**` or either workflow deploys it:
+
+1. The checks from `backend-ci.yml`, through `workflow_call`.
+2. `api:<commit sha>`, built on the runner and pushed.
+3. `wobot-migrate` updated to that image and executed; a failed migration stops
+   the run before the API changes.
+4. `wobot-api` deployed with that image and `APP_VERSION=<commit sha>`.
+5. `/health` must report the commit, or the run fails.
+
+Deploys run one at a time; a newer push waits for the running one. To retry,
+open the run and choose Re-run failed jobs, or run the workflow manually on
+main. The first CI deploy took under three minutes from merge to serving.
+
+Verify:
+
+```sh
+gcloud run revisions list --service wobot-api --region $REGION --limit 3 \
+  --format="table(metadata.name, metadata.annotations['serving.knative.dev/creator'], metadata.creationTimestamp.date('%Y-%m-%d %H:%M'))"
+gcloud run jobs executions list --job wobot-migrate --region $REGION --limit 2
+# Both list wobot-deployer as the creator and runner of the newest entry.
+```
 
 ## Connection budget
 
