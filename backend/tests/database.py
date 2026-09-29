@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import asyncpg
 
 from wobot.config import get_settings
@@ -5,6 +8,7 @@ from wobot.config import get_settings
 # Login users created by infra/sql/local-init.sh.
 API_USER = "wobot_api_user"
 MIGRATOR_USER = "wobot_migrator_user"
+INGEST_USER = "wobot_ingest_user"
 
 
 async def connect(user: str) -> asyncpg.Connection:
@@ -26,4 +30,20 @@ async def run_as_migrator(sql: str, *args: object) -> list[asyncpg.Record]:
         await connection.execute("SET ROLE wobot_migrator")
         return await connection.fetch(sql, *args)
     finally:
+        await connection.close()
+
+
+@asynccontextmanager
+async def rolled_back(user: str) -> AsyncIterator[asyncpg.Connection]:
+    """Connect as `user` inside a transaction that always rolls back.
+
+    Tests leave no rows behind, even as roles that are not allowed to delete them.
+    """
+    connection = await connect(user)
+    transaction = connection.transaction()
+    await transaction.start()
+    try:
+        yield connection
+    finally:
+        await transaction.rollback()
         await connection.close()
