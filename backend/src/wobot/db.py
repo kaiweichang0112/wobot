@@ -1,8 +1,7 @@
 from typing import Any
 
 from google.cloud.sql.connector import Connector, create_async_connector
-from pgvector.asyncpg import register_vector
-from sqlalchemy import URL, event
+from sqlalchemy import URL
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -57,9 +56,6 @@ async def create_engine(
 
         engine = create_async_engine("postgresql+asyncpg://", async_creator=connect, **pool_options)
 
-    @event.listens_for(engine.sync_engine, "connect")
-    def _register_vector(dbapi_connection, _connection_record) -> None:
-        # Teach asyncpg the pgvector type so embeddings bind and load as vectors.
-        dbapi_connection.run_async(register_vector)
-
+    # No pgvector codec for asyncpg: the Vector column type already sends vectors as text,
+    # which a binary codec would reject (tests/test_database.py).
     return engine, connector

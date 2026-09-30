@@ -1,7 +1,7 @@
 import asyncpg
 import pytest
-from pgvector import Vector
-from sqlalchemy import text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import bindparam, cast, select
 
 from tests.database import API_USER, connect
 from wobot.config import get_settings
@@ -31,12 +31,11 @@ async def test_api_role_cannot_edit_the_allowlist():
 
 async def test_vectors_round_trip_through_the_engine():
     engine, _ = await create_engine(get_settings(), pooled=False)
+    embedding = bindparam("embedding", [1.0, 2.0, 3.0], type_=Vector(3))
     try:
         async with engine.connect() as connection:
-            value = await connection.scalar(
-                text("SELECT CAST(:embedding AS vector(3))"), {"embedding": [1.0, 2.0, 3.0]}
-            )
+            value = await connection.scalar(select(cast(embedding, Vector(3))))
     finally:
         await engine.dispose()
 
-    assert value == Vector([1.0, 2.0, 3.0])
+    assert value == [1.0, 2.0, 3.0]

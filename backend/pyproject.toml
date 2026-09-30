@@ -10,11 +10,17 @@ dependencies = [
     "cloud-sql-python-connector[asyncpg]>=1.22.0",
     "fastapi>=0.141.1",
     "firebase-admin>=7.7.0",
+    "openai>=3.22.0",
+    "openpyxl>=3.1.5",
     "pgvector>=0.5.0",
     "pydantic-settings>=2.15.0",
     "sqlalchemy[asyncio]>=2.1.1",
+    "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.54.0",
 ]
+
+[project.scripts]
+wobot-ingest = "wobot.knowledge.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.16,<0.13.0"]

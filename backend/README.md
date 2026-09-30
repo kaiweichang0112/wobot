@@ -1,7 +1,7 @@
 # Wobot backend
 
 The FastAPI service and its database migrations, packaged as one container image.
-LangGraph agents and ingestion jobs will live here too. Google Cloud setup is in
+LangGraph agents will live here too. Google Cloud setup is in
 [`infra/README.md`](../infra/README.md).
 
 ## Layout
@@ -12,6 +12,7 @@ LangGraph agents and ingestion jobs will live here too. Google Cloud setup is in
 | `src/wobot/db.py` | Async engine: password login locally, Cloud SQL connector with IAM auth in the cloud |
 | `src/wobot/models.py` | SQLAlchemy models; the migrations define the schema |
 | `src/wobot/api/` | FastAPI app, Firebase ID token verification, error envelope |
+| `src/wobot/knowledge/` | Knowledge ingestion: sources → records → chunks → embeddings → versions, and search |
 | `migrations/` | Alembic migrations, run as the `wobot_migrator` group role |
 | `tests/` | API and privilege tests against a migrated local database |
 
@@ -49,8 +50,34 @@ uv run pytest
 ```
 
 The tests need the compose database. They migrate it first, force local settings so
-they can never reach Cloud SQL, and delete the rows they create. `DB_HOST` and
-`DB_PORT` can point them at another local instance.
+they can never reach Cloud SQL, and leave no rows behind: API tests delete theirs, and
+knowledge tests run inside a transaction that is rolled back, so they never touch a
+version you ingested locally. No test calls OpenAI. `DB_HOST` and `DB_PORT` can point
+them at another local instance.
+
+## Knowledge ingestion
+
+`wobot-ingest` reads the product catalog, stores it as records, chunks and embeddings,
+and publishes a new version only when the content changed and every check passed. Run
+it as the ingest role, with `OPENAI_API_KEY` in `.env`:
+
+```bash
+DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file ../references/smart-care-products.xlsx
+DB_USER=wobot_ingest_user uv run wobot-ingest search "離床預警 不用穿戴"
+DB_USER=wobot_ingest_user uv run wobot-ingest status
+```
+
+- One run: read the active version → parse and normalize → check → store records and
+  chunks → embed the chunks that have no vector yet → build a version listing every
+  record and chunk → check what was stored → publish with compare-and-swap.
+- Records, chunks and embeddings are content-addressed and never updated. A version
+  reuses every unchanged one, so an edit to one row embeds one chunk.
+- A run whose content matches the active version ends as `no_change` and embeds
+  nothing. `--policy dry-run` builds and validates a version without publishing it.
+- Blocking problems (a missing name, an implausible year) stop the run with the row
+  number; warnings are printed and kept in the version's validation report.
+- The raw file is kept under `KNOWLEDGE_LOCAL_DIR`, named by its SHA-256.
+- Exit code: 0 for `published`, `no_change` and `validated`; 1 for `failed`.
 
 ## Migrations
 
@@ -99,3 +126,7 @@ docker build -t wobot-api:local .
 | `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | `2`, `2` | Connections per instance, sized against the budget in `infra/README.md` |
 | `DB_POOL_TIMEOUT_SECONDS` | `10` | Longest wait for a free pooled connection |
 | `DB_CONNECT_TIMEOUT_SECONDS` | `10` | Longest wait to open a connection |
+| `OPENAI_API_KEY` | none | Ingestion and search only; from Secret Manager in the cloud |
+| `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
+| `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |
