@@ -17,6 +17,8 @@ uv run pytest
 uv run alembic revision --rev-id 0002 -m "short description"
 DB_USER=wobot_migrator_user uv run alembic upgrade head
 DB_USER=wobot_migrator_user uv run alembic check
+DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file <path.xlsx>
+DB_USER=wobot_ingest_user uv run wobot-ingest search "<query>"
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -48,6 +50,12 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **The API's database role is limited on purpose.** `wobot_api` has no DDL,
   only reads `knowledge`, and cannot write `app.allowed_emails`. Do not widen it
   to make something work.
+- **Ingestion is append-only.** `wobot_ingest` may insert into `knowledge` but not
+  update or delete, except moving `active_knowledge` and version status. Write
+  with `ON CONFLICT DO NOTHING` and read IDs back; never `DO UPDATE`. Tests that
+  write run inside a rolled-back transaction (`tests/knowledge/conftest.py`).
+- **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
+  pgvector asyncpg codec: it rejects the text the type sends.
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the
   API's cap of 3 instances follow the budget in `infra/README.md`; update it
   before changing either.
