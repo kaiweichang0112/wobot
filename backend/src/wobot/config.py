@@ -1,6 +1,8 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +29,13 @@ class Settings(BaseSettings):
     db_max_overflow: int = 2
     db_pool_timeout_seconds: float = 10
     db_connect_timeout_seconds: float = 10
+
+    # Needed only by commands that call OpenAI; in the cloud it comes from Secret Manager.
+    openai_api_key: SecretStr | None = None
+    openai_timeout_seconds: float = 60
+    embedding_model: str = "text-embedding-3-small"
+    # Where local ingestion keeps the raw bytes of each snapshot (gitignored).
+    knowledge_local_dir: Path = Path(".data/knowledge")
 
 
 @lru_cache
