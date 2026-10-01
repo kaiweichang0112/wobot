@@ -632,6 +632,10 @@ The job exits non-zero when a run fails, so the execution shows as failed. A
 run that finds the content unchanged ends as `no_change` and embeds nothing.
 Measured on the first executions: after a 7–11 s start, publishing the 163
 products took 6 s, and the `no_change` run that followed under 1 s.
+The speeches are read by a model (`EXTRACTION_MODEL`, with the same key): the first
+run asks about each of the ~280 talks, which took 2 minutes and about US$0.05 with
+`gpt-5.6-luna` when measured locally. The answers stay in `knowledge.llm_extractions`, so later runs ask
+only about new or edited talks.
 `--args run,--policy,dry-run` on `execute` builds and validates a version
 without publishing it.
 

@@ -11,6 +11,7 @@ from itertools import groupby
 
 from wobot.knowledge.chunking.drafts import BlockItem, ChunkDraft, block_chunks
 from wobot.knowledge.records.drafts import RecordDraft
+from wobot.knowledge.records.lectures import LECTURE_CATEGORIES
 
 CENTER = "元智大學老人福祉科技研究中心"
 PERSON = "徐業良"
@@ -18,13 +19,17 @@ STUDENT_BLOCK = "student_block"
 PROJECT_BLOCK = "project_block"
 PUBLICATION_BLOCK = "publication_block"
 PROFILE_SECTION = "profile_section"
+LECTURE_BLOCK = "lecture_block"
 STRATEGY_VERSIONS = {
     STUDENT_BLOCK: 1,
     PROJECT_BLOCK: 1,
     PUBLICATION_BLOCK: 1,
     PROFILE_SECTION: 1,
+    LECTURE_BLOCK: 1,
 }
 DEGREE_LABELS = {"master": "碩士", "phd": "博士"}
+# The page's own heading for each category.
+LECTURE_LABELS = {code: heading for heading, code in LECTURE_CATEGORIES.items()}
 _URL = re.compile(r"\s*https?://\S+")
 
 
@@ -133,4 +138,29 @@ def profile_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
     for section, run in _runs(items_only, lambda d: d.fields["category"]):
         items = [BlockItem(d.fields["item_text"], d.fields["item_text"], d.revision) for d in run]
         chunks += _chunks(PROFILE_SECTION, [PERSON, section], f"{PERSON}｜{section}", items)
+    return chunks
+
+
+def lecture_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
+    """A category's year block per chunk, each talk as the page writes it.
+
+    Built from the entry text alone, never from what a model read: a model's answers can
+    change with its prompt, and the text a search matches should not.
+    """
+    chunks = []
+    by_block = _runs(drafts, lambda d: (d.fields["category"], d.fields["year_block"]))
+    for (category, year_block), run in by_block:
+        label = LECTURE_LABELS[category]
+        items = []
+        for draft in run:
+            fields = draft.fields
+            links = tuple(link for link in fields["links"] if link["url"])
+            shown = [fields["entry_text"], *(f"{link['text']}：{link['url']}" for link in links)]
+            items.append(BlockItem("\n".join(shown), fields["entry_text"], draft.revision, links))
+        chunks += _chunks(
+            LECTURE_BLOCK,
+            [PERSON, "Speeches", label, year_block],
+            f"{PERSON}教授演講｜{label}｜{year_block}年",
+            items,
+        )
     return chunks

@@ -2,13 +2,17 @@
 
 import httpx2
 
-from tests.knowledge.wix_pages import BLANK, HOST, a, br_p, h, link_p, ol, p, page, rich
+from tests.knowledge.fakes import FakeLectureReader, fake_lectures
+from tests.knowledge.wix_pages import BLANK, HOST, a, br_p, h, link_p, ol, p, page, rich, spans
+from wobot.knowledge.grc import GrcWebsiteSource
 from wobot.knowledge.profiles import GRC_HOST
 from wobot.knowledge.records.grc import PROFILE_SECTIONS, PUBLICATION_CATEGORIES
+from wobot.knowledge.records.lectures import LECTURE_CATEGORIES
 from wobot.knowledge.sources.http import PageFetcher
 
 DOI = "https://doi.org/10.4017/gt.2026.25.1.1257.03"
 DRIVE_PDF = "https://drive.google.com/file/d/example/view"
+KEYNOTES, INVITED = LECTURE_CATEGORIES
 
 
 def site_pages(project_amount: str = "NTD600,000") -> dict[str, bytes]:
@@ -62,17 +66,38 @@ def site_pages(project_amount: str = "NTD600,000") -> dict[str, bytes]:
             link_p("電子全文"),
         ),
     )
+    speeches = page(
+        nav,
+        rich("comp-k", h(1, KEYNOTES)),
+        rich("comp-ky__item1", p("2024~2025")),
+        rich(
+            "comp-kl__item1",
+            BLANK,
+            ol(
+                "“Smart care in practice,” keynote speech, Example Symposium, Seoul, Korea, "
+                f"{spans('202', '5/12/05')} {a('PDF', DRIVE_PDF)}"
+            ),
+        ),
+        rich("comp-i", h(1, INVITED)),
+        # The same item ID as the keynote year: each repeater numbers its own items.
+        rich("comp-iy__item1", p("2025")),
+        rich(
+            "comp-il__item1",
+            ol(f'"長者運動遊戲設計，"範例大學護理系課程專題演講，2025/11/12 {a("PDF")}'),
+        ),
+    )
     return {
         "/%E5%BE%90%E6%A5%AD%E8%89%AFyehlianghsu": profile,
         "/publications": publications,
         "/projects": projects,
         "/students-masters": masters,
         "/students-masters/students-phd": phd,
+        "/speeches": speeches,
     }
 
 
 def sitemaps(extra: tuple[str, ...] = ()) -> dict[str, bytes]:
-    pages = ["", "/speeches", "/chapter3", "/courses-activities/news", *site_pages(), *extra]
+    pages = ["", "/chapter3", "/courses-activities/news", *site_pages(), *extra]
     locs = "".join(f"<url><loc>{HOST}{path}</loc></url>" for path in pages)
     index = f"<sitemap><loc>{HOST}/pages-sitemap.xml</loc></sitemap>"
     return {
@@ -96,3 +121,10 @@ def grc_fetcher(requests: list[str], **site_options) -> PageFetcher:
 
     client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
     return PageFetcher(client, {GRC_HOST}, min_interval=0)
+
+
+def grc_source(
+    requests: list[str], reader: FakeLectureReader | None = None, **site_options
+) -> GrcWebsiteSource:
+    """The source over the synthetic site, with a stand-in model for the speeches."""
+    return GrcWebsiteSource(grc_fetcher(requests, **site_options), fake_lectures(reader))

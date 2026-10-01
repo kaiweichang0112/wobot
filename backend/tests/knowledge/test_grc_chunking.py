@@ -82,3 +82,33 @@ def test_a_long_block_splits_between_items_never_inside_one():
     ]
     assert sum(len(c.record_revisions) for c in chunks) == 5  # every item exactly once
     assert all(c.token_count <= 700 or len(c.record_revisions) == 1 for c in chunks)
+
+
+def lecture(entry, title, year_block="2024~2025", category="keynote", url=None):
+    fields = {
+        "category": category,
+        "year_block": year_block,
+        "entry_text": entry,
+        "title": title,
+        "links": [{"kind": "pdf", "text": "PDF", "url": url}],
+    }
+    return record_draft("lecture", f"lecture:{entry}", raw={}, fields=fields, locator={})
+
+
+def test_lecture_blocks_follow_the_page_and_never_what_a_model_read():
+    entry = "“Smart care,” keynote speech, Care Congress, 2025/12/05"
+    pdf = "https://drive.google.com/file/d/talk/view"
+    chunks = chunking.lecture_chunks(
+        [lecture(entry, "Smart care", url=pdf), lecture("“Beds,” Forum, 2024/05/10", "Beds")]
+    )
+    reread = chunking.lecture_chunks(
+        [lecture(entry, "Smart", url=pdf), lecture("“Beds,” Forum, 2024/05/10", None)]
+    )
+
+    assert [c.context_header for c in chunks] == [
+        "徐業良教授演講｜Keynote and plenary speeches at international conferences｜2024~2025年"
+    ]
+    assert chunks[0].body == f"{entry}\nPDF：{pdf}\n\n“Beds,” Forum, 2024/05/10"
+    assert "https://" not in chunks[0].embedding_input
+    assert chunks[0].links == ({"kind": "pdf", "text": "PDF", "url": pdf},)
+    assert [c.content_hash for c in reread] == [c.content_hash for c in chunks]

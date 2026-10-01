@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_timeout_seconds: float = 60
     embedding_model: str = "text-embedding-3-small"
+    # Reads the parts of list entries, such as a speech's title, during ingestion.
+    extraction_model: str = "gpt-5.6-luna"
     # Raw source bytes go to this bucket, or to the local directory when it is unset.
     knowledge_bucket: str | None = None
     knowledge_local_dir: Path = Path(".data/knowledge")

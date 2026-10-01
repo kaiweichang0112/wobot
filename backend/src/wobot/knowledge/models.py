@@ -221,6 +221,72 @@ class ListItemRecord(Base):
     links: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'"))
 
 
+# Read by a model, so each must be a verbatim span of the entry; see migration 0004.
+LECTURE_MODEL_FIELDS = ("title", "event", "location")
+
+
+class LectureRecord(Base):
+    __tablename__ = "lecture_records"
+    __table_args__ = (
+        CheckConstraint("category IN ('keynote', 'invited')", name="lecture_records_category"),
+        CheckConstraint(
+            "date_precision IN ('day', 'month')", name="lecture_records_date_precision"
+        ),
+        CheckConstraint(
+            "(lecture_date IS NULL) = (date_precision IS NULL)", name="lecture_records_date"
+        ),
+        *(
+            CheckConstraint(
+                f"{name} IS NULL OR ({name} <> '' AND strpos(entry_text, {name}) > 0)",
+                name=f"lecture_records_{name}_in_entry",
+            )
+            for name in LECTURE_MODEL_FIELDS
+        ),
+        Index("lecture_records_category_year", "category", "year"),
+        {"schema": "knowledge"},
+    )
+
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge.records.record_id"), primary_key=True
+    )
+    speaker: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(Text)
+    year_block: Mapped[str] = mapped_column(Text)
+    entry_text: Mapped[str] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)
+    event: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(Text)
+    lecture_date: Mapped[date | None] = mapped_column(Date)
+    date_precision: Mapped[str | None] = mapped_column(Text)
+    date_raw: Mapped[str | None] = mapped_column(Text)
+    year: Mapped[int | None] = mapped_column(Integer)
+    pdf_url: Mapped[str | None] = mapped_column(Text)
+    links: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'"))
+    extraction_model: Mapped[str] = mapped_column(Text)
+    extraction_prompt_version: Mapped[int] = mapped_column(Integer)
+
+
+class LlmExtraction(Base):
+    __tablename__ = "llm_extractions"
+    __table_args__ = (
+        CheckConstraint("(output IS NULL) <> (failure IS NULL)", name="llm_extractions_outcome"),
+        {"schema": "knowledge"},
+    )
+
+    purpose: Mapped[str] = mapped_column(Text, primary_key=True)
+    input_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    model: Mapped[str] = mapped_column(Text, primary_key=True)
+    prompt_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    input: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # SQL NULL for no output, not JSON null: the outcome check tells the two apart.
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    failure: Mapped[str | None] = mapped_column(Text)
+    response_model: Mapped[str] = mapped_column(Text)
+    input_tokens: Mapped[int] = mapped_column(Integer)
+    output_tokens: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Chunk(Base):
     __tablename__ = "chunks"
     __table_args__ = (

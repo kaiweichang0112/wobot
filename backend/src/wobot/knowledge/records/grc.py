@@ -59,6 +59,8 @@ PROFILE_SECTIONS = (
 class Parsed:
     drafts: list[RecordDraft] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)  # blocking
+    # Warnings about the page rather than one item, such as a year whose links all fail.
+    notes: list[str] = field(default_factory=list)
 
 
 def link_json(link: Link) -> dict[str, Any]:
@@ -281,7 +283,7 @@ def parse_publications(blocks: Sequence[Block]) -> Parsed:
 
 
 def _publication(block: Block, category: str, position: int) -> RecordDraft:
-    text = _without_trailing_labels(block.text, block.links)
+    text = without_trailing_labels(block.text, block.links)
     year_match = _CITATION_YEAR.search(text) or _DATE_YEAR.search(text)
     year = int(year_match.group(1)) if year_match else None
     if year_match is None and (roc := _ROC_YEAR.search(text)):
@@ -313,7 +315,7 @@ def _publication(block: Block, category: str, position: int) -> RecordDraft:
     )
 
 
-def _without_trailing_labels(text: str, links: Sequence[Link]) -> str:
+def without_trailing_labels(text: str, links: Sequence[Link]) -> str:
     """The item without the "PDF" or "Link" anchors it ends with; they are kept as links."""
     labels = {link.text for link in links if link.text.casefold() in _LINK_LABELS}
     stripped = True
