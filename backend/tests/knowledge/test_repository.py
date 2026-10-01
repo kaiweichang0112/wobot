@@ -35,8 +35,8 @@ async def test_snapshots_of_the_same_bytes_are_one_row(ingest_db):
 async def test_storing_the_same_products_twice_adds_nothing(ingest_db):
     drafts = drafts_of(None, {"產品名稱": "測試地墊 TM-2"})
     async with ingest_db.begin() as conn:
-        first_ids, first_new = await repository.put_products(conn, drafts)
-        again_ids, again_new = await repository.put_products(conn, drafts)
+        first_ids, first_new = await repository.put_records(conn, drafts)
+        again_ids, again_new = await repository.put_records(conn, drafts)
 
     assert (first_new, again_new) == (2, 0)
     assert first_ids == again_ids
@@ -46,11 +46,11 @@ async def test_a_contact_edit_links_the_same_chunk_to_the_new_revision(ingest_db
     before = drafts_of(None)
     after = drafts_of({"連絡電話": "03-1111-1111"})
     async with ingest_db.begin() as conn:
-        before_ids, _ = await repository.put_products(conn, before)
+        before_ids, _ = await repository.put_records(conn, before)
         chunk_ids, chunks_new = await repository.put_chunks(
             conn, [product_chunk(d) for d in before], before_ids
         )
-        after_ids, records_new = await repository.put_products(conn, after)
+        after_ids, records_new = await repository.put_records(conn, after)
         reused_ids, reused_new = await repository.put_chunks(
             conn, [product_chunk(d) for d in after], after_ids
         )
@@ -66,7 +66,7 @@ async def test_a_contact_edit_links_the_same_chunk_to_the_new_revision(ingest_db
 async def test_only_chunks_without_a_vector_are_missing(ingest_db):
     drafts = drafts_of(None, {"產品名稱": "測試地墊 TM-2"})
     async with ingest_db.begin() as conn:
-        record_ids, _ = await repository.put_products(conn, drafts)
+        record_ids, _ = await repository.put_records(conn, drafts)
         chunk_ids, _ = await repository.put_chunks(
             conn, [product_chunk(d) for d in drafts], record_ids
         )

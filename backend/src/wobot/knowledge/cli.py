@@ -1,4 +1,4 @@
-"""wobot-ingest: ingest the product catalog, search the active version, show its status."""
+"""wobot-ingest: ingest the knowledge sources, search the active version, show its status."""
 
 import argparse
 import asyncio
@@ -12,12 +12,17 @@ from openai import APIError, AsyncOpenAI
 
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
-from wobot.knowledge import repository
+from wobot.knowledge import catalog, grc, repository
 from wobot.knowledge.blobs import BlobStore, GcsBlobStore, LocalBlobStore
+from wobot.knowledge.catalog import CatalogFile, FetchCatalog, ProductCatalogSource
 from wobot.knowledge.embeddings import OpenAIEmbedder
-from wobot.knowledge.pipeline import CatalogFile, CatalogSource, RunResult, run_ingestion
+from wobot.knowledge.grc import GrcWebsiteSource
+from wobot.knowledge.pipeline import RunResult, run_ingestion
+from wobot.knowledge.profiles import GRC_HOST
 from wobot.knowledge.search import search_chunks
+from wobot.knowledge.source import Source
 from wobot.knowledge.sources.drive import DriveError, drive_token, fetch_drive_file
+from wobot.knowledge.sources.http import FetchError, PageFetcher, new_client
 from wobot.knowledge.sources.xlsx import CatalogSchemaError
 from wobot.logs import configure_logging
 
@@ -28,7 +33,8 @@ OPENAI_MAX_RETRIES = 3
 DRIVE_TIMEOUT_SECONDS = 60
 # Failures of the world outside, not of the code: reported in one line, no traceback.
 # A run has already recorded them.
-EXPECTED_ERRORS = (APIError, DriveError, CatalogSchemaError)
+EXPECTED_ERRORS = (APIError, DriveError, CatalogSchemaError, FetchError)
+SOURCES = (catalog.SOURCE_ID, grc.SOURCE_ID)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +43,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wobot-ingest", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
 
-    run = commands.add_parser("run", help="ingest the catalog and publish a new version")
+    run = commands.add_parser("run", help="ingest the sources and publish a new version")
+    run.add_argument(
+        "--sources",
+        type=lambda value: value.split(","),
+        default=list(SOURCES),
+        help=f"comma-separated, from {', '.join(SOURCES)} (default: all); the others are "
+        "carried over from the active version",
+    )
     run.add_argument(
         "--catalog-file",
         type=Path,
@@ -64,8 +77,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     if args.command in ("run", "search") and settings.openai_api_key is None:
         parser.error("OPENAI_API_KEY is not set")
-    if args.command == "run" and not (args.catalog_file or settings.product_catalog_file_id):
-        parser.error("pass --catalog-file or set PRODUCT_CATALOG_FILE_ID")
+    if args.command == "run":
+        if unknown := set(args.sources) - set(SOURCES):
+            parser.error(f"unknown sources {sorted(unknown)}")
+        needs_catalog = catalog.SOURCE_ID in args.sources
+        if needs_catalog and not (args.catalog_file or settings.product_catalog_file_id):
+            parser.error("pass --catalog-file or set PRODUCT_CATALOG_FILE_ID")
     configure_logging()
     handler: Callable[[argparse.Namespace, Settings], Awaitable[int]] = args.handler
     try:
@@ -96,7 +113,7 @@ def _blob_store(settings: Settings) -> BlobStore:
     return GcsBlobStore(client.bucket(settings.knowledge_bucket))
 
 
-def _catalog_source(catalog_file: Path | None, settings: Settings) -> CatalogSource:
+def _fetch_catalog(catalog_file: Path | None, settings: Settings) -> FetchCatalog:
     async def from_file() -> CatalogFile:
         content = await asyncio.to_thread(catalog_file.read_bytes)
         # The file name only: a local path says nothing about the catalog.
@@ -119,14 +136,20 @@ def _catalog_source(catalog_file: Path | None, settings: Settings) -> CatalogSou
 async def _run(args: argparse.Namespace, settings: Settings) -> int:
     engine, connector = await create_engine(settings)
     try:
-        result = await run_ingestion(
-            engine,
-            _blob_store(settings),
-            _embedder(settings),
-            _catalog_source(args.catalog_file, settings),
-            policy="dry_run" if args.policy == "dry-run" else "publish",
-            code_version=settings.app_version,
-        )
+        async with new_client() as client:
+            sources: list[Source] = []
+            if catalog.SOURCE_ID in args.sources:
+                sources.append(ProductCatalogSource(_fetch_catalog(args.catalog_file, settings)))
+            if grc.SOURCE_ID in args.sources:
+                sources.append(GrcWebsiteSource(PageFetcher(client, {GRC_HOST})))
+            result = await run_ingestion(
+                engine,
+                _blob_store(settings),
+                _embedder(settings),
+                sources,
+                policy="dry_run" if args.policy == "dry-run" else "publish",
+                code_version=settings.app_version,
+            )
     finally:
         await engine.dispose()
         if connector is not None:
@@ -139,8 +162,8 @@ def _print_run(result: RunResult) -> None:
     line = result.status
     if result.index_version_id is not None:
         line += f": version {result.index_version_id}"
-    if reason := result.source.get("no_change"):
-        line += f" ({reason})"
+    if result.reason:
+        line += f" ({result.reason})"
     print(line)
     counts = result.counts
     if "records" in counts:
@@ -149,10 +172,12 @@ def _print_run(result: RunResult) -> None:
             f"{counts['chunks']} chunks ({counts['chunks_new']} new), "
             f"{counts['embeddings_new']} embeddings ({counts['embedding_tokens']} tokens)"
         )
-    report = result.source.get("report", {})
-    for label in ("blocking", "warnings"):
-        for message in report.get(label, []):
-            print(f"  {label}: {message}")
+    for source, details in result.sources.items():
+        report = details["report"]
+        print(f"  {source}: {report['counts']}")
+        for label in ("blocking", "warnings"):
+            for message in report[label]:
+                print(f"    {label}: {message}")
     for error in result.errors:
         print(f"  error: {error}")
 

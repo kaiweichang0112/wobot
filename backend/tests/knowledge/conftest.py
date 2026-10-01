@@ -2,11 +2,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tests.database import INGEST_USER
 from wobot.config import Settings
 from wobot.db import create_engine
+from wobot.knowledge.models import ActiveKnowledge
 
 
 class SavepointDatabase:
@@ -32,6 +34,9 @@ async def ingest_db() -> AsyncIterator[SavepointDatabase]:
     try:
         async with engine.connect() as connection:
             transaction = await connection.begin()
+            # Start from an empty corpus: a version the developer published locally would
+            # otherwise be carried over into every version a test builds.
+            await connection.execute(update(ActiveKnowledge).values(index_version_id=None))
             try:
                 yield SavepointDatabase(connection)
             finally:

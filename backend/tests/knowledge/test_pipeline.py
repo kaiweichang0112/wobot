@@ -2,12 +2,16 @@ import pytest
 from sqlalchemy import func, select
 
 from tests.knowledge.fakes import FakeEmbedder, fake_vector
+from tests.knowledge.grc_site import grc_fetcher
 from tests.knowledge.workbooks import catalog_row, catalog_workbook, product_row
-from wobot.knowledge import pipeline, repository
+from wobot.knowledge import repository
 from wobot.knowledge.blobs import LocalBlobStore
+from wobot.knowledge.catalog import SOURCE_ID, CatalogFile, ProductCatalogSource
+from wobot.knowledge.chunking import products as product_chunking
 from wobot.knowledge.chunking.products import product_chunk
-from wobot.knowledge.models import IndexVersionRecord, IngestionRun
-from wobot.knowledge.pipeline import SOURCE_ID, CatalogFile, run_ingestion
+from wobot.knowledge.grc import GrcWebsiteSource
+from wobot.knowledge.models import IndexVersion, IndexVersionRecord, IngestionRun
+from wobot.knowledge.pipeline import run_ingestion
 from wobot.knowledge.records.products import normalize_product
 from wobot.knowledge.search import search_chunks
 from wobot.knowledge.sources.drive import DriveError
@@ -34,7 +38,7 @@ def ingest(ingest_db, tmp_path):
 
         embedder = FakeEmbedder()
         result = await run_ingestion(
-            ingest_db, LocalBlobStore(tmp_path), embedder, fetch, **options
+            ingest_db, LocalBlobStore(tmp_path), embedder, [ProductCatalogSource(fetch)], **options
         )
         return result, embedder
 
@@ -43,7 +47,7 @@ def ingest(ingest_db, tmp_path):
 
 async def active(ingest_db):
     async with ingest_db.begin() as conn:
-        return await repository.read_active(conn, SOURCE_ID)
+        return await repository.read_active(conn)
 
 
 async def members(ingest_db, version_id):
@@ -76,7 +80,7 @@ async def test_the_same_file_again_changes_nothing(ingest, ingest_db):
     again, embedder = await ingest(catalog_file)
 
     assert again.status == "no_change"
-    assert again.source["no_change"] == "same file"
+    assert again.reason == "same file"
     assert again.index_version_id is None
     assert embedder.calls == []
     assert (await active(ingest_db)).index_version_id == first.index_version_id
@@ -87,7 +91,7 @@ async def test_reordered_rows_are_the_same_content(ingest, ingest_db):
     reordered, embedder = await ingest(catalog(PRODUCTS[::-1]))
 
     assert reordered.status == "no_change"
-    assert reordered.source["no_change"] == "same content"
+    assert reordered.reason == "same content"
     assert embedder.calls == []
     assert (await active(ingest_db)).index_version_id == first.index_version_id
 
@@ -123,7 +127,7 @@ async def test_a_blocking_row_stops_the_run_before_writing(ingest, ingest_db):
 
     assert result.status == "failed"
     assert result.index_version_id is None
-    assert result.source["report"]["blocking"] == ["row 5: product_name is empty"]
+    assert result.sources[SOURCE_ID]["report"]["blocking"] == ["row 5: product_name is empty"]
     assert embedder.calls == []
     assert (await active(ingest_db)).revision == before.revision
 
@@ -165,12 +169,13 @@ async def test_a_changed_column_fails_the_run_and_records_it(ingest, ingest_db):
 async def test_the_same_file_under_new_code_is_rebuilt(ingest, monkeypatch):
     catalog_file = catalog(PRODUCTS)
     first, _ = await ingest(catalog_file)
-    monkeypatch.setattr(pipeline, "STRATEGIES", {"product_row": 2})
+    monkeypatch.setattr(product_chunking, "STRATEGY_VERSION", 2)
     rebuilt, embedder = await ingest(catalog_file)
 
     assert rebuilt.status == "published"
     assert rebuilt.index_version_id != first.index_version_id
     assert rebuilt.counts["records_new"] == 0
+    assert rebuilt.counts["embeddings_new"] == 3  # a new strategy builds new chunks
 
 
 async def test_search_reads_only_the_active_version(ingest, ingest_db):
@@ -201,6 +206,85 @@ async def test_a_source_that_cannot_be_read_is_a_recorded_failure(ingest_db, tmp
 
     before = await failed_runs()
     with pytest.raises(DriveError):
-        await run_ingestion(ingest_db, LocalBlobStore(tmp_path), FakeEmbedder(), fetch)
+        await run_ingestion(
+            ingest_db, LocalBlobStore(tmp_path), FakeEmbedder(), [ProductCatalogSource(fetch)]
+        )
 
     assert await failed_runs() == before + 1
+
+
+def catalog_source(catalog_file):
+    async def fetch():
+        return catalog_file
+
+    return ProductCatalogSource(fetch)
+
+
+@pytest.fixture
+def ingest_sources(ingest_db, tmp_path):
+    async def _ingest(sources, **options):
+        embedder = FakeEmbedder()
+        result = await run_ingestion(
+            ingest_db, LocalBlobStore(tmp_path), embedder, sources, **options
+        )
+        return result, embedder
+
+    return _ingest
+
+
+async def test_a_run_of_one_source_carries_the_others_over(ingest_sources, ingest_db):
+    first, _ = await ingest_sources([catalog_source(catalog(PRODUCTS))])
+    second, embedder = await ingest_sources([GrcWebsiteSource(grc_fetcher([]))])
+
+    assert second.status == "published"
+    v1 = await members(ingest_db, first.index_version_id)
+    v2 = await members(ingest_db, second.index_version_id)
+    assert {key.split(":")[0] for key in v2} == {
+        "product",
+        "student",
+        "project",
+        "publication",
+        "profile",
+        "section",
+    }
+    assert all(v2[key] == v1[key] for key in v1)  # the catalog, revision for revision
+    assert not any("產品名稱" in text for call in embedder.calls for text in call)
+    async with ingest_db.begin() as conn:
+        strategies = await conn.scalar(
+            select(IndexVersion.strategies).where(
+                IndexVersion.index_version_id == second.index_version_id
+            )
+        )
+    assert set(strategies) == {
+        "product_row",
+        "student_block",
+        "project_block",
+        "publication_block",
+        "profile_section",
+    }
+
+
+async def test_a_source_left_out_of_a_run_stays_as_published(ingest_sources, ingest_db):
+    await ingest_sources([catalog_source(catalog(PRODUCTS)), GrcWebsiteSource(grc_fetcher([]))])
+    edited_rows = [*PRODUCTS[:2], product_row({**PRODUCTS[2], "主要功能": "量測血氧。"})]
+
+    edited, embedder = await ingest_sources([catalog_source(catalog(edited_rows))])
+
+    assert edited.status == "published"
+    keys = await members(ingest_db, edited.index_version_id)
+    assert any(key.startswith("student:") for key in keys)
+    assert [len(call) for call in embedder.calls] == [1]
+
+
+async def test_one_unreadable_source_stops_the_whole_run(ingest_sources, ingest_db):
+    before = await active(ingest_db)
+
+    result, embedder = await ingest_sources(
+        [catalog_source(catalog(PRODUCTS)), GrcWebsiteSource(grc_fetcher([], project_amount="NTD"))]
+    )
+
+    assert result.status == "failed"
+    assert result.sources["product_catalog"]["report"]["passed"]
+    assert not result.sources["grc_website"]["report"]["passed"]
+    assert embedder.calls == []
+    assert (await active(ingest_db)).revision == before.revision

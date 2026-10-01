@@ -1,12 +1,9 @@
 """Product catalog rows → normalized product drafts, ready to become records."""
 
 import re
-import unicodedata
-from collections import Counter
-from dataclasses import dataclass, replace
-from typing import Any
 
-from wobot.knowledge.hashing import content_hash
+from wobot.knowledge.records.drafts import RecordDraft, record_draft, separate_collisions
+from wobot.knowledge.records.text import clean_line, clean_text, key_text
 from wobot.knowledge.sources.xlsx import URL_HEADER, CatalogRow
 
 RECORD_TYPE = "product"
@@ -14,41 +11,6 @@ ROC_YEAR_OFFSET = 1911  # ROC year 1 is 1912 CE
 _CATEGORY = re.compile(r"^\((?P<code>[\d-]+)\)\s*(?P<label>.+)$", re.DOTALL)
 _YEAR_SEPARATORS = re.compile(r"[、,，/\s]+")
 _ROC_YEAR = re.compile(r"^\d{2,3}$")
-
-
-@dataclass(frozen=True)
-class ProductDraft:
-    logical_key: str
-    content_hash: str
-    # What the reader saw, for audit. The row number is left out: it is where the product
-    # sits in this snapshot, not what it is, and belongs to the version's membership.
-    raw: dict[str, Any]
-    # The normalized columns of knowledge.product_records.
-    fields: dict[str, Any]
-    row_number: int
-    warnings: tuple[str, ...] = ()
-
-
-def clean_text(value: str | None) -> str | None:
-    """Text to store and display: no-break spaces become spaces and edges are trimmed.
-
-    Full-width punctuation and line breaks stay, as part of the original text.
-    """
-    if value is None:
-        return None
-    cleaned = value.replace("\xa0", " ").strip()
-    return cleaned or None
-
-
-def clean_line(value: str | None) -> str | None:
-    """A one-line value such as a name: every whitespace run, line breaks too, is one space."""
-    text = clean_text(value)
-    return " ".join(text.split()) if text else None
-
-
-def key_text(value: str | None) -> str:
-    """Text for identity only, never displayed: NFKC, case-folded, whitespace collapsed."""
-    return " ".join(unicodedata.normalize("NFKC", value or "").casefold().split())
 
 
 def parse_category(value: str | None) -> tuple[str | None, str | None]:
@@ -84,7 +46,7 @@ def parse_product_url(row: CatalogRow) -> tuple[str | None, str | None]:
     return None, f"no http(s) product URL in {candidate!r}"
 
 
-def normalize_product(row: CatalogRow) -> ProductDraft:
+def normalize_product(row: CatalogRow) -> RecordDraft:
     cells = row.cells
     warnings = []
     l1_code, l1_label = parse_category(cells["產品第一層分類"])
@@ -113,31 +75,16 @@ def normalize_product(row: CatalogRow) -> ProductDraft:
         "adoption_years": years,
         "adoption_years_raw": cells["本計畫導入年分"],
     }
-    raw = {"cells": dict(cells), "product_url_target": row.product_url_target}
-    return ProductDraft(
-        logical_key=f"product:{key_text(fields['company_name'])}:{key_text(fields['product_name'])}",
-        # Normalized fields are hashed too: fixing a normalization bug must yield a new
-        # revision even though the source text is unchanged.
-        content_hash=content_hash({"record_type": RECORD_TYPE, "raw": raw, "fields": fields}),
-        raw=raw,
+    return record_draft(
+        RECORD_TYPE,
+        f"product:{key_text(fields['company_name'])}:{key_text(fields['product_name'])}",
+        raw={"cells": dict(cells), "product_url_target": row.product_url_target},
         fields=fields,
-        row_number=row.row_number,
-        warnings=tuple(warnings),
+        locator={"row": row.row_number},
+        warnings=warnings,
     )
 
 
-def normalize_catalog(rows: list[CatalogRow]) -> list[ProductDraft]:
+def normalize_catalog(rows: list[CatalogRow]) -> list[RecordDraft]:
     """Drafts for every row; colliding keys get a suffix so no row is silently merged."""
-    drafts = []
-    seen: Counter[str] = Counter()
-    for row in rows:
-        draft = normalize_product(row)
-        seen[draft.logical_key] += 1
-        if (count := seen[draft.logical_key]) > 1:
-            draft = replace(
-                draft,
-                logical_key=f"{draft.logical_key}#{count}",
-                warnings=(*draft.warnings, f"logical key collision #{count}"),
-            )
-        drafts.append(draft)
-    return drafts
+    return separate_collisions([normalize_product(row) for row in rows])
