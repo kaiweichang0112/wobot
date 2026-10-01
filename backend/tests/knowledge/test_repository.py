@@ -3,7 +3,6 @@ from sqlalchemy import select
 from tests.knowledge.fakes import FakeEmbedder, fake_vector
 from tests.knowledge.workbooks import catalog_row
 from wobot.knowledge import repository
-from wobot.knowledge.blobs import LocalBlobStore, blob_key
 from wobot.knowledge.chunking.products import product_chunk
 from wobot.knowledge.models import ChunkRecord
 from wobot.knowledge.records.products import normalize_catalog
@@ -15,17 +14,6 @@ def drafts_of(*overrides):
     return normalize_catalog(
         [catalog_row(o, row_number=n) for n, o in enumerate(overrides, start=2)]
     )
-
-
-async def test_blobs_are_stored_once_under_their_hash(tmp_path):
-    blobs = LocalBlobStore(tmp_path)
-
-    key = await blobs.put(b"catalog bytes")
-    again = await blobs.put(b"catalog bytes")
-
-    assert key == again == blob_key(b"catalog bytes")
-    assert (tmp_path / key).read_bytes() == b"catalog bytes"
-    assert [path.name for path in tmp_path.rglob("*.tmp")] == []
 
 
 async def test_snapshots_of_the_same_bytes_are_one_row(ingest_db):

@@ -70,3 +70,9 @@ jobs:
           version=$(curl --fail --silent --show-error "$url/health" | jq -r .version)
           echo "$url/health reports $version"
           test "$version" = "$GITHUB_SHA"
+
+      # The image only: ingestion runs on its schedule or by hand, never on a deploy.
+      - name: Update the ingestion job
+        run: |
+          gcloud run jobs update wobot-ingest --image "$IMAGE" --region "$REGION" \
+            --update-env-vars "APP_VERSION=$GITHUB_SHA"

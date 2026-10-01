@@ -19,15 +19,21 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY . .
 RUN uv sync --locked --no-dev --no-editable
 
+# tiktoken downloads its encoding on first use. Fetch it into the image, so a job needs
+# neither that host nor the download at run time.
+ENV TIKTOKEN_CACHE_DIR=/app/.tiktoken
+RUN .venv/bin/python -c "from wobot.knowledge.tokens import count_tokens; count_tokens('warm')"
+
 # Runtime stage: the application and its virtualenv, without uv or its download cache.
 FROM ${PYTHON_IMAGE}
 
 RUN useradd --uid 10001 wobot
 WORKDIR /app
 COPY --from=builder /app /app
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    TIKTOKEN_CACHE_DIR=/app/.tiktoken
 USER wobot
 
 # Cloud Run sets $PORT; `exec` lets uvicorn receive SIGTERM for a graceful shutdown.
-# The migration job reuses this image with the command `alembic upgrade head`.
+# The jobs reuse this image: `alembic upgrade head` migrates, `wobot-ingest run` ingests.
 CMD ["sh", "-c", "exec uvicorn wobot.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

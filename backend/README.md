@@ -58,8 +58,10 @@ them at another local instance.
 ## Knowledge ingestion
 
 `wobot-ingest` reads the product catalog, stores it as records, chunks and embeddings,
-and publishes a new version only when the content changed and every check passed. Run
-it as the ingest role, with `OPENAI_API_KEY` in `.env`:
+and publishes a new version only when the content changed and every check passed. In
+the cloud it runs as the `wobot-ingest` Cloud Run job, which downloads the catalog from
+Google Drive and keeps raw files in a bucket (`infra/README.md`, section 9). Locally,
+run it as the ingest role on a file, with `OPENAI_API_KEY` in `.env`:
 
 ```bash
 DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file ../references/smart-care-products.xlsx
@@ -76,7 +78,11 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
   nothing. `--policy dry-run` builds and validates a version without publishing it.
 - Blocking problems (a missing name, an implausible year) stop the run with the row
   number; warnings are printed and kept in the version's validation report.
-- The raw file is kept under `KNOWLEDGE_LOCAL_DIR`, named by its SHA-256.
+- The raw file is kept under `KNOWLEDGE_LOCAL_DIR`, or in `KNOWLEDGE_BUCKET` when that
+  is set, named by its SHA-256.
+- A source that cannot be read (Drive, a changed column) fails the run, and the failure
+  is recorded in `ops.ingestion_runs` like any other.
+- Each stage logs one line; on Cloud Run the lines are JSON with `run_id` and `stage`.
 - Exit code: 0 for `published`, `no_change` and `validated`; 1 for `failed`.
 
 ## Migrations
@@ -105,8 +111,10 @@ docker build -t wobot-api:local .
 
 - A uv builder stage installs the locked dependencies; the runtime stage runs as a
   non-root user and contains neither uv nor its download cache.
-- One image serves both roles: its default command starts the API, and the migration
-  job runs `alembic upgrade head`.
+- One image serves every role: its default command starts the API, the migration job
+  runs `alembic upgrade head`, and the ingestion job runs `wobot-ingest run`.
+- The build stores tiktoken's encoding in the image, so counting tokens needs no
+  network at run time.
 - `.dockerignore` is an allowlist. Add any new file the image needs to it.
 - Cloud Run needs `linux/amd64` images; section 9 of `infra/README.md` cross-builds and
   pushes one.
@@ -129,4 +137,6 @@ docker build -t wobot-api:local .
 | `OPENAI_API_KEY` | none | Ingestion and search only; from Secret Manager in the cloud |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
+| `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |
+| `PRODUCT_CATALOG_FILE_ID` | none | Drive file that `wobot-ingest run` downloads when no `--catalog-file` is given; set on the job only |

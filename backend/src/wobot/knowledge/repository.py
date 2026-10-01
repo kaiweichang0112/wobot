@@ -43,6 +43,7 @@ async def put_snapshot(
     sha256: str,
     storage_key: str,
     byte_size: int,
+    details: Mapping[str, Any] | None = None,
 ) -> uuid.UUID:
     """The snapshot row for these bytes from this place, created on first sight."""
     await conn.execute(
@@ -56,6 +57,7 @@ async def put_snapshot(
             content_sha256=sha256,
             storage_key=storage_key,
             byte_size=byte_size,
+            details=dict(details or {}),
         )
         .on_conflict_do_nothing(constraint="source_snapshots_content")
     )
