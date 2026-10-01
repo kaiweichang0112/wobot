@@ -57,6 +57,10 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **Ingestion reads only listed pages** (`knowledge/profiles.py`), politely, and never
   follows links. Parsers decide how many records a page holds; what a page cannot
   supply is reported, never guessed.
+- **A model may label, never count or invent.** Fields a model reads are kept only
+  as verbatim spans of their source (`knowledge/extraction.py`, enforced by CHECK
+  constraints). Answers are cached by prompt version: changing the instructions,
+  schema or request settings means bumping `PROMPT_VERSION`, which a test pins.
 - **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
   pgvector asyncpg codec: it rejects the text the type sends.
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the

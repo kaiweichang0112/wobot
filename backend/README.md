@@ -73,7 +73,7 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 | Source | Reads | Records |
 | --- | --- | --- |
 | `product_catalog` | The catalog workbook: a local file, or Drive in the cloud | One product per row |
-| `grc_website` | Five pages of the GRC site, listed in `knowledge/profiles.py` | Students, projects, publications, the profile page |
+| `grc_website` | Six pages of the GRC site, listed in `knowledge/profiles.py` | Students, projects, publications, speeches, the profile page |
 
 - One run: read the active version → fetch and parse every source → check → store
   records and chunks → embed the chunks that have no vector yet → build a version
@@ -86,6 +86,12 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
   run reports sitemap pages that no profile covers.
 - Records, chunks and embeddings are content-addressed and never updated. A version
   reuses every unchanged one, so an edit to one row embeds one chunk.
+- Code decides how many records a page holds; a model only labels parts of them.
+  Each speech's title, event and location come from `EXTRACTION_MODEL` through
+  structured output, and a value is kept only when the entry contains it verbatim,
+  which the database checks too. Answers are kept in `knowledge.llm_extractions` by
+  input, model and prompt version, so a talk is paid for once. Chunks are built from
+  the entry text, never from what the model read.
 - A run whose content matches the active version ends as `no_change` and embeds
   nothing. `--policy dry-run` builds and validates a version without publishing it.
 - Blocking problems stop the run: a missing name or an implausible year in the
@@ -151,6 +157,7 @@ docker build -t wobot-api:local .
 | `OPENAI_API_KEY` | none | Ingestion and search only; from Secret Manager in the cloud |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
+| `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |
 | `PRODUCT_CATALOG_FILE_ID` | none | Drive file that `wobot-ingest run` downloads when no `--catalog-file` is given; set on the job only |
