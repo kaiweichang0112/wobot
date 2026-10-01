@@ -17,7 +17,7 @@ uv run pytest
 uv run alembic revision --rev-id 0002 -m "short description"
 DB_USER=wobot_migrator_user uv run alembic upgrade head
 DB_USER=wobot_migrator_user uv run alembic check
-DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file <path.xlsx>
+DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file <path.xlsx> [--sources grc_website]
 DB_USER=wobot_ingest_user uv run wobot-ingest search "<query>"
 ```
 
@@ -54,6 +54,9 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   update or delete, except moving `active_knowledge` and version status. Write
   with `ON CONFLICT DO NOTHING` and read IDs back; never `DO UPDATE`. Tests that
   write run inside a rolled-back transaction (`tests/knowledge/conftest.py`).
+- **Ingestion reads only listed pages** (`knowledge/profiles.py`), politely, and never
+  follows links. Parsers decide how many records a page holds; what a page cannot
+  supply is reported, never guessed.
 - **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
   pgvector asyncpg codec: it rejects the text the type sends.
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the
