@@ -3,9 +3,18 @@
 import hashlib
 import math
 import random
-from collections.abc import Sequence
+import re
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 from wobot.knowledge.embeddings import MAX_BATCH_SIZE, EmbeddingBatch
+from wobot.knowledge.extraction import (
+    LECTURE_FIELDS,
+    PROMPT_VERSION,
+    Answer,
+    CachedReader,
+    Question,
+)
 from wobot.knowledge.models import EMBEDDING_DIMENSIONS
 
 
@@ -32,3 +41,46 @@ class FakeEmbedder:
             vectors=[fake_vector(text) for text in texts],
             input_tokens=sum(len(text) for text in texts),
         )
+
+
+_QUOTED = re.compile(r"^[\"“]?(?P<title>.+?)[,，]?[\"”]")
+
+
+def quoted_title(entry: str) -> dict[str, Any]:
+    """A stand-in model: the quoted title, no event, no location."""
+    match = _QUOTED.match(entry)
+    return {"title": match["title"] if match else None, "event": None, "location": None}
+
+
+class FakeLectureReader:
+    """Answers from a rule instead of a model, and counts what it was asked."""
+
+    question = Question(LECTURE_FIELDS, "fake-model", PROMPT_VERSION)
+
+    def __init__(self, answer: Callable[[str], Answer | dict[str, Any]] = quoted_title) -> None:
+        self._answer = answer
+        self.calls: list[str] = []
+
+    async def read(self, entry: str) -> Answer:
+        self.calls.append(entry)
+        answer = self._answer(entry)
+        if isinstance(answer, Answer):
+            return answer
+        return Answer(answer, None, "fake-model-2026-01-01", len(entry), 20)
+
+
+class MemoryAnswerCache:
+    def __init__(self) -> None:
+        self.answers: dict[tuple[Question, str], Answer] = {}
+
+    async def get(self, question: Question, input_hashes: Sequence[str]) -> dict[str, Answer]:
+        return {h: self.answers[question, h] for h in input_hashes if (question, h) in self.answers}
+
+    async def put(
+        self, question: Question, input_hash: str, input: Mapping[str, Any], answer: Answer
+    ) -> None:
+        self.answers.setdefault((question, input_hash), answer)
+
+
+def fake_lectures(reader: FakeLectureReader | None = None) -> CachedReader:
+    return CachedReader(reader or FakeLectureReader(), MemoryAnswerCache())

@@ -15,7 +15,9 @@ GRC_SITEMAP = f"https://{GRC_HOST}/sitemap.xml"
 @dataclass(frozen=True)
 class PageProfile:
     url: str
-    parser: Literal["profile", "publications", "projects", "students_master", "students_phd"]
+    parser: Literal[
+        "profile", "publications", "projects", "students_master", "students_phd", "speeches"
+    ]
 
 
 GRC_PAGES = (
@@ -24,9 +26,10 @@ GRC_PAGES = (
     PageProfile(f"https://{GRC_HOST}/projects", "projects"),
     PageProfile(f"https://{GRC_HOST}/students-masters", "students_master"),
     PageProfile(f"https://{GRC_HOST}/students-masters/students-phd", "students_phd"),
+    PageProfile(f"https://{GRC_HOST}/speeches", "speeches"),
 )
-# In scope, read by a later step of phase A: the home page and the speeches.
-GRC_LATER = (f"https://{GRC_HOST}", f"https://{GRC_HOST}/speeches")
+# In scope, read by a later step of phase A: the home page, with the other sites' prose.
+GRC_LATER = (f"https://{GRC_HOST}",)
 # Out of scope by decision: courses and activities, the textbook chapters, the archive.
 GRC_EXCLUDED = (
     re.compile(r"/courses-activities(/|$)"),

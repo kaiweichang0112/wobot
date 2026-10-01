@@ -2,8 +2,9 @@
 
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import exists, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
@@ -20,7 +21,9 @@ from wobot.knowledge.models import (
     IndexVersionChunk,
     IndexVersionRecord,
     IngestionRun,
+    LectureRecord,
     ListItemRecord,
+    LlmExtraction,
     ProductRecord,
     ProjectRecord,
     Record,
@@ -30,6 +33,13 @@ from wobot.knowledge.models import (
 )
 from wobot.knowledge.records.drafts import RecordDraft
 
+
+class Database(Protocol):
+    """Where each step's transaction comes from: an AsyncEngine, or a test's savepoints."""
+
+    def begin(self) -> AbstractAsyncContextManager[AsyncConnection]: ...
+
+
 # A record revision by its natural identity: (logical_key, content_hash).
 RecordRevision = tuple[str, str]
 # Each record type's own table; a section has none, its text lives in records.raw.
@@ -38,6 +48,7 @@ TYPED_TABLES = {
     "student": StudentRecord,
     "project": ProjectRecord,
     "list_item": ListItemRecord,
+    "lecture": LectureRecord,
 }
 
 
@@ -208,6 +219,31 @@ async def put_embeddings(
             for chunk_id, vector in vectors.items()
         ],
     )
+
+
+async def cached_answers(
+    conn: AsyncConnection,
+    *,
+    purpose: str,
+    model: str,
+    prompt_version: int,
+    input_hashes: Iterable[str],
+) -> list[Any]:
+    """The answers already paid for: these inputs, asked of this model with this prompt."""
+    rows = await conn.execute(
+        select(LlmExtraction.__table__).where(
+            LlmExtraction.purpose == purpose,
+            LlmExtraction.model == model,
+            LlmExtraction.prompt_version == prompt_version,
+            LlmExtraction.input_hash.in_(list(input_hashes)),
+        )
+    )
+    return list(rows)
+
+
+async def put_answer(conn: AsyncConnection, answer: Mapping[str, Any]) -> None:
+    """Keep a model's answer; an answer already kept for the same question stays as it is."""
+    await conn.execute(insert(LlmExtraction).values(**answer).on_conflict_do_nothing())
 
 
 # --- Runs, versions and the active pointer ----------------------------------------------

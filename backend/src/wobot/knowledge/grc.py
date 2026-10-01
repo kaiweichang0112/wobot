@@ -6,9 +6,11 @@ from urllib.parse import unquote, urlsplit
 
 from wobot.knowledge.chunking import grc as grc_chunking
 from wobot.knowledge.chunking.drafts import ChunkDraft
+from wobot.knowledge.extraction import CachedReader, ReadStats
 from wobot.knowledge.profiles import GRC_EXCLUDED, GRC_LATER, GRC_PAGES, GRC_SITEMAP
 from wobot.knowledge.records import grc as grc_records
 from wobot.knowledge.records.drafts import RecordDraft
+from wobot.knowledge.records.lectures import lecture_records, split_lectures
 from wobot.knowledge.source import Extraction, Snapshot
 from wobot.knowledge.sources.http import FetchError, PageFetcher
 from wobot.knowledge.sources.wix import Block, page_blocks
@@ -42,8 +44,10 @@ PARSERS: dict[str, tuple[Parser, Chunker]] = {
 class GrcWebsiteSource:
     source_id = SOURCE_ID
 
-    def __init__(self, fetcher: PageFetcher) -> None:
+    def __init__(self, fetcher: PageFetcher, lectures: CachedReader) -> None:
         self._fetcher = fetcher
+        # Reads the parts of each speech: answers kept from earlier runs, or a model.
+        self._lectures = lectures
 
     async def extract(self) -> Extraction:
         snapshots, blocks = [], {}
@@ -52,22 +56,40 @@ class GrcWebsiteSource:
             snapshots.append(Snapshot(profile.url, page.content, {"final_url": page.url}))
             blocks[profile.url] = page_blocks(page.content.decode("utf-8", errors="replace"))
         chrome = site_chrome(list(blocks.values()))
-        pages, chunks, drafts_by_page, problems_by_page = [], [], {}, {}
+        pages, chunks, drafts_by_page, problems_by_page, notes = [], [], {}, {}, []
+        model_reads = ReadStats()
         for profile, snapshot in zip(GRC_PAGES, snapshots, strict=True):
-            parse, chunk = PARSERS[profile.parser]
-            parsed = parse(content_blocks(blocks[profile.url], chrome))
+            own_blocks = content_blocks(blocks[profile.url], chrome)
+            if profile.parser == "speeches":
+                parsed, model_reads = await self._read_speeches(own_blocks)
+                chunk: Chunker = grc_chunking.lecture_chunks
+            else:
+                parse, chunk = PARSERS[profile.parser]
+                parsed = parse(own_blocks)
             pages.append((snapshot, parsed.drafts))
             chunks += chunk(parsed.drafts)
             drafts_by_page[profile.url] = parsed.drafts
             problems_by_page[profile.url] = parsed.problems
-        notes = await self._unlisted_pages()
+            notes += parsed.notes
+        notes += await self._unlisted_pages()
+        report = check_pages(drafts_by_page, problems_by_page, chunks, notes=notes)
+        report.counts |= model_reads.counts("model_reads")
         return Extraction(
-            source_id=SOURCE_ID,
-            kind="website",
-            pages=pages,
-            chunks=chunks,
-            report=check_pages(drafts_by_page, problems_by_page, chunks, notes=notes),
+            source_id=SOURCE_ID, kind="website", pages=pages, chunks=chunks, report=report
         )
+
+    async def _read_speeches(self, blocks: Sequence[Block]) -> tuple[grc_records.Parsed, ReadStats]:
+        """Code splits the talks; a model reads each one's parts, unless already read."""
+        lectures = split_lectures(blocks)
+        if lectures.problems:
+            # The page changed shape and the run cannot publish: paying a model would buy
+            # nothing.
+            return grc_records.Parsed(problems=lectures.problems), ReadStats()
+        answers, stats = await self._lectures.read_all([entry.text for entry in lectures.entries])
+        parsed = lecture_records(
+            lectures, answers, speaker=grc_chunking.PERSON, question=self._lectures.question
+        )
+        return parsed, stats
 
     async def _unlisted_pages(self) -> list[str]:
         """Pages the sitemap lists that no profile covers: new pages a person should see."""

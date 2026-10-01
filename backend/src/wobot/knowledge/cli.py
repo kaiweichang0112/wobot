@@ -16,6 +16,7 @@ from wobot.knowledge import catalog, grc, repository
 from wobot.knowledge.blobs import BlobStore, GcsBlobStore, LocalBlobStore
 from wobot.knowledge.catalog import CatalogFile, FetchCatalog, ProductCatalogSource
 from wobot.knowledge.embeddings import OpenAIEmbedder
+from wobot.knowledge.extraction import CachedReader, DbAnswerCache, OpenAILectureReader
 from wobot.knowledge.grc import GrcWebsiteSource
 from wobot.knowledge.pipeline import RunResult, run_ingestion
 from wobot.knowledge.profiles import GRC_HOST
@@ -96,14 +97,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
 
-def _embedder(settings: Settings) -> OpenAIEmbedder:
+def _openai(settings: Settings) -> AsyncOpenAI:
     assert settings.openai_api_key is not None
-    client = AsyncOpenAI(
+    return AsyncOpenAI(
         api_key=settings.openai_api_key.get_secret_value(),
         timeout=settings.openai_timeout_seconds,
         max_retries=OPENAI_MAX_RETRIES,
     )
-    return OpenAIEmbedder(client, settings.embedding_model)
 
 
 def _blob_store(settings: Settings) -> BlobStore:
@@ -135,17 +135,22 @@ def _fetch_catalog(catalog_file: Path | None, settings: Settings) -> FetchCatalo
 
 async def _run(args: argparse.Namespace, settings: Settings) -> int:
     engine, connector = await create_engine(settings)
+    openai_client = _openai(settings)
     try:
         async with new_client() as client:
             sources: list[Source] = []
             if catalog.SOURCE_ID in args.sources:
                 sources.append(ProductCatalogSource(_fetch_catalog(args.catalog_file, settings)))
             if grc.SOURCE_ID in args.sources:
-                sources.append(GrcWebsiteSource(PageFetcher(client, {GRC_HOST})))
+                lectures = CachedReader(
+                    OpenAILectureReader(openai_client, settings.extraction_model),
+                    DbAnswerCache(engine),
+                )
+                sources.append(GrcWebsiteSource(PageFetcher(client, {GRC_HOST}), lectures))
             result = await run_ingestion(
                 engine,
                 _blob_store(settings),
-                _embedder(settings),
+                OpenAIEmbedder(openai_client, settings.embedding_model),
                 sources,
                 policy="dry_run" if args.policy == "dry-run" else "publish",
                 code_version=settings.app_version,
@@ -183,7 +188,7 @@ def _print_run(result: RunResult) -> None:
 
 
 async def _search(args: argparse.Namespace, settings: Settings) -> int:
-    embedder = _embedder(settings)
+    embedder = OpenAIEmbedder(_openai(settings), settings.embedding_model)
     query = await embedder.embed([args.query])
     engine, connector = await create_engine(settings)
     try:

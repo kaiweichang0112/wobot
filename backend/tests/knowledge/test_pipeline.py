@@ -1,14 +1,15 @@
 import pytest
 from sqlalchemy import func, select
 
-from tests.knowledge.fakes import FakeEmbedder, fake_vector
-from tests.knowledge.grc_site import grc_fetcher
+from tests.knowledge.fakes import FakeEmbedder, FakeLectureReader, fake_vector
+from tests.knowledge.grc_site import grc_fetcher, grc_source
 from tests.knowledge.workbooks import catalog_row, catalog_workbook, product_row
 from wobot.knowledge import repository
 from wobot.knowledge.blobs import LocalBlobStore
 from wobot.knowledge.catalog import SOURCE_ID, CatalogFile, ProductCatalogSource
 from wobot.knowledge.chunking import products as product_chunking
 from wobot.knowledge.chunking.products import product_chunk
+from wobot.knowledge.extraction import CachedReader, DbAnswerCache
 from wobot.knowledge.grc import GrcWebsiteSource
 from wobot.knowledge.models import IndexVersion, IndexVersionRecord, IngestionRun
 from wobot.knowledge.pipeline import run_ingestion
@@ -234,7 +235,7 @@ def ingest_sources(ingest_db, tmp_path):
 
 async def test_a_run_of_one_source_carries_the_others_over(ingest_sources, ingest_db):
     first, _ = await ingest_sources([catalog_source(catalog(PRODUCTS))])
-    second, embedder = await ingest_sources([GrcWebsiteSource(grc_fetcher([]))])
+    second, embedder = await ingest_sources([grc_source([])])
 
     assert second.status == "published"
     v1 = await members(ingest_db, first.index_version_id)
@@ -246,6 +247,7 @@ async def test_a_run_of_one_source_carries_the_others_over(ingest_sources, inges
         "publication",
         "profile",
         "section",
+        "lecture",
     }
     assert all(v2[key] == v1[key] for key in v1)  # the catalog, revision for revision
     assert not any("產品名稱" in text for call in embedder.calls for text in call)
@@ -261,11 +263,12 @@ async def test_a_run_of_one_source_carries_the_others_over(ingest_sources, inges
         "project_block",
         "publication_block",
         "profile_section",
+        "lecture_block",
     }
 
 
 async def test_a_source_left_out_of_a_run_stays_as_published(ingest_sources, ingest_db):
-    await ingest_sources([catalog_source(catalog(PRODUCTS)), GrcWebsiteSource(grc_fetcher([]))])
+    await ingest_sources([catalog_source(catalog(PRODUCTS)), grc_source([])])
     edited_rows = [*PRODUCTS[:2], product_row({**PRODUCTS[2], "主要功能": "量測血氧。"})]
 
     edited, embedder = await ingest_sources([catalog_source(catalog(edited_rows))])
@@ -280,7 +283,7 @@ async def test_one_unreadable_source_stops_the_whole_run(ingest_sources, ingest_
     before = await active(ingest_db)
 
     result, embedder = await ingest_sources(
-        [catalog_source(catalog(PRODUCTS)), GrcWebsiteSource(grc_fetcher([], project_amount="NTD"))]
+        [catalog_source(catalog(PRODUCTS)), grc_source([], project_amount="NTD")]
     )
 
     assert result.status == "failed"
@@ -288,3 +291,21 @@ async def test_one_unreadable_source_stops_the_whole_run(ingest_sources, ingest_
     assert not result.sources["grc_website"]["report"]["passed"]
     assert embedder.calls == []
     assert (await active(ingest_db)).revision == before.revision
+
+
+async def test_a_model_reads_each_speech_once_across_runs(ingest_sources, ingest_db):
+    def source(reader):
+        lectures = CachedReader(reader, DbAnswerCache(ingest_db))
+        return GrcWebsiteSource(grc_fetcher([]), lectures)
+
+    first_reader, again_reader = FakeLectureReader(), FakeLectureReader()
+    first, _ = await ingest_sources([source(first_reader)])
+    again, _ = await ingest_sources([source(again_reader)])
+
+    assert first.status == "published"
+    assert len(first_reader.calls) == 2
+    # The kept answers give the same fields, so the same records: nothing changed.
+    assert again.status == "no_change"
+    assert again_reader.calls == []
+    counts = again.sources["grc_website"]["report"]["counts"]
+    assert (counts["model_reads_cached"], counts["model_reads_calls"]) == (2, 0)

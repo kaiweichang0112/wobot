@@ -39,5 +39,9 @@ class Source(Protocol):
     source_id: str
 
     async def extract(self) -> Extraction:
-        """Fetch, read, chunk and check everything this source holds; write nothing."""
+        """Fetch, read, chunk and check everything this source holds.
+
+        Writes nothing but the model answers it paid for, which belong to no version
+        and spare the next run the same calls.
+        """
         ...

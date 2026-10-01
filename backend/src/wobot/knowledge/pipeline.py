@@ -9,28 +9,20 @@ run did not read is carried over from the active version unchanged.
 import logging
 import uuid
 from collections.abc import Sequence
-from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from itertools import batched
-from typing import Any, Literal, Protocol
-
-from sqlalchemy.ext.asyncio import AsyncConnection
+from typing import Any, Literal
 
 from wobot.knowledge import repository
 from wobot.knowledge.blobs import BlobStore
 from wobot.knowledge.embeddings import MAX_BATCH_SIZE, Embedder
+from wobot.knowledge.repository import Database
 from wobot.knowledge.source import Extraction, Source
 from wobot.knowledge.validation import ValidationReport, check_version
 
 Policy = Literal["publish", "dry_run"]
 
 logger = logging.getLogger(__name__)
-
-
-class Database(Protocol):
-    """Where each step's transaction comes from: an AsyncEngine, or a test's savepoints."""
-
-    def begin(self) -> AbstractAsyncContextManager[AsyncConnection]: ...
 
 
 @dataclass
@@ -130,6 +122,7 @@ async def _ingest(
             f"{extraction.source_id}: {len(extraction.records)} records, "
             f"{len(report.blocking)} blocking, {len(report.warnings)} warnings",
             source=extraction.source_id,
+            counts=report.counts,
             blocking=report.blocking,
             warnings=report.warnings,
         )
