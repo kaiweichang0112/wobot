@@ -9,7 +9,6 @@ from wobot.knowledge.chunking.drafts import ChunkDraft
 from wobot.knowledge.extraction import CachedReader, ReadStats
 from wobot.knowledge.profiles import GRC_EXCLUDED, GRC_LATER, GRC_PAGES, GRC_SITEMAP
 from wobot.knowledge.records import grc as grc_records
-from wobot.knowledge.records.drafts import RecordDraft
 from wobot.knowledge.records.lectures import lecture_records, split_lectures
 from wobot.knowledge.source import Extraction, Snapshot
 from wobot.knowledge.sources.http import FetchError, PageFetcher
@@ -20,7 +19,7 @@ SOURCE_ID = "grc_website"
 _LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 
 Parser = Callable[[Sequence[Block]], grc_records.Parsed]
-Chunker = Callable[[Sequence[RecordDraft]], list[ChunkDraft]]
+Chunker = Callable[..., list[ChunkDraft]]  # (drafts, *, per_item) → chunks
 PARSERS: dict[str, tuple[Parser, Chunker]] = {
     "profile": (
         lambda blocks: grc_records.parse_profile(
@@ -44,10 +43,14 @@ PARSERS: dict[str, tuple[Parser, Chunker]] = {
 class GrcWebsiteSource:
     source_id = SOURCE_ID
 
-    def __init__(self, fetcher: PageFetcher, lectures: CachedReader) -> None:
+    def __init__(
+        self, fetcher: PageFetcher, lectures: CachedReader, *, per_item: bool = False
+    ) -> None:
         self._fetcher = fetcher
         # Reads the parts of each speech: answers kept from earlier runs, or a model.
         self._lectures = lectures
+        # One chunk per list item instead of per block, for comparing the two.
+        self._per_item = per_item
 
     async def extract(self) -> Extraction:
         snapshots, blocks = [], {}
@@ -67,7 +70,7 @@ class GrcWebsiteSource:
                 parse, chunk = PARSERS[profile.parser]
                 parsed = parse(own_blocks)
             pages.append((snapshot, parsed.drafts))
-            chunks += chunk(parsed.drafts)
+            chunks += chunk(parsed.drafts, per_item=self._per_item)
             drafts_by_page[profile.url] = parsed.drafts
             problems_by_page[profile.url] = parsed.problems
             notes += parsed.notes

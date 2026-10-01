@@ -3,13 +3,17 @@
 Blocks follow how people ask: graduates of a degree in a year, projects of a year,
 publications of a category in a year, one profile section. Every chunk shows its links;
 what is embedded leaves the URLs out, as they mean nothing a question could match.
+
+`per_item=True` selects the item variant of each strategy instead: one chunk per list
+item under the same header, kept for comparing the two in evaluation. Prose sections
+stay whole either way.
 """
 
 import re
 from collections.abc import Callable, Hashable, Sequence
 from itertools import groupby
 
-from wobot.knowledge.chunking.drafts import BlockItem, ChunkDraft, block_chunks
+from wobot.knowledge.chunking.drafts import BlockItem, ChunkDraft, block_chunks, item_chunks
 from wobot.knowledge.records.drafts import RecordDraft
 from wobot.knowledge.records.lectures import LECTURE_CATEGORIES
 
@@ -20,12 +24,21 @@ PROJECT_BLOCK = "project_block"
 PUBLICATION_BLOCK = "publication_block"
 PROFILE_SECTION = "profile_section"
 LECTURE_BLOCK = "lecture_block"
+# Each block strategy's item variant.
+ITEM_VARIANTS = {
+    STUDENT_BLOCK: "student_item",
+    PROJECT_BLOCK: "project_item",
+    PUBLICATION_BLOCK: "publication_item",
+    PROFILE_SECTION: "profile_item",
+    LECTURE_BLOCK: "lecture_item",
+}
 STRATEGY_VERSIONS = {
     STUDENT_BLOCK: 1,
     PROJECT_BLOCK: 1,
     PUBLICATION_BLOCK: 1,
     PROFILE_SECTION: 1,
     LECTURE_BLOCK: 1,
+    **dict.fromkeys(ITEM_VARIANTS.values(), 1),
 }
 DEGREE_LABELS = {"master": "碩士", "phd": "博士"}
 # The page's own heading for each category.
@@ -41,9 +54,16 @@ def _runs(
 
 
 def _chunks(
-    strategy: str, heading_path: list[str], header: str, items: list[BlockItem]
+    strategy: str,
+    heading_path: list[str],
+    header: str,
+    items: list[BlockItem],
+    per_item: bool = False,
 ) -> list[ChunkDraft]:
-    return block_chunks(
+    if per_item:
+        strategy = ITEM_VARIANTS[strategy]
+    chunker = item_chunks if per_item else block_chunks
+    return chunker(
         strategy=strategy,
         strategy_version=STRATEGY_VERSIONS[strategy],
         heading_path=heading_path,
@@ -52,7 +72,7 @@ def _chunks(
     )
 
 
-def student_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
+def student_chunks(drafts: Sequence[RecordDraft], *, per_item: bool = False) -> list[ChunkDraft]:
     chunks = []
     by_block = _runs(drafts, lambda d: (d.fields["degree"], d.fields["graduation_year"]))
     for (degree, year), run in by_block:
@@ -70,12 +90,16 @@ def student_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
             links = ({"kind": "thesis", "text": "電子全文", "url": url},) if url else ()
             items.append(BlockItem("\n".join(shown), "\n".join(lines), draft.revision, links))
         chunks += _chunks(
-            STUDENT_BLOCK, [CENTER, label, str(year)], f"{CENTER}｜{label}｜{year}年", items
+            STUDENT_BLOCK,
+            [CENTER, label, str(year)],
+            f"{CENTER}｜{label}｜{year}年",
+            items,
+            per_item,
         )
     return chunks
 
 
-def project_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
+def project_chunks(drafts: Sequence[RecordDraft], *, per_item: bool = False) -> list[ChunkDraft]:
     chunks = []
     for year, run in _runs(drafts, lambda d: d.fields["year"]):
         items = []
@@ -96,12 +120,18 @@ def project_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
             text = "\n".join(lines)
             items.append(BlockItem(text, text, draft.revision))
         chunks += _chunks(
-            PROJECT_BLOCK, [CENTER, "研究計畫", str(year)], f"{CENTER}｜研究計畫｜{year}年", items
+            PROJECT_BLOCK,
+            [CENTER, "研究計畫", str(year)],
+            f"{CENTER}｜研究計畫｜{year}年",
+            items,
+            per_item,
         )
     return chunks
 
 
-def publication_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
+def publication_chunks(
+    drafts: Sequence[RecordDraft], *, per_item: bool = False
+) -> list[ChunkDraft]:
     chunks = []
     by_block = _runs(drafts, lambda d: (d.fields["category"], d.fields["year"]))
     for (category, year), run in by_block:
@@ -118,6 +148,7 @@ def publication_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
             [PERSON, "Publications", category, str(year or "")],
             f"{PERSON}教授著作｜{category}｜{year_label}",
             items,
+            per_item,
         )
     return chunks
 
@@ -127,8 +158,11 @@ def _label(link: dict[str, str]) -> str:
     return "DOI" if link.get("kind") == "doi" else link["text"]
 
 
-def profile_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
-    """A section's prose, or a list of profile items, per chunk; long prose splits by paragraph."""
+def profile_chunks(drafts: Sequence[RecordDraft], *, per_item: bool = False) -> list[ChunkDraft]:
+    """A section's prose, or a list of profile items, per chunk; long prose splits by paragraph.
+
+    Prose stays whole with `per_item`: only the listed items become chunks of their own.
+    """
     chunks = []
     for draft in (d for d in drafts if d.record_type == "section"):
         heading = draft.raw["heading_path"][-1]
@@ -137,11 +171,13 @@ def profile_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
     items_only = [d for d in drafts if d.record_type == "list_item"]
     for section, run in _runs(items_only, lambda d: d.fields["category"]):
         items = [BlockItem(d.fields["item_text"], d.fields["item_text"], d.revision) for d in run]
-        chunks += _chunks(PROFILE_SECTION, [PERSON, section], f"{PERSON}｜{section}", items)
+        chunks += _chunks(
+            PROFILE_SECTION, [PERSON, section], f"{PERSON}｜{section}", items, per_item
+        )
     return chunks
 
 
-def lecture_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
+def lecture_chunks(drafts: Sequence[RecordDraft], *, per_item: bool = False) -> list[ChunkDraft]:
     """A category's year block per chunk, each talk as the page writes it.
 
     Built from the entry text alone, never from what a model read: a model's answers can
@@ -162,5 +198,6 @@ def lecture_chunks(drafts: Sequence[RecordDraft]) -> list[ChunkDraft]:
             [PERSON, "Speeches", label, year_block],
             f"{PERSON}教授演講｜{label}｜{year_block}年",
             items,
+            per_item,
         )
     return chunks

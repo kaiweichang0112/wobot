@@ -59,6 +59,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "PRODUCT_CATALOG_FILE_ID is downloaded",
     )
     run.add_argument(
+        "--chunking",
+        choices=["block", "item"],
+        default="block",
+        help="GRC lists as one chunk per block (default) or per item, for comparing the two",
+    )
+    run.add_argument(
         "--policy",
         choices=["publish", "dry-run"],
         default="publish",
@@ -146,7 +152,13 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
                     OpenAILectureReader(openai_client, settings.extraction_model),
                     DbAnswerCache(engine),
                 )
-                sources.append(GrcWebsiteSource(PageFetcher(client, {GRC_HOST}), lectures))
+                sources.append(
+                    GrcWebsiteSource(
+                        PageFetcher(client, {GRC_HOST}),
+                        lectures,
+                        per_item=args.chunking == "item",
+                    )
+                )
             result = await run_ingestion(
                 engine,
                 _blob_store(settings),

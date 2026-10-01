@@ -125,3 +125,31 @@ def _pack(header_tokens: int, items: Sequence[BlockItem], max_tokens: int) -> li
         parts[-1].append(item)
         size += tokens
     return parts
+
+
+def item_chunks(
+    *,
+    strategy: str,
+    strategy_version: int,
+    heading_path: Sequence[str],
+    context_header: str,
+    items: Sequence[BlockItem],
+) -> list[ChunkDraft]:
+    """One chunk per item, each under the block's header: the alternative to block_chunks.
+
+    A question about one item then meets that item alone, at the cost of many more chunks
+    and of no context from its neighbours.
+    """
+    return [
+        build_chunk(
+            strategy=strategy,
+            strategy_version=strategy_version,
+            heading_path=heading_path,
+            context_header=context_header,
+            body=item.shown,
+            embedding_body=item.embedded,
+            links=item.links,
+            record_revisions=[item.record_revision],
+        )
+        for item in items
+    ]
