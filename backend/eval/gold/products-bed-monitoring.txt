@@ -1,0 +1,16 @@
+# CASE-018: every product whose 產品第二層分類 is "(1-3) 臥床監測、離床預警、壓傷防護".
+# Source: references/smart-care-products.xlsx, sheet 產品整理.
+# Filter the column, then copy the 產品名稱 and 公司名稱 cells (columns A and B) and
+# paste them here: one product per line, the two cells separated by a tab.
+Agicare 智能均壓床	醫博科技股份有限公司
+AI 零接觸智能照護系統	緯創醫療科技股份有限公司
+ForeAider Z 智慧感知墊	輔人科技股份有限公司
+iCue智慧照護幫手	維思感創股份有限公司
+iProték 智慧床墊	嘉碩生醫電子股份有限公司
+nFOPT 非侵入性光纖生理監測技術	滙嘉健康醫療器材股份有限公司
+Pamorcare智慧臥床照護寶	百醫醫材科技股份有限公司
+WhizPad 安心臥智慧床墊	世大智科股份有限公司
+美思臥床照護系統	美思科技有限公司
+美維智慧照護系統	美維科技股份有限公司
+AI照護感知系統	雄欣科技有限公司
+毫米波雷達跌倒偵測系統	群邁通訊股份有限公司

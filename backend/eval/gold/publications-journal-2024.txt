@@ -1,0 +1,7 @@
+# Fixture: every journal paper of 2024.
+# Source: https://www.grc.yzu.edu.tw/publications, under "Journal papers".
+# Paste each paper as one line, as the page shows it.
+Wen M. H., Chen P. Y., Lin S., Lien C. W., Tu S. H., Chueh C. Y., Wu Y. F., Tan Cheng Kian K., Hsu Y. L, Bai D. (2024) Enhancing Patient Safety Through an Integrated Internet of Things Patient Care System: Large Quasi-Experimental Study on Fall Prevention J Med Internet Res 2024;26:e58380 doi: 10.2196/58380 PDF
+Mathunjwa, B. M., Chen, Y. F., Tsai, T. C., & Hsu, Y. L. (2024). A Lifestyle Monitoring System for Older Adults Living Independently Using Low-Resolution Smart Meter Data. Sensors, 24(11), 3662. https://doi.org/10.3390/s24113662 PDF
+徐業良 (2024). 高齡智慧科技落地應用第一步—產品適用性評估, 護理雜誌, The journal of nursing, 71(3), 20-25. PDF
+徐業良, 李孟潔 (2024). 落地應用－國家衛生研究院「推動智慧科技應用於高齡照顧」計畫第一年成果, 福祉科技與服務管理學刊, 12(0), 3-12 PDF

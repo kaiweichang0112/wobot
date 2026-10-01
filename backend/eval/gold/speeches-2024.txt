@@ -1,0 +1,37 @@
+# CASE-005: every talk Yeh-Liang Hsu gave in 2024.
+# Source: https://www.grc.yzu.edu.tw/speeches (both categories).
+# Go by each talk's own date, not only by the year headings.
+# Paste each talk as one line, as the page shows it.
+
+“Real-world implementation of smart products in aged care: Gerontechnology development in Taiwan,” keynote speech, Yuan Ze University & Atma Jaya Catholic University of Indonesia International Joint Webinar: “Aging and Gerontechnology”, 2024/10/09 PDF
+“Bridging the gap: Real-world implementation of smart products in aged care 高齡科技智慧產品落地應用，” keynote speech, 2024 International Symposium of GERONTECHNOLOGY and Health Application, 2024/09/21 PDF
+ “從失智症預防角度談智慧科技運動遊戲設計，” plenary speech, 第八屆台日照護產業高峰會， 2024/05/18 PDF
+“Smart mattressfor precision aged care,” plenary speech, Vietnam Medi-pharm 2024, 2024/05/10 PDF
+“樂齡科技的設計思維與落地實踐，” plenary speech, 2024海峽兩岸暨港澳社區養老研討會-數字賦能新時代， 2024/03/27 PDF
+“推動智慧科技應用於高齡照顧合作計畫，” 國家衛生研究院高齡醫學暨健康福祉研究中心 113年度合作計畫成果研討會，2024/12/21 PDF
+“From mechanical design to smart product design，” 元智大學機械系機械工程概論演講，2024/12/17 PDF
+“高齡科技應用實務與教學設計:跨領域合作與創新展望，” 長庚大學「高齡科技與創新服務」課程，2024/12/10 PDF
+"高齡智慧科技的設計思維與落地應用，"衛生福利部社會及家庭署113年老人福利機構聯繫會報，2024/11/28 PDF
+“銀髮健康照護之新興科技導入需求分析，” 台灣智慧醫養產業發展協會會員大會專題演講，2024/11/28 PDF
+“智慧科技在高齡照顧的設計思維與落地應用，” 元智大學護理學系演講，2024/11/27 PDF
+“智慧科技在高齡照顧的設計思維與落地實踐，” 人工智慧與醫療科技在高齡長照的應用新進展研討會，2024/11/16 PDF
+“智慧科技在高齡照顧的落地應用，” 社區金點獎《績優社區據點及長照服務人員培訓》專題演講，2024/10/26 PDF
+“高齡智慧科技的設計思維與落地實踐，” 數位健康:高齡科技設計與發展論壇，2024/10/19 PDF
+“台灣高齡智慧科技經驗: 設計思維與落地應用，” 社團法人台灣高齡照護暨教育協會 第四屆第二次會員大會暨學術研討會，2024/09/28 PDF
+“高齡智慧科技的設計思維與落地實踐，” 高雄醫學大學健康福祉教學推動中心-「高齡科技與創新服務」課程，2024/09/22 PDF
+“高齡智慧科技的設計思維與落地應用，” 亞東紀念醫院43周年院慶國際學術研討會，2024/09/20 PDF
+“推動智慧科技應用於高齡照顧合作計畫，” 113年度國衛院「機構導入智慧科技應用於高齡照顧」計畫期中成果發表會，2024/09/13 PDF
+“高齡科技智慧產品設計與創新，” 陽明交大跨專業長期照顧與管理碩士學位學程 「長期照護政策」課程講座，2024/09/10 PDF
+“高齡科技設計實務引導，” 高雄醫學大學大學精準健康產業跨領域人才培育計畫「高齡福祉科技應用實務暑期戰鬥營」，2024/08/12 PDF
+“智慧地墊運動遊戲平台參與式設計工作坊，” 長庚大學教育部精準人才培育計畫暑期課程「產產學見實習輔導」，2024/07/12 PDF
+“長期照顧科技應用新趨勢，” 台灣長期照護專業協會，2024/06/22 PDF
+“火車要開了，” 2024元智大學機械系畢業典禮，2024/06/08 PDF
+“安心臥智慧床墊系統設計思維，” 退輔會教育訓練課程，2024/06/07 PDF
+“Learning with a purpose,” International Bachelor Program in Engineering, Yuan Ze University，2024/05/03 PDF
+“智慧科技在長期照顧應用的新趨勢及前景，”中國醫藥大學公共衛生博士班「長期照護與管理」課程， 2024/04/26 PDF
+“智慧科技在長者精準健康促進應用-運動遊戲設計思考，” 輔英科技大學高齡全程照顧人才培育中心，高齡精準健康與科技應用課程，2024/04/18 PDF
+“Smart technology for precision healthy aging-- Exergame design,” Graduate Institute of Medicine, Yuan Ze University，2024/04/16 PDF
+“應用智慧科技實踐精準高齡照顧，”中央大學生醫科學與工程學系精準醫療與智慧醫療課程，2024/04/12 PDF
+“大學甄選入學書審資料準備與面試技巧，”文華高中申請入學講座，2024/03/22 PDF
+“Robots that look after Grandma?A gerontechnology point of view,” International Bachelor Program in Engineering, Yuan Ze University，2024/03/12 PDF
+“From mechanical design to smart product design,” 元智大學機械系機械工程概論演講， 2024/01/05 PDF

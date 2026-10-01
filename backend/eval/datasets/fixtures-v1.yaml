@@ -1,0 +1,48 @@
+# Engineering fixtures: exact checks of ingestion that the 30 questions do not cover.
+# They are not part of the question bank and carry no reference answers.
+dataset: fixtures-v1
+query_time: "2026-09-23T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  - case_id: FIX-001
+    scenario: project_fields
+    split: dev
+    user_input: 請列出 GRC 2024 年的研究計畫，含委託單位、執行期間與金額。
+    expected_behavior: Every 2024 project, with funder, period and amount exactly as stated.
+    check:
+      kind: list
+      records: project
+      where: {year: 2024}
+      gold: {file: projects-2024.yaml, as: project}
+      fields: [title_zh, title_en, funder_raw, period_start, period_end, amount_ntd]
+  - case_id: FIX-002
+    scenario: publication_block
+    split: dev
+    user_input: 請列出徐業良 2024 年發表的期刊論文。
+    expected_behavior: Every 2024 journal paper; leave out none.
+    check:
+      kind: list
+      records: list_item
+      where: {list_kind: publication, category: Journal papers, year: 2024}
+      gold: {file: publications-journal-2024.txt, as: publication}
+  - case_id: FIX-003
+    scenario: phd_students
+    split: dev
+    user_input: GRC 2007 年的博士畢業生有哪些？
+    expected_behavior: Every 2007 PhD graduate with the thesis titles.
+    check:
+      kind: list
+      records: student
+      where: {degree: phd, graduation_year: 2007}
+      gold: {file: students-phd-2007.yaml, as: student, degree: phd, years: [2007]}
+      fields: [thesis_title_zh, thesis_title_en]
+  - case_id: FIX-004
+    scenario: speech_fields
+    split: dev
+    user_input: 演講條目的題目、活動與地點。
+    expected_behavior: Each field a verbatim span of its entry, as a person reads it.
+    check:
+      kind: fields
+      records: lecture
+      gold: {file: speech-fields.yaml, as: speech_fields}
+      fields: [title, event, location]

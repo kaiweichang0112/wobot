@@ -112,3 +112,30 @@ def test_lecture_blocks_follow_the_page_and_never_what_a_model_read():
     assert "https://" not in chunks[0].embedding_input
     assert chunks[0].links == ({"kind": "pdf", "text": "PDF", "url": pdf},)
     assert [c.content_hash for c in reread] == [c.content_hash for c in chunks]
+
+
+def test_the_item_variant_gives_each_record_its_own_chunk_under_the_same_header():
+    drafts = [lecture("“A,” Forum, 2025/01/02", "A"), lecture("“B,” Forum, 2024/05/10", "B")]
+
+    blocks = chunking.lecture_chunks(drafts)
+    items = chunking.lecture_chunks(drafts, per_item=True)
+
+    assert [c.strategy for c in blocks] == ["lecture_block"]
+    assert [c.strategy for c in items] == ["lecture_item", "lecture_item"]
+    assert {c.context_header for c in items} == {blocks[0].context_header}
+    assert [c.record_revisions for c in items] == [(d.revision,) for d in drafts]
+
+
+def test_the_item_variant_keeps_prose_sections_whole():
+    section = record_draft(
+        "section",
+        "section:徐業良:簡介",
+        raw={"heading_path": ["徐業良", "簡介"], "paragraphs": ["第一段。", "第二段。"]},
+        fields={},
+        locator={},
+    )
+
+    (chunk,) = chunking.profile_chunks([section], per_item=True)
+
+    assert chunk.strategy == "profile_section"
+    assert chunk.body == "第一段。\n\n第二段。"

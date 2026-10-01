@@ -1,0 +1,41 @@
+# Questions about one talk, paper, thesis or project, for comparing chunk strategies.
+# For each, list every item that answers it, named as in retrieval.yaml.
+# Sources: https://www.grc.yzu.edu.tw/speeches, /publications, /students-masters,
+# /projects.
+ITEM-01:
+  question: 徐業良在土耳其伊斯坦堡的研討會上演講的題目是什麼？
+  expected:
+    - speech: '“Gerontechnology for precision aged care and precision healthy aging,” plenary speech, The 3rd International Home Care Congress, Istanbul, Turkey, 2021/11/12 PDF'
+ITEM-02:
+  question: 徐業良在韓國 KAIST 演講過什麼題目？
+  expected:
+    - speech: '“How I got into gerontechnology,” @TABLE Seminar, Aging & Technology (AT) Policy Lab, KAIST, Korea, 2022/01/24 PDF'
+ITEM-03:
+  question: 徐業良有沒有到泰國演講過？題目是什麼？
+  expected:
+    - speech: '樂齡科技－從研究開發到生活與產業應用'
+ITEM-04:
+  question: 哪一篇期刊論文談到從動作感測床墊取得多層次資訊來做精準照護？
+  expected:
+    - publication: 'Bai D, Ho M-C, Mathunjwa BM, Hsu Y. L. (2023). Deriving Multiple-Layer Information from a Motion-Sensing Mattress for Precision Care. Sensors. 2023; 23(3):1736. https://doi.org/10.3390/s23031736'
+ITEM-05:
+  question: 有沒有關於失智症患者遊走行為的研究、論文或演講？
+  # Any kind of item may answer this one; add one line per item.
+  expected:
+    - speech: 'Using fractal dimension derived from movement path measured by motion sensing carpet to assess wandering behaviors of dementia patients,” plenary speech, The 2nd ICAH-NCGG Symposium, 2016/04/15'
+    - publication: 'Chang, W.-Y., Chang, K.-W., Hsu, Y. L., "Using fractal dimension derived from trajectory measured by motion sensing carpet to assess wandering behaviors of dementia patients," 2015福祉科技與服務管理研討會, Taichung, Taiwan, 2015/06/06. PDF'
+    - student: '張維益'
+ITEM-06:
+  question: 「床墊裝置以及照護系統」這項專利在哪些國家申請過？
+  expected:
+    - publication: '徐業良, 王為寬, 劉育瑋, 張凱維, 戴志穎, 張喨逢, 李杰儒, “床墊裝置以及照護系統,” 中華人民共和國專利發明申請公布號 CN 108209310A, 2020/10 PDF'
+    - publication: '徐業良, 王為寬, 劉育瑋, 張凱維, 戴志穎, 張喨逢, 李杰儒, “床墊裝置以及照護系統,” 中華民國專利發明第I611801號, 2019/04 PDF'
+ITEM-07:
+  question: 研究中心有沒有執行過臺歐盟國際合作、關於失智患者健康老化生態系統的計畫？
+  expected:
+    - project: '臺歐盟國合計畫－建構失智患者健康老化生態系統 European “Active and Assisted Living Programme": HeAlthy Ageing eco-system for peopLe with dementia'
+ITEM-08:
+  question: 哪位碩士生的論文做了陪伴型機器人 Wobot？
+  expected:
+    - student: '陳思宇'
+    - student: '林怡錦'

@@ -1,0 +1,29 @@
+# CASE-006, CASE-007, CASE-008: every master graduate of 2021 and 2022.
+# Source: https://www.grc.yzu.edu.tw/students-masters
+# Copy each graduate's name and thesis titles. Leave a title '' when the page has none.
+2022:
+  - name: '朱美憶'
+    thesis_title_zh: '整合長者Vivifrail健康狀態評估於活動感知運動地墊'
+    thesis_title_en: 'Integrating Vivifrail elderly health assessment in motion-sensing carpet'
+  - name: '何牧潔'
+    thesis_title_zh: '建立基於現有智慧照護產品的健康和福祉評估儀表板'
+    thesis_title_en: 'Establishing a health and well-being assessment dashboard based on existing smart care products'
+  - name: '徐浩恩'
+    thesis_title_zh: '軟性臥床活動感測模組開發及睡眠監測智慧化應用'
+    thesis_title_en: 'Development of soft bed activity sensing module and intelligent application of sleep monitoring'
+2021:
+  - name: '陳虹諭'
+    thesis_title_zh: '跨代共玩遊戲設計開發—以枕頭戰為例'
+    thesis_title_en: 'Design and development of inter-generational play entertainment – a case study of pillow fight'
+  - name: '張宗聖'
+    thesis_title_zh: '低功耗藍牙網關WhizConnect多元整合開發與驗證－應用於智慧照護系統'
+    thesis_title_en: 'Integrative development and verification of the Bluetooth Low Energy IoT gateway WhizConnect for multiple applications in the smart care system'
+  - name: '張斌權'
+    thesis_title_zh: '兼具螢幕引導與實體引導之長者健身訓練遊戲系統平台開發'
+    thesis_title_en: 'Development of a platform for both screen-guided and lighting-guided Exergames for older adults'
+  - name: '曾暉原'
+    thesis_title_zh: '結合多元照護需求開發「安心臥」照護系統'
+    thesis_title_en: 'Care relief system development and data analysis'
+  - name: '謝佑丞'
+    thesis_title_zh: '應用電容與壓阻感測技術開發智慧感測地墊'
+    thesis_title_en: 'Smart carpet development with the application of capacitive sensor and piezoresistive pressure sensor'
