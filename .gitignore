@@ -26,8 +26,9 @@ htmlcov/
 !.env.example
 infra/env.sh
 
-# Local ingestion output: snapshots and blobs written by wobot-ingest
+# Local output: snapshots written by wobot-ingest, reports written by wobot-eval
 backend/.data/
+backend/eval/runs/
 
 # Credentials — service account keys must never be committed
 *-sa-key.json
