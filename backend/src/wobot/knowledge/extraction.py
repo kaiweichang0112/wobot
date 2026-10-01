@@ -27,11 +27,13 @@ LECTURE_FIELDS = "lecture_fields"
 # Any change to the instructions, the schema or the request settings needs a new version:
 # answers cached under the old one answered another question. A test pins the prompt and
 # fails until the version is bumped.
-PROMPT_VERSION = 1
-# Copying spans needs no reasoning, and reasoning tokens are billed as output.
-REASONING_EFFORT = "none"
-# Three spans of a short entry take far fewer; the cap bounds a runaway answer's cost.
-MAX_OUTPUT_TOKENS = 1000
+PROMPT_VERSION = 3
+# Some reasoning, so the model applies rules such as a city inside a name being the
+# location; reasoning tokens are billed as output.
+REASONING_EFFORT = "low"
+# Reasoning counts against the cap, and an answer cut off there is cached as a failure;
+# the cap still bounds a runaway answer's cost.
+MAX_OUTPUT_TOKENS = 2000
 # Requests in flight at once, well inside the rate limit.
 CONCURRENCY = 4
 
@@ -45,10 +47,15 @@ Answer with three parts of the entry:
 closing mark may be missing or misplaced; then the title ends where the talk type or the \
 event begins.
 - event: the conference, symposium, forum, course, meeting or webinar the talk was given \
-at, as the entry names it. Leave out the talk type, such as "keynote speech", "plenary \
-speech", "invited speech", "專題演講" or "主題演講".
-- location: where the talk was given, when the entry states a place: a city, a country, \
-or a venue such as a university, as in "Seoul, Korea".
+at, as the entry names it, with its organizer when the entry writes them together, as in \
+"Care Forum – Example University" or "範例大學「智慧照護」課程". It ends before the talk \
+type, such as "keynote speech", "plenary speech", "invited speech", "專題演講", "主題演講", \
+"演講" or "講座", and before a place written after it.
+- location: the city, town or country where the talk was given, as the entry writes it, \
+with the country when it follows the city, as in "Seoul, Korea". One that is part of a \
+name counts: "Kyoto" in "Kyoto University", "台中" in "台中榮民總醫院". Only when the entry \
+names no city, town or country, the institution or venue where the talk was given, such \
+as a university or a hospital. The location may repeat part of the event.
 
 Copy each part exactly as the entry writes it, as one continuous piece of the entry: the \
 same language, spelling, letter case, punctuation and spaces. Do not translate, correct, \
@@ -65,9 +72,11 @@ class LectureFields(BaseModel):
 
     title: str | None = Field(description="The talk's title, without its quotation marks.")
     event: str | None = Field(
-        description="The conference, forum, course or meeting the talk was given at."
+        description="The conference, forum, course or meeting, with its organizer if joined."
     )
-    location: str | None = Field(description="The city, country or venue, as written.")
+    location: str | None = Field(
+        description="The city, town or country, as written; else the institution or venue."
+    )
 
 
 @dataclass(frozen=True)

@@ -30,6 +30,8 @@ QUOTING = "Keynote speech in “Community care” Nara, Joint Webinar: “Aging 
 # or the request settings, bump PROMPT_VERSION and record the new fingerprint here.
 PROMPT_FINGERPRINTS = {
     1: "aaf4974f2944a924c11707abe54fdf323556e75cc11b84b7d0030d9297914d6b",
+    2: "487f6dc79ffa5c36928551da57fc7838f2ae79f8e3a8fbc5cc70abeb936c24dc",
+    3: "7dc9d83ae9dc9c5d73f8be9901bebb1f83014b6bb2ab3ac137ade06787b47afa",
 }
 
 
