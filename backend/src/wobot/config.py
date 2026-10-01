@@ -34,8 +34,11 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_timeout_seconds: float = 60
     embedding_model: str = "text-embedding-3-small"
-    # Where local ingestion keeps the raw bytes of each snapshot (gitignored).
+    # Raw source bytes go to this bucket, or to the local directory when it is unset.
+    knowledge_bucket: str | None = None
     knowledge_local_dir: Path = Path(".data/knowledge")
+    # The catalog's Drive file ID. Set on the job only: it never enters the repository.
+    product_catalog_file_id: str | None = None
 
 
 @lru_cache

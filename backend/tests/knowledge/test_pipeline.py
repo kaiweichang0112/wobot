@@ -10,6 +10,7 @@ from wobot.knowledge.models import IndexVersionRecord, IngestionRun
 from wobot.knowledge.pipeline import SOURCE_ID, CatalogFile, run_ingestion
 from wobot.knowledge.records.products import normalize_product
 from wobot.knowledge.search import search_chunks
+from wobot.knowledge.sources.drive import DriveError
 from wobot.knowledge.sources.xlsx import HEADERS, CatalogSchemaError
 
 PRODUCTS = [
@@ -28,9 +29,12 @@ def ingest(ingest_db, tmp_path):
     """Run ingestion against the rolled-back database; returns the result and the embedder."""
 
     async def _ingest(catalog_file, **options):
+        async def fetch():
+            return catalog_file
+
         embedder = FakeEmbedder()
         result = await run_ingestion(
-            ingest_db, LocalBlobStore(tmp_path), embedder, catalog_file, **options
+            ingest_db, LocalBlobStore(tmp_path), embedder, fetch, **options
         )
         return result, embedder
 
@@ -185,3 +189,18 @@ async def test_search_reads_only_the_active_version(ingest, ingest_db):
     assert found[0].body.startswith("產品名稱：測試地墊 TM-2")
     assert len(unpublished) == 2
     assert all("測試手環" not in hit.body for hit in unpublished)
+
+
+async def test_a_source_that_cannot_be_read_is_a_recorded_failure(ingest_db, tmp_path):
+    async def failed_runs():
+        async with ingest_db.begin() as conn:
+            return await conn.scalar(select(func.count()).where(IngestionRun.status == "failed"))
+
+    async def fetch():
+        raise DriveError("file not found: is it shared with the service account?")
+
+    before = await failed_runs()
+    with pytest.raises(DriveError):
+        await run_ingestion(ingest_db, LocalBlobStore(tmp_path), FakeEmbedder(), fetch)
+
+    assert await failed_runs() == before + 1

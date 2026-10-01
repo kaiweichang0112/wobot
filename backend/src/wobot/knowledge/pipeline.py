@@ -6,7 +6,9 @@ version lists, which the next run reuses.
 """
 
 import hashlib
+import logging
 import uuid
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import date
@@ -28,6 +30,8 @@ STRATEGIES = {product_chunking.STRATEGY: product_chunking.STRATEGY_VERSION}
 
 Policy = Literal["publish", "dry_run"]
 
+logger = logging.getLogger(__name__)
+
 
 class Database(Protocol):
     """Where each step's transaction comes from: an AsyncEngine, or a test's savepoints."""
@@ -37,8 +41,13 @@ class Database(Protocol):
 
 @dataclass(frozen=True)
 class CatalogFile:
-    locator: str  # where the bytes came from, such as a file name
+    locator: str  # where the bytes came from: a file name, or drive:<file ID>
     content: bytes
+    details: Mapping[str, Any] = field(default_factory=dict)  # kept on the snapshot
+
+
+# Fetching happens inside the run, so a source that cannot be read is a recorded failure.
+CatalogSource = Callable[[], Awaitable[CatalogFile]]
 
 
 @dataclass
@@ -55,7 +64,7 @@ async def run_ingestion(
     db: Database,
     blobs: BlobStore,
     embedder: Embedder,
-    catalog: CatalogFile,
+    fetch_catalog: CatalogSource,
     *,
     policy: Policy = "publish",
     triggered_by: str = "manual",
@@ -68,7 +77,7 @@ async def run_ingestion(
         )
     result = RunResult(run_id)
     try:
-        result.status = await _ingest(db, blobs, embedder, catalog, policy, result)
+        result.status = await _ingest(db, blobs, embedder, fetch_catalog, policy, result)
     except Exception as error:
         result.status = "failed"
         result.errors.append(f"{type(error).__name__}: {error}")
@@ -83,14 +92,30 @@ async def run_ingestion(
                 counts=result.counts,
                 errors=result.errors,
             )
+        _log(
+            result,
+            "finished",
+            f"run {result.status}",
+            status=result.status,
+            index_version_id=result.index_version_id,
+            counts=result.counts,
+            errors=result.errors,
+        )
     return result
+
+
+def _log(result: RunResult, stage: str, message: str, **fields: Any) -> None:
+    """One line per stage; on Cloud Run the fields become searchable log fields."""
+    logger.info(
+        message, extra={"run_id": str(result.run_id), "source": SOURCE_ID, "stage": stage, **fields}
+    )
 
 
 async def _ingest(
     db: Database,
     blobs: BlobStore,
     embedder: Embedder,
-    catalog: CatalogFile,
+    fetch_catalog: CatalogSource,
     policy: Policy,
     result: RunResult,
 ) -> str:
@@ -102,9 +127,11 @@ async def _ingest(
         if not await repository.embedding_config_exists(conn, embedder.config_id):
             raise LookupError(f"no embedding config {embedder.config_id!r}")
 
+    catalog = await fetch_catalog()
     sha256 = hashlib.sha256(catalog.content).hexdigest()
     result.source |= {"locator": catalog.locator, "sha256": sha256}
     storage_key = await blobs.put(catalog.content)
+    _log(result, "fetched", f"read {len(catalog.content)} bytes", sha256=sha256)
     # Parsed even when the file is the one the active version came from: new code may read
     # the same bytes differently, and only the content comparison below would notice.
     drafts = normalize_catalog(read_catalog(catalog.content))
@@ -112,6 +139,13 @@ async def _ingest(
     result.counts["rows"] = len(drafts)
     report = check_products(drafts, chunks, current_year=date.today().year)
     result.source["report"] = report.to_json()
+    _log(
+        result,
+        "parsed",
+        f"{len(drafts)} rows, {len(report.blocking)} blocking, {len(report.warnings)} warnings",
+        blocking=report.blocking,
+        warnings=report.warnings,
+    )
     if not report.passed:
         return "failed"
 
@@ -124,6 +158,7 @@ async def _ingest(
             sha256=sha256,
             storage_key=storage_key,
             byte_size=len(catalog.content),
+            details=catalog.details,
         )
     candidate = (
         {(draft.logical_key, draft.content_hash) for draft in drafts},
@@ -155,6 +190,11 @@ async def _ingest(
         "embeddings_new": 0,
         "embedding_tokens": 0,
     }
+    _log(
+        result,
+        "stored",
+        f"{records_new} new records, {chunks_new} new chunks, {len(missing)} to embed",
+    )
 
     for batch in batched(missing, MAX_BATCH_SIZE, strict=False):
         embedded = await embedder.embed([text for _, text in batch])
@@ -164,6 +204,7 @@ async def _ingest(
             await repository.put_embeddings(conn, embedder.config_id, vectors)
         result.counts["embeddings_new"] += len(batch)
         result.counts["embedding_tokens"] += embedded.input_tokens
+        _log(result, "embedded", f"{len(batch)} chunks, {embedded.input_tokens} tokens")
 
     members = [
         repository.Member(
@@ -191,6 +232,7 @@ async def _ingest(
         status = "validated" if report.passed else "failed"
         await repository.set_version_status(conn, version_id, status, report.to_json())
     result.index_version_id = version_id
+    _log(result, "versioned", f"version {version_id} {status}", blocking=report.blocking)
     if not report.passed or policy == "dry_run":
         return status
 

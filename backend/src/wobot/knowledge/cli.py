@@ -2,24 +2,35 @@
 
 import argparse
 import asyncio
-import sys
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 
+import httpx2
+from google.cloud import storage
 from openai import APIError, AsyncOpenAI
 
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.knowledge import repository
-from wobot.knowledge.blobs import LocalBlobStore
+from wobot.knowledge.blobs import BlobStore, GcsBlobStore, LocalBlobStore
 from wobot.knowledge.embeddings import OpenAIEmbedder
-from wobot.knowledge.pipeline import CatalogFile, RunResult, run_ingestion
+from wobot.knowledge.pipeline import CatalogFile, CatalogSource, RunResult, run_ingestion
 from wobot.knowledge.search import search_chunks
+from wobot.knowledge.sources.drive import DriveError, drive_token, fetch_drive_file
+from wobot.knowledge.sources.xlsx import CatalogSchemaError
+from wobot.logs import configure_logging
 
 # Statuses that need no one's attention; anything else exits non-zero.
 SUCCESSFUL = {"published", "no_change", "validated"}
 # Retries on 429 and 5xx, with backoff, before a run gives up.
 OPENAI_MAX_RETRIES = 3
+DRIVE_TIMEOUT_SECONDS = 60
+# Failures of the world outside, not of the code: reported in one line, no traceback.
+# A run has already recorded them.
+EXPECTED_ERRORS = (APIError, DriveError, CatalogSchemaError)
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -27,7 +38,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
 
     run = commands.add_parser("run", help="ingest the catalog and publish a new version")
-    run.add_argument("--catalog-file", type=Path, required=True, help="catalog workbook (.xlsx)")
+    run.add_argument(
+        "--catalog-file",
+        type=Path,
+        help="a local catalog workbook (.xlsx); without it, the Drive file in "
+        "PRODUCT_CATALOG_FILE_ID is downloaded",
+    )
     run.add_argument(
         "--policy",
         choices=["publish", "dry-run"],
@@ -48,13 +64,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     if args.command in ("run", "search") and settings.openai_api_key is None:
         parser.error("OPENAI_API_KEY is not set")
+    if args.command == "run" and not (args.catalog_file or settings.product_catalog_file_id):
+        parser.error("pass --catalog-file or set PRODUCT_CATALOG_FILE_ID")
+    configure_logging()
     handler: Callable[[argparse.Namespace, Settings], Awaitable[int]] = args.handler
     try:
         return asyncio.run(handler(args, settings))
-    except APIError as error:
-        # A refusal from OpenAI (no credit, a revoked key, an outage) is no bug, so no
-        # traceback. A run has already recorded it as failed.
-        print(f"error: OpenAI: {error}", file=sys.stderr)
+    except EXPECTED_ERRORS as error:
+        logger.error("%s: %s", type(error).__name__, error)
+        return 1
+    except Exception:
+        # Logged rather than left to the interpreter, so Cloud Logging gets one entry.
+        logger.exception("wobot-ingest crashed")
         return 1
 
 
@@ -68,16 +89,41 @@ def _embedder(settings: Settings) -> OpenAIEmbedder:
     return OpenAIEmbedder(client, settings.embedding_model)
 
 
+def _blob_store(settings: Settings) -> BlobStore:
+    if settings.knowledge_bucket is None:
+        return LocalBlobStore(settings.knowledge_local_dir)
+    client = storage.Client(project=settings.google_cloud_project)
+    return GcsBlobStore(client.bucket(settings.knowledge_bucket))
+
+
+def _catalog_source(catalog_file: Path | None, settings: Settings) -> CatalogSource:
+    async def from_file() -> CatalogFile:
+        content = await asyncio.to_thread(catalog_file.read_bytes)
+        # The file name only: a local path says nothing about the catalog.
+        return CatalogFile(locator=catalog_file.name, content=content)
+
+    async def from_drive() -> CatalogFile:
+        file_id = settings.product_catalog_file_id
+        transport = httpx2.AsyncHTTPTransport(retries=2)  # connection failures only
+        async with httpx2.AsyncClient(timeout=DRIVE_TIMEOUT_SECONDS, transport=transport) as client:
+            file = await fetch_drive_file(client, file_id, await drive_token())
+        return CatalogFile(
+            locator=f"drive:{file_id}",
+            content=file.content,
+            details={"name": file.name, "modified_time": file.modified_time},
+        )
+
+    return from_file if catalog_file is not None else from_drive
+
+
 async def _run(args: argparse.Namespace, settings: Settings) -> int:
-    content = await asyncio.to_thread(args.catalog_file.read_bytes)
     engine, connector = await create_engine(settings)
     try:
         result = await run_ingestion(
             engine,
-            LocalBlobStore(settings.knowledge_local_dir),
+            _blob_store(settings),
             _embedder(settings),
-            # The file name only: a local path says nothing about the catalog.
-            CatalogFile(locator=args.catalog_file.name, content=content),
+            _catalog_source(args.catalog_file, settings),
             policy="dry_run" if args.policy == "dry-run" else "publish",
             code_version=settings.app_version,
         )
