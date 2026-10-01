@@ -584,13 +584,20 @@ Downloads the product catalog, stores it as knowledge and publishes a version
 set up for `wobot-ingest`: the Drive API, the account, the secret, the
 knowledge bucket, the database user and its group role.
 
-**Drive:** open the catalog in Google Drive → Share → add
-`wobot-ingest@$PROJECT_ID.iam.gserviceaccount.com` as Viewer, with "Notify
-people" off. Drive access is not an IAM role: the file's owner grants and
-revokes it, outside the project, and the job asks for a token with the
-`drive.readonly` scope. The file must be a stored `.xlsx`, not a Google Sheet.
-Its ID is the part of its URL after `/d/`; it is set on the job and never
-enters the repository.
+**Drive:** the job reads the catalog with a token carrying the `drive.readonly`
+scope, which Cloud Run's metadata server issues on request. Drive access is not
+an IAM role: the file's owner grants and revokes it, outside the project.
+
+- If you own the file: Share → add
+  `wobot-ingest@$PROJECT_ID.iam.gserviceaccount.com` as Viewer, with "Notify
+  people" off.
+- The current catalog belongs to another account and is shared as "anyone with
+  the link can view". The account reads it by ID without being added, which
+  works until the owner turns link sharing off; from then on every run fails
+  and the published version stays as it was.
+
+The file must be a stored `.xlsx`, not a Google Sheet. Its ID is the part of
+its URL after `/d/`; it is set on the job and never enters the repository.
 
 **Console:** Cloud Run → Jobs → Deploy container.
 
@@ -621,6 +628,8 @@ gcloud run jobs execute wobot-ingest --region $REGION --wait
 
 The job exits non-zero when a run fails, so the execution shows as failed. A
 run that finds the content unchanged ends as `no_change` and embeds nothing.
+Measured on the first executions: after a 7–11 s start, publishing the 163
+products took 6 s, and the `no_change` run that followed under 1 s.
 `--args run,--policy,dry-run` on `execute` builds and validates a version
 without publishing it.
 
