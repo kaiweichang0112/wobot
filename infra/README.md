@@ -61,6 +61,7 @@ gcloud billing projects describe $PROJECT_ID  # billingEnabled: true
 | `sts.googleapis.com` | Exchanges GitHub OIDC tokens for Google tokens |
 | `firebase.googleapis.com` | Firebase on this project |
 | `identitytoolkit.googleapis.com` | Firebase Authentication backend |
+| `drive.googleapis.com` | The ingestion job downloads the product catalog from Google Drive |
 
 Equivalent:
 
@@ -68,7 +69,8 @@ Equivalent:
 gcloud services enable run.googleapis.com sqladmin.googleapis.com \
   artifactregistry.googleapis.com secretmanager.googleapis.com \
   iam.googleapis.com iamcredentials.googleapis.com \
-  sts.googleapis.com firebase.googleapis.com identitytoolkit.googleapis.com
+  sts.googleapis.com firebase.googleapis.com identitytoolkit.googleapis.com \
+  drive.googleapis.com
 ```
 
 `cloudbuild.googleapis.com` was enabled at first as well, but images are built
@@ -137,10 +139,11 @@ resources each account needs.
 | --- | --- |
 | `wobot-api` | The `wobot-api` Cloud Run service |
 | `wobot-migrator` | The `wobot-migrate` Cloud Run job (Alembic) |
+| `wobot-ingest` | The `wobot-ingest` Cloud Run job (knowledge ingestion) |
 | `wobot-deployer` | GitHub Actions, through Workload Identity Federation |
 
 One account per workload keeps a compromise contained: the API cannot change
-the schema and cannot deploy. Every Cloud Run service and job names its account
+the schema and cannot deploy, and ingestion cannot read private data. Every Cloud Run service and job names its account
 explicitly; the default compute service account is never used as a runtime
 identity.
 
@@ -171,7 +174,7 @@ automatic replication, no rotation or expiry.
 
 | Secret | Accessor |
 | --- | --- |
-| `openai-api-key` | `wobot-api` |
+| `openai-api-key` | `wobot-api`, `wobot-ingest` |
 | `elevenlabs-api-key` | none yet (voice features, phase D) |
 
 Grant on the secret itself (secret → Permissions → Grant access → Secret
@@ -182,9 +185,11 @@ Equivalent:
 
 ```sh
 read -s KEY && printf %s "$KEY" | gcloud secrets create openai-api-key --data-file=- && unset KEY
-gcloud secrets add-iam-policy-binding openai-api-key \
-  --member="serviceAccount:wobot-api@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
+for sa in wobot-api wobot-ingest; do
+  gcloud secrets add-iam-policy-binding openai-api-key \
+    --member="serviceAccount:$sa@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+done
 ```
 
 `read -s` keeps the key off the screen and out of shell history; `printf %s`
@@ -194,7 +199,7 @@ Verify:
 
 ```sh
 gcloud secrets list
-gcloud secrets get-iam-policy openai-api-key   # only wobot-api, secretAccessor
+gcloud secrets get-iam-policy openai-api-key   # only wobot-api and wobot-ingest, secretAccessor
 # Prints a verdict, never the key:
 [[ "$(gcloud secrets versions access latest --secret=openai-api-key | tail -c 1 | xxd -p)" == "0a" ]] \
   && echo "ends with newline" || echo "OK: no trailing newline"
@@ -236,6 +241,47 @@ gcloud storage buckets describe gs://$PROJECT_ID-media
 # soft_delete_policy.retentionDurationSeconds: '0'
 ```
 
+### Knowledge bucket
+
+A second bucket, `$PROJECT_ID-knowledge` (`$KNOWLEDGE_BUCKET`), holds the raw
+bytes of every source ingestion read, each object named by its SHA-256. Same
+settings as the media bucket, except soft delete stays at its 7-day default:
+nothing here is private, so being able to undo a delete matters more than
+purging.
+
+**Console:** the bucket → Permissions → Grant access → `wobot-ingest` →
+Storage Object Creator and Storage Object Viewer.
+
+| Role | Why |
+| --- | --- |
+| Storage Object Creator | Store a snapshot |
+| Storage Object Viewer | Check whether one is already stored |
+
+No role that can delete or overwrite: uploads carry `ifGenerationMatch=0`
+("create only if absent"), and an object's name is its content's hash, so there
+is never a reason to replace one. The cost: removing old snapshots will need
+another identity.
+
+Equivalent:
+
+```sh
+gcloud storage buckets create gs://$KNOWLEDGE_BUCKET --location=$REGION \
+  --default-storage-class=STANDARD --uniform-bucket-level-access --public-access-prevention
+for role in roles/storage.objectCreator roles/storage.objectViewer; do
+  gcloud storage buckets add-iam-policy-binding gs://$KNOWLEDGE_BUCKET \
+    --member="serviceAccount:wobot-ingest@$PROJECT_ID.iam.gserviceaccount.com" --role=$role
+done
+```
+
+Verify:
+
+```sh
+gcloud storage buckets describe gs://$KNOWLEDGE_BUCKET
+gcloud storage buckets get-iam-policy gs://$KNOWLEDGE_BUCKET --flatten="bindings[].members" \
+  --filter="bindings.members~wobot-" --format="table(bindings.role,bindings.members)"
+# 2 rows, both wobot-ingest: objectCreator and objectViewer
+```
+
 ## 7. Cloud SQL
 
 **Console:** SQL → Create instance → PostgreSQL → the "Sandbox" card, then
@@ -263,10 +309,11 @@ Then:
 
 - Databases → Create `wobot`.
 - Users → Add user account → Google Cloud IAM, with no database roles, for
-  `wobot-api@…`, `wobot-migrator@…` and the developer's Google account. Service
+  `wobot-api@…`, `wobot-migrator@…`, `wobot-ingest@…` and the developer's Google
+  account. Service
   accounts appear as `<name>@$PROJECT_ID.iam`. Adding an IAM user also grants it
   `roles/cloudsql.instanceUser`.
-- IAM → Grant access → both service accounts → Cloud SQL Client. Add roles with
+- IAM → Grant access → each of the three service accounts → Cloud SQL Client. Add roles with
   "Grant access" or "Add another role": changing a principal's existing role in
   the edit panel replaces it.
 
@@ -292,7 +339,7 @@ gcloud sql users set-password postgres --instance=wobot-pg --prompt-for-password
 gcloud sql databases create wobot --instance=wobot-pg
 gcloud sql users create wobot-api@$PROJECT_ID.iam --instance=wobot-pg --type=cloud_iam_service_account
 gcloud sql users create <developer@gmail.com> --instance=wobot-pg --type=cloud_iam_user
-for sa in wobot-api wobot-migrator; do
+for sa in wobot-api wobot-migrator wobot-ingest; do
   for role in roles/cloudsql.client roles/cloudsql.instanceUser; do
     gcloud projects add-iam-policy-binding $PROJECT_ID \
       --member="serviceAccount:$sa@$PROJECT_ID.iam.gserviceaccount.com" --role=$role
@@ -307,8 +354,8 @@ gcloud sql instances describe wobot-pg
 gcloud sql users list --instance=wobot-pg
 gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
   --filter="bindings.members~^serviceAccount:wobot-" --format="table(bindings.role,bindings.members)"
-# 4 rows: cloudsql.client and cloudsql.instanceUser for each service account
-# (a fifth, run.developer for wobot-deployer, once section 11 is done)
+# 6 rows: cloudsql.client and cloudsql.instanceUser for each service account
+# (a seventh, run.developer for wobot-deployer, once section 11 is done)
 ```
 
 ## 8. Database bootstrap
@@ -334,6 +381,7 @@ SQL Studio, database `wobot`, user `postgres`, built-in authentication.
    ```sql
    GRANT wobot_migrator TO "wobot-migrator@<PROJECT_ID>.iam";
    GRANT wobot_api TO "wobot-api@<PROJECT_ID>.iam";
+   GRANT wobot_ingest TO "wobot-ingest@<PROJECT_ID>.iam";
    GRANT wobot_migrator TO "<developer@gmail.com>";
    ```
 
@@ -357,7 +405,7 @@ Verify in Cloud SQL Studio:
 -- app, knowledge and ops, all owned by wobot_migrator
 SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace
 WHERE nspname IN ('app', 'knowledge', 'ops');
--- exactly the three memberships above
+-- exactly the four memberships above
 SELECT g.rolname, m.rolname FROM pg_auth_members am
 JOIN pg_roles g ON g.oid = am.roleid JOIN pg_roles m ON m.oid = am.member
 WHERE g.rolname LIKE 'wobot\_%' AND m.rolname <> 'postgres';
@@ -529,6 +577,72 @@ workflow's version check fails; hand it back with
 A rollback does not undo migrations, which is why schema changes follow
 expand/contract: the previous revision must keep working on the newer schema.
 
+### Ingestion job
+
+Downloads the product catalog, stores it as knowledge and publishes a version
+(`backend/README.md`, "Knowledge ingestion"). It relies on what sections 2–8
+set up for `wobot-ingest`: the Drive API, the account, the secret, the
+knowledge bucket, the database user and its group role.
+
+**Drive:** open the catalog in Google Drive → Share → add
+`wobot-ingest@$PROJECT_ID.iam.gserviceaccount.com` as Viewer, with "Notify
+people" off. Drive access is not an IAM role: the file's owner grants and
+revokes it, outside the project, and the job asks for a token with the
+`drive.readonly` scope. The file must be a stored `.xlsx`, not a Google Sheet.
+Its ID is the part of its URL after `/d/`; it is set on the job and never
+enters the repository.
+
+**Console:** Cloud Run → Jobs → Deploy container.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Image | `api` at the commit's tag | Same image as the API |
+| Name / region | `wobot-ingest`, `asia-east1` | |
+| Tasks | 1 | Two runs would race to publish, and one would fail |
+| Command / arguments | `wobot-ingest` / `run` | |
+| Retries per failed task | 1 | A network or provider failure may pass the second time; stored rows are reused, so a retry repeats no paid call |
+| Task timeout | 30 minutes | |
+| Memory | 1 GiB | |
+| Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-ingest@$PROJECT_ID.iam`, `KNOWLEDGE_BUCKET`, `PRODUCT_CATALOG_FILE_ID` | `APP_VERSION` is recorded on every run |
+| Secret as variable | `OPENAI_API_KEY` from `openai-api-key`, version `1` | |
+| Service account | `wobot-ingest` | Its database login, bucket, secret and Drive access all follow from it |
+| Cloud SQL connections | None | |
+
+Equivalent:
+
+```sh
+gcloud run jobs deploy wobot-ingest --image "$IMAGE" --region $REGION \
+  --command wobot-ingest --args run --tasks 1 --max-retries 1 --task-timeout 30m --memory 1Gi \
+  --service-account wobot-ingest@$PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-ingest@$PROJECT_ID.iam,KNOWLEDGE_BUCKET=$KNOWLEDGE_BUCKET,PRODUCT_CATALOG_FILE_ID=<FILE_ID>" \
+  --set-secrets OPENAI_API_KEY=openai-api-key:1
+gcloud run jobs execute wobot-ingest --region $REGION --wait
+```
+
+The job exits non-zero when a run fails, so the execution shows as failed. A
+run that finds the content unchanged ends as `no_change` and embeds nothing.
+`--args run,--policy,dry-run` on `execute` builds and validates a version
+without publishing it.
+
+Verify:
+
+```sh
+gcloud run jobs executions list --job wobot-ingest --region $REGION --limit 3
+# One structured line per stage; the last one carries the outcome:
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-ingest" AND jsonPayload.stage="finished"' \
+  --limit 3 --format="table(timestamp, jsonPayload.status, jsonPayload.counts)"
+gcloud storage ls gs://$KNOWLEDGE_BUCKET/sha256/   # one object per distinct file
+```
+
+Then in Cloud SQL Studio:
+
+```sql
+SELECT a.index_version_id, a.revision, a.published_at, v.status, v.validation_report
+FROM knowledge.active_knowledge a JOIN knowledge.index_versions v USING (index_version_id);
+SELECT started_at, status, code_version, counts, errors
+FROM ops.ingestion_runs ORDER BY started_at DESC LIMIT 3;
+```
+
 ## 10. Firebase Authentication
 
 Firebase runs on the same project. The app signs in with Google through
@@ -696,15 +810,16 @@ gcloud iam workload-identity-pools providers describe wobot --location=global \
 - IAM → Grant access → `wobot-deployer` → Cloud Run Developer.
 - Artifact Registry → select `wobot` → Permissions → Add principal →
   Artifact Registry Writer.
-- Service Accounts → `wobot-api`, then `wobot-migrator` → Principals with
-  access → Grant access → `wobot-deployer` → Service Account User.
+- Service Accounts → `wobot-api`, `wobot-migrator`, then `wobot-ingest` →
+  Principals with access → Grant access → `wobot-deployer` → Service Account
+  User.
 
 | Role | Scope | Why |
 | --- | --- | --- |
 | Workload Identity User | `wobot-deployer`, for this repository ID | Workflows impersonate the deployer |
 | Cloud Run Developer | Project | Update and run the job, deploy the service; no IAM changes |
 | Artifact Registry Writer | `wobot` repository | Push images, but not delete them |
-| Service Account User | `wobot-api`, `wobot-migrator` | Deploy code that runs as these two, and no other service account |
+| Service Account User | `wobot-api`, `wobot-migrator`, `wobot-ingest` | Deploy code that runs as these three, and no other service account |
 
 Impersonation rather than granting roles to the federated identity directly:
 every API accepts a service account's token, while not every resource accepts
@@ -728,7 +843,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID --role=roles/run.developer \
   --member="serviceAccount:$DEPLOYER"
 gcloud artifacts repositories add-iam-policy-binding $AR_REPO --location=$REGION \
   --role=roles/artifactregistry.writer --member="serviceAccount:$DEPLOYER"
-for sa in wobot-api wobot-migrator; do
+for sa in wobot-api wobot-migrator wobot-ingest; do
   gcloud iam service-accounts add-iam-policy-binding $sa@$PROJECT_ID.iam.gserviceaccount.com \
     --role=roles/iam.serviceAccountUser --member="serviceAccount:$DEPLOYER"
 done
@@ -743,7 +858,7 @@ gcloud iam service-accounts get-iam-policy $DEPLOYER --format="yaml(bindings)"
 gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
   --filter="bindings.members:wobot-deployer@" --format="value(bindings.role)"   # only run.developer
 gcloud artifacts repositories get-iam-policy $AR_REPO --location=$REGION --format="yaml(bindings)"
-for sa in wobot-api wobot-migrator; do
+for sa in wobot-api wobot-migrator wobot-ingest; do
   gcloud iam service-accounts get-iam-policy $sa@$PROJECT_ID.iam.gserviceaccount.com --format="yaml(bindings)"
 done
 ```
@@ -773,6 +888,8 @@ Merging a pull request that changes `backend/**` or either workflow deploys it:
    the run before the API changes.
 4. `wobot-api` deployed with that image and `APP_VERSION=<commit sha>`.
 5. `/health` must report the commit, or the run fails.
+6. `wobot-ingest` updated to that image and `APP_VERSION`, but not executed:
+   ingestion runs by hand or on its schedule.
 
 Deploys run one at a time; a newer push waits for the running one. To retry,
 open the run and choose Re-run failed jobs, or run the workflow manually on
@@ -798,7 +915,7 @@ Wobot's roles.
 | API: 3 instances × (pool 2 + overflow 2) | 12 |
 | Migration job | 1 |
 | Developer (Cloud SQL Studio or proxy) | 2 |
-| Ingestion job (phase A) | 4 |
+| Ingestion job (pool 2 + overflow 2) | 4 |
 | **Total** | **19 of 22** |
 
 Cap the API at the [service level](https://docs.cloud.google.com/run/docs/configuring/max-instances)
