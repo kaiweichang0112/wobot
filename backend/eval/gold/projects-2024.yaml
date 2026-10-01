@@ -1,0 +1,43 @@
+# Fixture: every project under "2024 Research projects", field by field.
+# Source: https://www.grc.yzu.edu.tw/projects
+# - title_zh, title_en, funder: copied as the page writes them; '' when absent.
+#   funder is the whole text before the period, both languages.
+# - period_start, period_end: the dates as YYYY-MM-DD or YYYY/MM/DD. If the page states
+#   a date that does not exist, write it exactly as the page does.
+# - amount_ntd: the amount as a whole number, without "NTD" or commas.
+- title_zh: '高端顯示科技：銀髮健康照護之新興科技導入需求分析研究報告'
+  title_en: 'Advanced Display Technologies: Research Report on the Adoption Needs of Emerging Technologies in Elderly Health Care'
+  funder: '台灣智慧醫養產業發展協會 Taiwan Intelligent HealthCare Association'
+  period_start: '2024/10/11'
+  period_end: '2025/08/31'
+  amount_ntd: '200,000'
+- title_zh: '結合智慧水表與智慧電表數據進行居家長者生活作息分析及應用'
+  title_en: 'Integration of smart water and electricity meters for analyzing daily living patterns of older adults in home environments'
+  funder: '國科會 National Council of Science and Technology'
+  period_start: '2024/08/01'
+  period_end: '2026/07/31'
+  amount_ntd: '1,900,000'
+- title_zh: '協助照護者輔具導入長照機構（世大智科）'
+  title_en: 'Assisting Caregivers in Introducing Assistive Devices into Long-Term Care Institutions (GTech)'
+  funder: '工業技術研究院 Industrial Technology Research Institute'
+  period_start: '2024/06/28'
+  period_end: '2024/09/30'
+  amount_ntd: '150,000'
+- title_zh: '照護科技平台整合暨資料分析推動 採購案（世大智科）'
+  title_en: 'Procurement Project for the Integration of Care Technology Platforms and Data Analysis Promotion (GTech)'
+  funder: '資訊工業策進會 Institute for Information Industry'
+  period_start: '2024/06/12'
+  period_end: '2024/10/31'
+  amount_ntd: '611,000'
+- title_zh: '長者住宅用電與用水之生活作息分析'
+  title_en: 'Analysis of Daily Routines in Elderly Housing Based on Electricity and Water Usage'
+  funder: '台灣電力公司/工業技術研究院 Taiwan Power Company/Industrial Technology Research Institute'
+  period_start: '2024/05/21'
+  period_end: '2025/08/31'
+  amount_ntd: '350,000'
+- title_zh: '長者精準健康促進系統建立與場域實證計畫（世大智科）'
+  title_en: 'Establishment and Field Validation of Precision Health Promotion System for the Elderly (GTech)'
+  funder: '經濟部 Ministry of Economic Affairs'
+  period_start: '2024/01/09'
+  period_end: '2024/12/08'
+  amount_ntd: '2,000,000'

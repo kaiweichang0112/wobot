@@ -1,0 +1,214 @@
+# The seed questions (docs/evaluation/seed-questions.md), with what scores each one.
+# CASE-019, products by the year the project adopted them, was dropped: the workbook
+# states that year for only some products, and it is not what people ask about.
+# Questions were drafted with AI; references and labels come from a person reading the
+# sources (backend/eval/gold). Splits are stratified by scenario: tune on dev only, and
+# keep related questions, such as the three on the same students, in one split.
+dataset: seed-v1
+query_time: "2026-09-23T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  - case_id: CASE-001
+    scenario: organization_fact
+    split: dev
+    user_input: GRC 是哪一年成立的？
+    expected_behavior: State the founding year the GRC home page gives.
+    pending: needs the GRC home page (step A6) and a reference answer
+  - case_id: CASE-002
+    scenario: organization_fact
+    split: heldout
+    user_input: GRC 的地址與聯絡電話是什麼？
+    expected_behavior: Give the address and phone number from the GRC home page.
+    pending: needs the GRC home page (step A6) and a reference answer
+  - case_id: CASE-003
+    scenario: person_profile
+    split: dev
+    user_input: 請根據 GRC 官網介紹徐業良的研究領域。
+    expected_behavior: Summarize the research interests stated on the profile page.
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
+  - case_id: CASE-004
+    scenario: relative_date_list
+    split: heldout
+    user_input: 請完整列出徐業良近五年的演講，包含標題、日期及有記載的地點。
+    expected_behavior: Resolve "the last five years" from the query time and list every talk in it.
+    pending: needs the window "the last five years" defined and its talks labelled
+  - case_id: CASE-005
+    scenario: fixed_date_list
+    split: dev
+    user_input: 請完整列出徐業良 2024 年的演講，並附可點擊來源。
+    expected_behavior: List every talk dated 2024, each with its link; leave out none.
+    check:
+      kind: list
+      records: lecture
+      where: {year: 2024}
+      gold: {file: speeches-2024.txt, as: speech}
+  - case_id: CASE-006
+    scenario: yearly_student_list
+    split: dev
+    user_input: GRC 2022 年的碩士畢業生有哪些？請完整列出姓名與論文題目。
+    expected_behavior: List every 2022 master graduate with the thesis title.
+    check:
+      kind: list
+      records: student
+      where: {degree: master, graduation_year: 2022}
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2022]}
+      fields: [thesis_title_zh]
+  - case_id: CASE-007
+    scenario: year_isolation
+    split: dev
+    user_input: 請列出 GRC 2021 年碩士畢業生的姓名與英文論文題目。
+    expected_behavior: List only the 2021 master graduates, with English thesis titles.
+    check:
+      kind: list
+      records: student
+      where: {degree: master, graduation_year: 2021}
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2021]}
+      fields: [thesis_title_en]
+  - case_id: CASE-008
+    scenario: multi_year_count
+    split: dev
+    user_input: 請分年度列出 GRC 2021、2022 年碩士畢業生與各年人數。
+    expected_behavior: List the 2021 and 2022 master graduates by year, with each year's count.
+    check:
+      kind: list
+      records: student
+      where: {degree: master, graduation_year: {in: [2021, 2022]}}
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2021, 2022]}
+  - case_id: CASE-009
+    scenario: product_overview
+    split: dev
+    user_input: G-Tech 的主要產品有哪些？
+    expected_behavior: Name the main products the G-Tech website presents.
+    pending: needs the G-Tech pages (step A6) and a reference answer
+  - case_id: CASE-010
+    scenario: product_feature
+    split: dev
+    user_input: WhizPad 安心臥智慧床墊提供哪些照護功能？
+    expected_behavior: List the care functions the sources state for WhizPad.
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
+  - case_id: CASE-011
+    scenario: installation_requirement
+    split: heldout
+    user_input: G-Tech 官網介紹的智慧床墊是否需要插電與 Wi-Fi？請區分床墊與其他系統設備的說明。
+    expected_behavior: Separate what the mattress needs from what other devices need; claim nothing unstated.
+    pending: needs the G-Tech pages (step A6) and a reference answer
+  - case_id: CASE-012
+    scenario: organization_contact
+    split: dev
+    user_input: 我要向 G-Tech 詢問產品，官網提供哪些聯絡方式？
+    expected_behavior: Give the contact channels the G-Tech website lists.
+    pending: needs the G-Tech pages (step A6) and a reference answer
+  - case_id: CASE-013
+    scenario: product_use
+    split: dev
+    user_input: WhizToys 運動地墊遊戲平台主要用於哪些活動或訓練？
+    expected_behavior: Describe the activities and training the sources state.
+    pending: needs the G-Tech pages (step A6) and its relevant items labelled
+  - case_id: CASE-014
+    scenario: image_reading
+    split: dev
+    user_input: 請列出指定產品說明圖中標示的監測或提醒功能。
+    expected_behavior: List the functions the chosen image labels.
+    pending: needs an image fixture (step A7)
+  - case_id: CASE-015
+    scenario: image_values
+    split: heldout
+    user_input: 請依指定規格圖列出其中的數值與單位，無法辨識的部分請說明。
+    expected_behavior: Give each value with its unit and say which parts are unreadable.
+    pending: needs an image fixture (step A7)
+  - case_id: CASE-016
+    scenario: product_entity
+    split: dev
+    user_input: OGA 雷達毫米波生理感測裝置是哪家公司的產品？
+    expected_behavior: Name the company the catalog gives for the product.
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
+  - case_id: CASE-017
+    scenario: product_usage
+    split: heldout
+    user_input: iProték 智慧床墊的主要功能與使用方式是什麼？
+    expected_behavior: Give the functions and usage the catalog states.
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
+  - case_id: CASE-018
+    scenario: full_candidate_list
+    split: dev
+    user_input: 請完整列出產品表中分類為「臥床監測、離床預警、壓傷防護」的產品與公司。
+    expected_behavior: List every product of the category with its company; leave out none.
+    check:
+      kind: list
+      records: product
+      where: {category_l2_code: "1-3"}
+      gold: {file: products-bed-monitoring.txt, as: product}
+  - case_id: CASE-020
+    scenario: neutral_comparison
+    split: heldout
+    user_input: 請依資料比較 iProték 智慧床墊與 WhizPad 安心臥智慧床墊，不要因公司而偏好任一項。
+    expected_behavior: Compare both products on the same criteria without favouring either.
+    pending: needs the answer agent (phase B) and a reference answer
+  - case_id: CASE-021
+    scenario: insufficient_need
+    split: dev
+    user_input: 推薦一個智慧照護產品給我。
+    expected_behavior: Ask for the conditions that decide the recommendation before recommending.
+    pending: needs the answer agent (phase B) and the expected follow-up questions
+  - case_id: CASE-022
+    scenario: need_fit
+    split: dev
+    user_input: 家中長者臥床，主要需要離床預警，希望不用配戴裝置；請推薦一項適合居家使用的產品並解釋理由。
+    expected_behavior: Recommend one product that fits, with reasons; ask only about decisive gaps.
+    pending: needs the answer agent (phase B) and a reference answer
+  - case_id: CASE-023
+    scenario: multi_turn_carry
+    split: dev
+    user_input: "第 1 輪：我想找臥床監測產品。第 2 輪：在居家使用，最在意離床提醒，不希望長者配戴裝置。"
+    expected_behavior: Carry the first turn's need and do not ask again what was answered.
+    pending: needs the answer agent (phase B) and a two-turn fixture
+  - case_id: CASE-024
+    scenario: need_change
+    split: heldout
+    user_input: 先前需求是臥床監測；現在改成日照中心的團體認知與運動活動，請重新推薦一項產品。
+    expected_behavior: Drop the old need and recommend for the new one.
+    pending: needs the answer agent (phase B) and a conversation fixture
+  - case_id: CASE-025
+    scenario: english_recommendation
+    split: dev
+    user_input: Recommend one smart-care product for detecting falls at home without a wearable device. Explain your choice using the available catalog.
+    expected_behavior: Recommend one fitting product in English, citing the catalog.
+    pending: needs the answer agent (phase B) and a reference answer
+  - case_id: CASE-026
+    scenario: missing_field
+    split: heldout
+    user_input: 只依產品表，請告訴我 iProték 智慧床墊的確切售價與目前庫存。
+    expected_behavior: Say the catalog has no price or stock; invent neither.
+    pending: needs the answer agent (phase B)
+  - case_id: CASE-027
+    scenario: pdf_boundary
+    split: dev
+    user_input: 請打開 GRC 2025 年 12 月 5 日演講附的 PDF，摘要第 3 頁內容。
+    expected_behavior: Give the PDF link and say its content was not read.
+    pending: needs the answer agent (phase B)
+  - case_id: CASE-028
+    scenario: excluded_source
+    split: dev
+    user_input: 請整理 GRC Internal Archive 裡最新的內部會議紀錄。
+    expected_behavior: Say the internal archive is not among the sources.
+    pending: needs the answer agent (phase B)
+  - case_id: CASE-029
+    scenario: no_data
+    split: heldout
+    user_input: 請介紹產品代號 RAG-TEST-NOT-IN-CORPUS-0001 的功能與售價。
+    expected_behavior: Say no such product is in the sources.
+    pending: needs the answer agent (phase B)
+  - case_id: CASE-030
+    scenario: missing_value_list
+    split: dev
+    user_input: 請列出 fixture 指定日期範圍的全部演講；其中有一筆沒有地點，仍需保留該筆。
+    expected_behavior: Keep the talk without a location in the list.
+    pending: needs a speech fixture with a talk without a location

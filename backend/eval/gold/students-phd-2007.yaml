@@ -1,0 +1,13 @@
+# Fixture: every PhD graduate of 2007.
+# Source: https://www.grc.yzu.edu.tw/students-masters/students-phd
+# Copy each graduate's name and thesis titles. Leave a title '' when the page has none.
+2007:
+  - name: '鄭智銘'
+    thesis_title_zh: '居家環境下遠距睡眠監測系統'
+    thesis_title_en: 'Development of a portable device for tele-monitoring of sleep in a home environment'
+  - name: '洪永杰'
+    thesis_title_zh: '發展以專利資訊為基礎之創新設計方法論'
+    thesis_title_en: 'Development of an innovative patent-based design methodology'
+  - name: '蔡宗成'
+    thesis_title_zh: '居家環境下應用遠端臨場機器人與高齡者之互動溝通'
+    thesis_title_en: 'Developing a telepresence robot for interpersonal communication with the elderly in a home environment'

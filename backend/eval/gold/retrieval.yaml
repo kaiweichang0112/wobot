@@ -1,0 +1,30 @@
+# Retrieval cases: for each question, every item whose text helps answer it.
+# Sources so far: the product catalog and the GRC website (G-Tech pages come in step A6).
+#
+# Name each item with one of:
+#   - profile: '<a heading on the 徐業良 page, such as Research Interests, or 簡介>'
+#   - product: {name: '<產品名稱>', company: '<公司名稱>'}
+#   - speech: '<the talk as one line, as the page shows it>'
+#   - publication: '<the item as one line, as the page shows it>'
+#   - student: '<name>'
+#   - project: '<the project title, Chinese or English>'
+CASE-003:
+  question: 請根據 GRC 官網介紹徐業良的研究領域。
+  relevant:
+    - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
+    - profile: '徐教授2015年執行經濟部「產學研價值創造計畫」，在計畫要求下帶領學生團隊成立新創公司「世大智科」，從研究開發進入生活應用，對老人福祉科技產品設計、創新創業有深刻經驗與體會'
+    - profile: 'Smart product design'
+    - profile: 'Gerontechnology'
+    - profile: 'Biography'
+CASE-010:
+  question: WhizPad 安心臥智慧床墊提供哪些照護功能？
+  relevant:
+    - product: {name: 'WhizPad 安心臥智慧床墊', company: '世大智科股份有限公司'}
+CASE-016:
+  question: OGA 雷達毫米波生理感測裝置是哪家公司的產品？
+  relevant:
+    - product: {name: 'OGA雷達毫米波生理感測裝置', company: '尚茂智能科技股份有限公司'}
+CASE-017:
+  question: iProték 智慧床墊的主要功能與使用方式是什麼？
+  relevant:
+    - product: {name: 'iProték 智慧床墊', company: '嘉碩生醫電子股份有限公司'}

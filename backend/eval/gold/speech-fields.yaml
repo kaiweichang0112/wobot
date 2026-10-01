@@ -1,0 +1,107 @@
+# Speech fields: the title, event and location of each talk, by the rules in README.md.
+# Source: https://www.grc.yzu.edu.tw/speeches, where each entry below appears.
+# Leave a value '' when the entry states none.
+- entry: |-
+    "From Idea to Product Our Journey as a Gerontechnology Startup in Taiwan," plenary speech, Compassionate AI-IoT for Resilient Older Adult Care and Network System International Symposium, Seoul, Korea, 2025/12/05 PDF
+  title: 'From Idea to Product Our Journey as a Gerontechnology Startup in Taiwan'
+  event: 'Compassionate AI-IoT for Resilient Older Adult Care and Network System International Symposium'
+  location: 'Seoul, Korea'
+- entry: |-
+    “Real-world implementation of smart products in aged care: Gerontechnology development in Taiwan,” keynote speech, Yuan Ze University & Atma Jaya Catholic University of Indonesia
+
+    International Joint Webinar: “Aging and Gerontechnology”, 2024/10/09 PDF
+  title: 'Real-world implementation of smart products in aged care: Gerontechnology development in Taiwan'
+  event: 'Yuan Ze University & Atma Jaya Catholic University of Indonesia International Joint Webinar: “Aging and Gerontechnology”'
+  location: 'Indonesia'
+- entry: |-
+    “Roles and opportunities of gerontechnology for a sustainable super aged society,” plenary speech, 2022 Global Age-friendly Industry Policy Forum, Daegu, Korea, 2022/10/24 PDF
+  title: 'Roles and opportunities of gerontechnology for a sustainable super aged society'
+  event: '2022 Global Age-friendly Industry Policy Forum'
+  location: 'Daegu, Korea'
+- entry: |-
+    “Gerontechnology Landscape and Opportunities – Start-up experience from Taiwan,” plenary speech, Gerontechnology Conference – Lingnan University, Hong Kong, 2021/04/15 PDF
+  title: 'Gerontechnology Landscape and Opportunities – Start-up experience from Taiwan'
+  event: 'Gerontechnology Conference – Lingnan University'
+  location: 'Hong Kong'
+- entry: |-
+    “Gerontechnology: From research to daily applications,” Keynote speech in “Community, welfare, technology for society in the 21st century” Nara Women's University, Social Cooperation Center, 2019/01/25 PDF
+  title: 'Gerontechnology: From research to daily applications'
+  event: '“Community, welfare, technology for society in the 21st century” Nara Women''s University, Social Cooperation Center'
+  location: 'Nara'
+- entry: |-
+    “We are designers – Smart Living, IoT, Gerontechnology, Keynote speech in Jockey Club Smart Ageing Hub Opening Ceremony & Symposium,” the Hong Kong Polytechnic University, 2018/10/27 PDF
+  title: 'We are designers – Smart Living, IoT, Gerontechnology'
+  event: 'Jockey Club Smart Ageing Hub Opening Ceremony & Symposium'
+  location: 'Hong Kong'
+- entry: |-
+    “以智慧科技提升養老服務品質, 第三屆兩岸（合肥）健康養老產業合作論壇專題演講,” 2017/12/03 PDF
+  title: '以智慧科技提升養老服務品質'
+  event: '第三屆兩岸（合肥）健康養老產業合作論壇'
+  location: '合肥'
+- entry: |-
+    Facilitating the caring embracement between generations – gerontechnology design philosophy from the Sinophone world,” keynote speech, The 10th World Conference of Gerontechnology (ISG 2016), Nice, France, 2016/09/29 PDF
+  title: 'Facilitating the caring embracement between generations – gerontechnology design philosophy from the Sinophone world'
+  event: 'The 10th World Conference of Gerontechnology (ISG 2016)'
+  location: 'Nice, France'
+- entry: |-
+    “How technology may help Examples of gerontechnology developments,” plenary speech, MOST-JST Symposium on “ICT for Accessibility and Support of Older People,” 2016/04/11 PDF
+  title: 'How technology may help Examples of gerontechnology developments'
+  event: 'MOST-JST Symposium on “ICT for Accessibility and Support of Older People,”'
+  location: ''
+- entry: |-
+    Planning for the 2014 World Conference of Gerontechnology,” International Society of Gerontechnology 2012 World Conference Banquet, 2012/06/28
+  title: 'Planning for the 2014 World Conference of Gerontechnology'
+  event: 'International Society of Gerontechnology 2012 World Conference Banquet'
+  location: ''
+- entry: |-
+    “世大智科－從大學走向產業，” 第九屆台日照護產業高峰會趨勢論壇，2025/09/26 PDF
+  title: '世大智科－從大學走向產業'
+  event: '第九屆台日照護產業高峰會趨勢論壇'
+  location: ''
+- entry: |-
+    “高齡智慧科技的設計思維與創新應用，” 大林慈濟醫院「護理高齡研習會」，2025/08/28 PDF
+  title: '高齡智慧科技的設計思維與創新應用'
+  event: '大林慈濟醫院「護理高齡研習會」'
+  location: '大林'
+- entry: |-
+    “高齡智慧科技的設計思維與創新應用-以跌倒偵測與預防為例，” 國軍新竹醫院演講，2025/06/24 PDF
+  title: '高齡智慧科技的設計思維與創新應用-以跌倒偵測與預防為例'
+  event: '國軍新竹醫院'
+  location: '新竹'
+- entry: |-
+    “高齡科技應用實務與教學設計:跨領域合作與創新展望，” 長庚大學「高齡科技與創新服務」課程，2024/12/10 PDF
+  title: '高齡科技應用實務與教學設計:跨領域合作與創新展望'
+  event: '長庚大學「高齡科技與創新服務」課程'
+  location: '長庚大學'
+- entry: |-
+    “高齡科技智慧產品設計與創新，” 陽明交大跨專業長期照顧與管理碩士學位學程
+
+    「長期照護政策」課程講座，2024/09/10 PDF
+  title: '高齡科技智慧產品設計與創新'
+  event: '陽明交大跨專業長期照顧與管理碩士學位學程「長期照護政策」課程'
+  location: '陽明交大'
+- entry: |-
+    “大學甄選入學書審資料準備與面試技巧，”文華高中申請入學講座，2024/03/22 PDF
+  title: '大學甄選入學書審資料準備與面試技巧'
+  event: '文華高中申請入學'
+  location: '文華高中'
+- entry: |-
+    “Machine learning for designers,” GER 527 Technology in an Aging Society, Singapore University of Social Sciences, 2023/01/28 PDF
+  title: 'Machine learning for designers'
+  event: 'GER 527 Technology in an Aging Society'
+  location: 'Singapore'
+- entry: |-
+    “樂齡科技智慧產品設計，”資策會「家庭能源數據創新與服務模式探討－產業交流會」，2022/07/27 PDF
+  title: '樂齡科技智慧產品設計'
+  event: '資策會「家庭能源數據創新與服務模式探討－產業交流會」'
+  location: ''
+- entry: |-
+    “智慧科技於長照之應用.pdf，2021/12/10 PDF
+  title: '智慧科技於長照之應用'
+  event: ''
+  location: ''
+- entry: |-
+    “Gerontechnology for precision aged care and precision healthy ageing” The Chinese University of Hong Kong, Faculty of Medicine, the Nethersole School of Nursing Doctor of Nursing Programme (2021-22), NURS7024 Health Information Systems and Patient Care Technology, 2021/11/11 PDF
+  title: 'Gerontechnology for precision aged care and precision healthy ageing'
+  event: 'The Chinese University of Hong Kong, Faculty of Medicine, the Nethersole School of Nursing Doctor of Nursing Programme (2021-22), NURS7024 Health Information Systems and Patient Care Technology'
+  location: 'Hong Kong'

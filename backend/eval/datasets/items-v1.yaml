@@ -1,0 +1,70 @@
+# Questions about one talk, paper, thesis or project: what list-block chunks may dilute.
+# Used to compare chunk strategies (block against item), not for tuning answers.
+dataset: items-v1
+query_time: "2026-09-23T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  - case_id: ITEM-01
+    scenario: single_item
+    split: dev
+    user_input: 徐業良在土耳其伊斯坦堡的研討會上演講的題目是什麼？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-02
+    scenario: single_item
+    split: dev
+    user_input: 徐業良在韓國 KAIST 演講過什麼題目？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-03
+    scenario: single_item
+    split: dev
+    user_input: 徐業良有沒有到泰國演講過？題目是什麼？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-04
+    scenario: single_item
+    split: dev
+    user_input: 哪一篇期刊論文談到從動作感測床墊取得多層次資訊來做精準照護？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-05
+    scenario: single_item
+    split: dev
+    user_input: 有沒有關於失智症患者遊走行為的研究、論文或演講？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-06
+    scenario: single_item
+    split: dev
+    user_input: 「床墊裝置以及照護系統」這項專利在哪些國家申請過？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-07
+    scenario: single_item
+    split: dev
+    user_input: 研究中心有沒有執行過臺歐盟國際合作、關於失智患者健康老化生態系統的計畫？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
+  - case_id: ITEM-08
+    scenario: single_item
+    split: dev
+    user_input: 哪位碩士生的論文做了陪伴型機器人 Wobot？
+    expected_behavior: Retrieve the item the question is about.
+    check:
+      kind: retrieval
+      gold: {file: single-item-questions.yaml, key: expected}
