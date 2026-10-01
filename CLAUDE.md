@@ -19,6 +19,8 @@ DB_USER=wobot_migrator_user uv run alembic upgrade head
 DB_USER=wobot_migrator_user uv run alembic check
 DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file <path.xlsx> [--sources grc_website]
 DB_USER=wobot_ingest_user uv run wobot-ingest search "<query>"
+uv run wobot-eval check-gold
+uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -61,6 +63,11 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   as verbatim spans of their source (`knowledge/extraction.py`, enforced by CHECK
   constraints). Answers are cached by prompt version: changing the instructions,
   schema or request settings means bumping `PROMPT_VERSION`, which a test pins.
+- **Gold labels come from a person reading the sources** (`backend/eval/gold`), never
+  from parser or model output, which would only measure the system against itself.
+- **RAGAS scores evaluation and is a dev dependency**, kept installable by two pins in
+  `[tool.uv]` of `backend/pyproject.toml`; lifting either breaks it. Its usage reporting
+  stays off: `wobot/eval/__init__.py` sets `RAGAS_DO_NOT_TRACK`.
 - **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
   pgvector asyncpg codec: it rejects the text the type sends.
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the

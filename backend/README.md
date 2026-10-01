@@ -105,6 +105,18 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 - Each stage logs one line; on Cloud Run the lines are JSON with `run_id` and `stage`.
 - Exit code: 0 for `published`, `no_change` and `validated`; 1 for `failed`.
 
+## Evaluation
+
+`wobot-eval` scores an index version against labelled datasets with RAGAS: complete lists,
+exact fields and retrieval, all from item identities. RAGAS is a dev dependency, so this
+runs from a checkout. Labels are written by a person from the sources, never from system
+output. See `eval/README.md`.
+
+```bash
+uv run wobot-eval check-gold
+uv run wobot-eval run
+```
+
 ## Migrations
 
 ```bash
