@@ -173,7 +173,16 @@ async def test_membership_keeps_the_record_logical_key():
             )
 
 
-@pytest.mark.parametrize("table", ["student_records", "project_records", "list_item_records"])
+@pytest.mark.parametrize(
+    "table",
+    [
+        "student_records",
+        "project_records",
+        "list_item_records",
+        "lecture_records",
+        "llm_extractions",
+    ],
+)
 async def test_typed_record_tables_follow_the_knowledge_rights(table):
     connection = await connect(MIGRATOR_USER)
     try:
@@ -195,3 +204,58 @@ async def test_typed_record_tables_follow_the_knowledge_rights(table):
         "api_reads": True,
         "api_inserts": False,
     }
+
+
+ENTRY = "“Smart care,” keynote speech, Care Congress, Istanbul, Turkey, 2021/11/12"
+INSERT_LECTURE = (
+    "INSERT INTO knowledge.lecture_records (record_id, speaker, category, year_block, "
+    "entry_text, title, event, location, extraction_model, extraction_prompt_version) "
+    "VALUES ($1, '徐業良', 'keynote', '2021', $2, $3, $4, $5, 'test-model', 1)"
+)
+
+
+async def _lecture_record(connection: asyncpg.Connection) -> uuid.UUID:
+    return await connection.fetchval(
+        "INSERT INTO knowledge.records (record_type, logical_key, content_hash, raw) "
+        "VALUES ('lecture', 'lecture:test', 'a', '{}') RETURNING record_id"
+    )
+
+
+async def test_a_lecture_keeps_model_read_fields_that_its_entry_states():
+    async with rolled_back(INGEST_USER) as connection:
+        record_id = await _lecture_record(connection)
+        await connection.execute(
+            INSERT_LECTURE, record_id, ENTRY, "Smart care", "Care Congress", "Istanbul, Turkey"
+        )
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        ("Smart Care", None, None),  # not verbatim
+        (None, "Care Congress 2021", None),
+        (None, None, ""),
+    ],
+)
+async def test_a_lecture_rejects_a_model_read_field_its_entry_does_not_state(fields):
+    async with rolled_back(INGEST_USER) as connection:
+        record_id = await _lecture_record(connection)
+        with pytest.raises(asyncpg.CheckViolationError, match="_in_entry"):
+            await connection.execute(INSERT_LECTURE, record_id, ENTRY, *fields)
+
+
+@pytest.mark.parametrize(
+    ("output", "failure"),
+    [(None, None), ('{"title": null}', "refused: no")],
+    ids=["neither", "both"],
+)
+async def test_a_cached_answer_has_an_output_or_a_failure(output, failure):
+    async with rolled_back(INGEST_USER) as connection:
+        with pytest.raises(asyncpg.CheckViolationError, match="llm_extractions_outcome"):
+            await connection.execute(
+                "INSERT INTO knowledge.llm_extractions (purpose, input_hash, model, "
+                "prompt_version, input, output, failure, response_model, input_tokens, "
+                "output_tokens) VALUES ('test', 'h', 'm', 1, '{}', $1, $2, 'm', 0, 0)",
+                output,
+                failure,
+            )
