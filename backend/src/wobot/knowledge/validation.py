@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from wobot.knowledge.chunking.drafts import ChunkDraft
-from wobot.knowledge.records.products import ProductDraft
+from wobot.knowledge.records.drafts import RecordDraft
 
 # text-embedding-3-small rejects longer inputs.
 MAX_EMBEDDING_TOKENS = 8191
@@ -39,7 +39,7 @@ class ValidationReport:
 
 
 def check_products(
-    drafts: Sequence[ProductDraft], chunks: Sequence[ChunkDraft], *, current_year: int
+    drafts: Sequence[RecordDraft], chunks: Sequence[ChunkDraft], *, current_year: int
 ) -> ValidationReport:
     """Checks on the drafts alone, before anything is written."""
     report = ValidationReport(counts={"rows": len(drafts)})
@@ -47,7 +47,7 @@ def check_products(
         report.blocking.append("the catalog has no products")
     labels: dict[str, set[str]] = defaultdict(set)
     for draft in drafts:
-        row = f"row {draft.row_number}"
+        row = f"row {draft.locator['row']}"
         fields = draft.fields
         for name in ("product_name", "company_name"):
             if not fields[name]:
@@ -94,3 +94,38 @@ def check_version(
         report.blocking.append(f"{integrity['records_without_chunk']} records have no chunk")
     if integrity["chunks_without_embedding"]:
         report.blocking.append(f"{integrity['chunks_without_embedding']} chunks have no embedding")
+
+
+def check_pages(
+    drafts_by_page: Mapping[str, Sequence[RecordDraft]],
+    problems_by_page: Mapping[str, Sequence[str]],
+    chunks: Sequence[ChunkDraft],
+    *,
+    notes: Sequence[str] = (),
+) -> ValidationReport:
+    """Checks on a website's drafts, before anything is written.
+
+    A page that yields nothing, or whose parser met something it cannot read, blocks:
+    the page changed shape, and publishing would quietly drop its items. `notes` are
+    warnings from outside the pages, such as unknown pages in the sitemap.
+    """
+    report = ValidationReport(
+        counts={
+            "pages": len(drafts_by_page),
+            "records": sum(len(drafts) for drafts in drafts_by_page.values()),
+            "chunks": len(chunks),
+        }
+    )
+    for url, drafts in drafts_by_page.items():
+        if not drafts:
+            report.blocking.append(f"{url}: no records read")
+        report.blocking += [f"{url}: {problem}" for problem in problems_by_page.get(url, ())]
+        report.warnings += [warning for draft in drafts for warning in draft.warnings]
+    report.warnings += list(notes)
+    for chunk in chunks:
+        if chunk.token_count > MAX_EMBEDDING_TOKENS:
+            report.blocking.append(
+                f"chunk {chunk.context_header!r} has {chunk.token_count} tokens, "
+                f"over {MAX_EMBEDDING_TOKENS}"
+            )
+    return report

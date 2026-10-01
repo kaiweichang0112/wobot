@@ -171,3 +171,27 @@ async def test_membership_keeps_the_record_logical_key():
             await connection.execute(
                 ADD_MEMBER, version_id, record_id, "product:other", snapshot_id
             )
+
+
+@pytest.mark.parametrize("table", ["student_records", "project_records", "list_item_records"])
+async def test_typed_record_tables_follow_the_knowledge_rights(table):
+    connection = await connect(MIGRATOR_USER)
+    try:
+        rights = await connection.fetchrow(
+            "SELECT has_table_privilege('wobot_ingest', $1, 'INSERT') AS ingest_inserts, "
+            "has_table_privilege('wobot_ingest', $1, 'UPDATE') AS ingest_updates, "
+            "has_table_privilege('wobot_ingest', $1, 'DELETE') AS ingest_deletes, "
+            "has_table_privilege('wobot_api', $1, 'SELECT') AS api_reads, "
+            "has_table_privilege('wobot_api', $1, 'INSERT') AS api_inserts",
+            f"knowledge.{table}",
+        )
+    finally:
+        await connection.close()
+
+    assert dict(rights) == {
+        "ingest_inserts": True,
+        "ingest_updates": False,
+        "ingest_deletes": False,
+        "api_reads": True,
+        "api_inserts": False,
+    }

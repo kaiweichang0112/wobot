@@ -20,15 +20,25 @@ from wobot.knowledge.models import (
     IndexVersionChunk,
     IndexVersionRecord,
     IngestionRun,
+    ListItemRecord,
     ProductRecord,
+    ProjectRecord,
     Record,
     Source,
     SourceSnapshot,
+    StudentRecord,
 )
-from wobot.knowledge.records.products import RECORD_TYPE, ProductDraft
+from wobot.knowledge.records.drafts import RecordDraft
 
 # A record revision by its natural identity: (logical_key, content_hash).
 RecordRevision = tuple[str, str]
+# Each record type's own table; a section has none, its text lives in records.raw.
+TYPED_TABLES = {
+    "product": ProductRecord,
+    "student": StudentRecord,
+    "project": ProjectRecord,
+    "list_item": ListItemRecord,
+}
 
 
 # --- Content: append-only, and every write is safe to repeat ---------------------------
@@ -72,8 +82,8 @@ async def put_snapshot(
     )
 
 
-async def put_products(
-    conn: AsyncConnection, drafts: Sequence[ProductDraft]
+async def put_records(
+    conn: AsyncConnection, drafts: Sequence[RecordDraft]
 ) -> tuple[dict[RecordRevision, uuid.UUID], int]:
     """Store the revisions not stored yet; return every draft's record ID and the new count."""
     inserted = await conn.execute(
@@ -82,7 +92,7 @@ async def put_products(
         .returning(Record.record_id),
         [
             {
-                "record_type": RECORD_TYPE,
+                "record_type": draft.record_type,
                 "logical_key": draft.logical_key,
                 "content_hash": draft.content_hash,
                 "raw": draft.raw,
@@ -91,21 +101,28 @@ async def put_products(
         ],
     )
     new = len(inserted.all())
-    revisions = [(draft.logical_key, draft.content_hash) for draft in drafts]
-    rows = await conn.execute(
-        select(Record.record_id, Record.logical_key, Record.content_hash).where(
-            tuple_(Record.logical_key, Record.content_hash).in_(revisions)
+    record_ids: dict[RecordRevision, uuid.UUID] = {}
+    revisions = list({draft.revision for draft in drafts})
+    for batch in _batches(revisions):
+        rows = await conn.execute(
+            select(Record.record_id, Record.logical_key, Record.content_hash).where(
+                tuple_(Record.logical_key, Record.content_hash).in_(batch)
+            )
         )
-    )
-    record_ids = {(row.logical_key, row.content_hash): row.record_id for row in rows}
-    await conn.execute(
-        insert(ProductRecord).on_conflict_do_nothing(index_elements=[ProductRecord.record_id]),
-        [
-            {"record_id": record_ids[(draft.logical_key, draft.content_hash)], **draft.fields}
-            for draft in drafts
-        ],
-    )
+        record_ids |= {(row.logical_key, row.content_hash): row.record_id for row in rows}
+    for record_type, table in TYPED_TABLES.items():
+        typed = [draft for draft in drafts if draft.record_type == record_type]
+        if typed:
+            await conn.execute(
+                insert(table).on_conflict_do_nothing(index_elements=[table.record_id]),
+                [{"record_id": record_ids[draft.revision], **draft.fields} for draft in typed],
+            )
     return record_ids, new
+
+
+def _batches(values: list[Any], size: int = 500) -> list[list[Any]]:
+    # Keeps each IN list well under the driver's 32,767 parameters.
+    return [values[start : start + size] for start in range(0, len(values), size)] or [[]]
 
 
 async def put_chunks(
@@ -197,19 +214,6 @@ async def put_embeddings(
 
 
 @dataclass(frozen=True)
-class ActiveState:
-    """What the active version holds for one source: the baseline a run compares against."""
-
-    index_version_id: int | None
-    revision: int
-    embedding_config_id: str | None
-    strategies: dict[str, int]
-    snapshot_sha256s: frozenset[str]
-    record_revisions: frozenset[RecordRevision]
-    chunk_hashes: frozenset[str]
-
-
-@dataclass(frozen=True)
 class Member:
     """One record in a version, and where it sat in the snapshot it came from."""
 
@@ -217,6 +221,48 @@ class Member:
     logical_key: str
     snapshot_id: uuid.UUID
     locator: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ActiveRecord:
+    source_id: str
+    member: Member
+    content_hash: str
+    snapshot_sha256: str
+
+
+@dataclass(frozen=True)
+class ActiveChunk:
+    source_id: str
+    chunk_id: uuid.UUID
+    content_hash: str
+    strategy: str
+    strategy_version: int
+
+
+@dataclass(frozen=True)
+class ActiveState:
+    """The active version, source by source: what a run compares with, and carries over.
+
+    A run that reads only some sources keeps the others exactly as they are published.
+    """
+
+    index_version_id: int | None
+    revision: int
+    embedding_config_id: str | None
+    records: tuple[ActiveRecord, ...] = ()
+    chunks: tuple[ActiveChunk, ...] = ()
+
+    def record_revisions(self, source_id: str) -> frozenset[RecordRevision]:
+        return frozenset(
+            (r.member.logical_key, r.content_hash) for r in self.records if r.source_id == source_id
+        )
+
+    def chunk_hashes(self, source_id: str) -> frozenset[str]:
+        return frozenset(c.content_hash for c in self.chunks if c.source_id == source_id)
+
+    def snapshot_sha256s(self, source_id: str) -> frozenset[str]:
+        return frozenset(r.snapshot_sha256 for r in self.records if r.source_id == source_id)
 
 
 async def start_run(
@@ -253,46 +299,64 @@ async def finish_run(
     )
 
 
-async def read_active(conn: AsyncConnection, source_id: str) -> ActiveState:
+async def read_active(conn: AsyncConnection) -> ActiveState:
     pointer = (
         await conn.execute(select(ActiveKnowledge.index_version_id, ActiveKnowledge.revision))
     ).one()
     version_id = pointer.index_version_id
     if version_id is None:
-        return ActiveState(None, pointer.revision, None, {}, frozenset(), frozenset(), frozenset())
-    version = (
-        await conn.execute(
-            select(IndexVersion.embedding_config_id, IndexVersion.strategies).where(
-                IndexVersion.index_version_id == version_id
-            )
-        )
-    ).one()
-    members = (
-        await conn.execute(
-            select(Record.logical_key, Record.content_hash, SourceSnapshot.content_sha256)
-            .join(IndexVersionRecord, IndexVersionRecord.record_id == Record.record_id)
-            .join(SourceSnapshot, SourceSnapshot.snapshot_id == IndexVersionRecord.snapshot_id)
-            .where(
-                IndexVersionRecord.index_version_id == version_id,
-                SourceSnapshot.source_id == source_id,
-            )
-        )
-    ).all()
-    # A2 has one source, so every chunk of the version is the catalog's; A4 narrows this.
-    chunk_hashes = await conn.scalars(
-        select(Chunk.content_hash)
-        .join(IndexVersionChunk, IndexVersionChunk.chunk_id == Chunk.chunk_id)
-        .where(IndexVersionChunk.index_version_id == version_id)
+        return ActiveState(None, pointer.revision, None)
+    config_id = await conn.scalar(
+        select(IndexVersion.embedding_config_id).where(IndexVersion.index_version_id == version_id)
     )
+    members = await conn.execute(
+        select(
+            SourceSnapshot.source_id,
+            IndexVersionRecord.record_id,
+            IndexVersionRecord.logical_key,
+            IndexVersionRecord.snapshot_id,
+            IndexVersionRecord.locator,
+            Record.content_hash,
+            SourceSnapshot.content_sha256,
+        )
+        .join(Record, Record.record_id == IndexVersionRecord.record_id)
+        .join(SourceSnapshot, SourceSnapshot.snapshot_id == IndexVersionRecord.snapshot_id)
+        .where(IndexVersionRecord.index_version_id == version_id)
+    )
+    records = tuple(
+        ActiveRecord(
+            source_id=row.source_id,
+            member=Member(row.record_id, row.logical_key, row.snapshot_id, row.locator),
+            content_hash=row.content_hash,
+            snapshot_sha256=row.content_sha256,
+        )
+        for row in members
+    )
+    chunks = await conn.execute(_ACTIVE_CHUNKS, {"version": version_id})
     return ActiveState(
         index_version_id=version_id,
         revision=pointer.revision,
-        embedding_config_id=version.embedding_config_id,
-        strategies=version.strategies,
-        snapshot_sha256s=frozenset(member.content_sha256 for member in members),
-        record_revisions=frozenset((m.logical_key, m.content_hash) for m in members),
-        chunk_hashes=frozenset(chunk_hashes),
+        embedding_config_id=config_id,
+        records=records,
+        chunks=tuple(ActiveChunk(**row._mapping) for row in chunks),
     )
+
+
+# A chunk belongs to the source of the records it was built from, as the version lists them.
+_ACTIVE_CHUNKS = text(
+    """
+    SELECT DISTINCT snapshot.source_id, chunk.chunk_id, chunk.content_hash,
+           chunk.strategy, chunk.strategy_version
+    FROM knowledge.index_version_chunks AS member_chunk
+    JOIN knowledge.chunks AS chunk ON chunk.chunk_id = member_chunk.chunk_id
+    JOIN knowledge.chunk_records AS link ON link.chunk_id = chunk.chunk_id
+    JOIN knowledge.index_version_records AS member
+      ON member.record_id = link.record_id
+     AND member.index_version_id = member_chunk.index_version_id
+    JOIN knowledge.source_snapshots AS snapshot ON snapshot.snapshot_id = member.snapshot_id
+    WHERE member_chunk.index_version_id = :version
+    """
+)
 
 
 async def create_version(

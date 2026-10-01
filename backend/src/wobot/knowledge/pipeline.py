@@ -1,17 +1,16 @@
-"""One ingestion run of the product catalog, from file bytes to a published version.
+"""One ingestion run: every listed source, from fetched bytes to a published version.
 
 Each step is a pure function or a short transaction. Nothing waits on the network inside
 a transaction, and every write can be repeated: a run that dies midway leaves rows no
-version lists, which the next run reuses.
+version lists, which the next run reuses. A version holds every source; a source this
+run did not read is carried over from the active version unchanged.
 """
 
-import hashlib
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
-from datetime import date
 from itertools import batched
 from typing import Any, Literal, Protocol
 
@@ -19,14 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from wobot.knowledge import repository
 from wobot.knowledge.blobs import BlobStore
-from wobot.knowledge.chunking import products as product_chunking
 from wobot.knowledge.embeddings import MAX_BATCH_SIZE, Embedder
-from wobot.knowledge.records.products import normalize_catalog
-from wobot.knowledge.sources.xlsx import read_catalog
-from wobot.knowledge.validation import check_products, check_version
-
-SOURCE_ID = "product_catalog"
-STRATEGIES = {product_chunking.STRATEGY: product_chunking.STRATEGY_VERSION}
+from wobot.knowledge.source import Extraction, Source
+from wobot.knowledge.validation import ValidationReport, check_version
 
 Policy = Literal["publish", "dry_run"]
 
@@ -39,24 +33,16 @@ class Database(Protocol):
     def begin(self) -> AbstractAsyncContextManager[AsyncConnection]: ...
 
 
-@dataclass(frozen=True)
-class CatalogFile:
-    locator: str  # where the bytes came from: a file name, or drive:<file ID>
-    content: bytes
-    details: Mapping[str, Any] = field(default_factory=dict)  # kept on the snapshot
-
-
-# Fetching happens inside the run, so a source that cannot be read is a recorded failure.
-CatalogSource = Callable[[], Awaitable[CatalogFile]]
-
-
 @dataclass
 class RunResult:
     run_id: uuid.UUID
     status: str = "running"
     index_version_id: int | None = None
+    # "same file" or "same content" when the run ends as no_change.
+    reason: str | None = None
     counts: dict[str, int] = field(default_factory=dict)
-    source: dict[str, Any] = field(default_factory=dict)
+    # Per source: its snapshots and its validation report.
+    sources: dict[str, dict[str, Any]] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
 
@@ -64,7 +50,7 @@ async def run_ingestion(
     db: Database,
     blobs: BlobStore,
     embedder: Embedder,
-    fetch_catalog: CatalogSource,
+    sources: Sequence[Source],
     *,
     policy: Policy = "publish",
     triggered_by: str = "manual",
@@ -77,7 +63,7 @@ async def run_ingestion(
         )
     result = RunResult(run_id)
     try:
-        result.status = await _ingest(db, blobs, embedder, fetch_catalog, policy, result)
+        result.status = await _ingest(db, blobs, embedder, sources, policy, result)
     except Exception as error:
         result.status = "failed"
         result.errors.append(f"{type(error).__name__}: {error}")
@@ -88,7 +74,7 @@ async def run_ingestion(
                 conn,
                 run_id,
                 status=result.status,
-                source_results={SOURCE_ID: result.source},
+                source_results=result.sources,
                 counts=result.counts,
                 errors=result.errors,
             )
@@ -106,86 +92,107 @@ async def run_ingestion(
 
 def _log(result: RunResult, stage: str, message: str, **fields: Any) -> None:
     """One line per stage; on Cloud Run the fields become searchable log fields."""
-    logger.info(
-        message, extra={"run_id": str(result.run_id), "source": SOURCE_ID, "stage": stage, **fields}
-    )
+    logger.info(message, extra={"run_id": str(result.run_id), "stage": stage, **fields})
 
 
 async def _ingest(
     db: Database,
     blobs: BlobStore,
     embedder: Embedder,
-    fetch_catalog: CatalogSource,
+    sources: Sequence[Source],
     policy: Policy,
     result: RunResult,
 ) -> str:
     # The baseline, read once. If another run publishes after this, publishing below
     # fails rather than overwriting it.
     async with db.begin() as conn:
-        active = await repository.read_active(conn, SOURCE_ID)
+        active = await repository.read_active(conn)
         # Checked before any paid call: vectors could never be stored under a missing config.
         if not await repository.embedding_config_exists(conn, embedder.config_id):
             raise LookupError(f"no embedding config {embedder.config_id!r}")
 
-    catalog = await fetch_catalog()
-    sha256 = hashlib.sha256(catalog.content).hexdigest()
-    result.source |= {"locator": catalog.locator, "sha256": sha256}
-    storage_key = await blobs.put(catalog.content)
-    _log(result, "fetched", f"read {len(catalog.content)} bytes", sha256=sha256)
-    # Parsed even when the file is the one the active version came from: new code may read
-    # the same bytes differently, and only the content comparison below would notice.
-    drafts = normalize_catalog(read_catalog(catalog.content))
-    chunks = [product_chunking.product_chunk(draft) for draft in drafts]
-    result.counts["rows"] = len(drafts)
-    report = check_products(drafts, chunks, current_year=date.today().year)
-    result.source["report"] = report.to_json()
-    _log(
-        result,
-        "parsed",
-        f"{len(drafts)} rows, {len(report.blocking)} blocking, {len(report.warnings)} warnings",
-        blocking=report.blocking,
-        warnings=report.warnings,
-    )
-    if not report.passed:
+    # Every source is read in full before anything is written: one that cannot be read
+    # fails the run, rather than publishing a version that silently lacks it.
+    extractions: list[Extraction] = []
+    for source in sources:
+        extraction = await source.extract()
+        report = extraction.report
+        result.sources[extraction.source_id] = {
+            "snapshots": [
+                {"locator": snapshot.locator, "sha256": snapshot.sha256}
+                for snapshot, _ in extraction.pages
+            ],
+            "report": report.to_json(),
+        }
+        _log(
+            result,
+            "extracted",
+            f"{extraction.source_id}: {len(extraction.records)} records, "
+            f"{len(report.blocking)} blocking, {len(report.warnings)} warnings",
+            source=extraction.source_id,
+            blocking=report.blocking,
+            warnings=report.warnings,
+        )
+        extractions.append(extraction)
+    result.counts["rows"] = sum(len(e.records) for e in extractions)
+    if any(not e.report.passed for e in extractions):
         return "failed"
 
+    # Raw bytes are kept for every snapshot, even when nothing changed: they are the audit
+    # trail of what each run saw. Equal bytes share one blob and one snapshot row.
+    storage_keys = {}
+    for extraction in extractions:
+        for snapshot, _ in extraction.pages:
+            storage_keys[snapshot.sha256] = await blobs.put(snapshot.content)
+    snapshot_ids = {}
     async with db.begin() as conn:
-        snapshot_id = await repository.put_snapshot(
-            conn,
-            source_id=SOURCE_ID,
-            kind="xlsx",
-            locator=catalog.locator,
-            sha256=sha256,
-            storage_key=storage_key,
-            byte_size=len(catalog.content),
-            details=catalog.details,
+        for extraction in extractions:
+            for snapshot, _ in extraction.pages:
+                snapshot_ids[
+                    (extraction.source_id, snapshot.locator)
+                ] = await repository.put_snapshot(
+                    conn,
+                    source_id=extraction.source_id,
+                    kind=extraction.kind,
+                    locator=snapshot.locator,
+                    sha256=snapshot.sha256,
+                    storage_key=storage_keys[snapshot.sha256],
+                    byte_size=len(snapshot.content),
+                    details=snapshot.details,
+                )
+
+    if embedder.config_id == active.embedding_config_id and all(
+        {d.revision for d in e.records} == active.record_revisions(e.source_id)
+        and {c.content_hash for c in e.chunks} == active.chunk_hashes(e.source_id)
+        for e in extractions
+    ):
+        # Same files, or new bytes with the same content: re-saved, reordered, restyled.
+        same_files = all(
+            snapshot.sha256 in active.snapshot_sha256s(e.source_id)
+            for e in extractions
+            for snapshot, _ in e.pages
         )
-    candidate = (
-        {(draft.logical_key, draft.content_hash) for draft in drafts},
-        {chunk.content_hash for chunk in chunks},
-        embedder.config_id,
-        STRATEGIES,
-    )
-    baseline = (
-        active.record_revisions,
-        active.chunk_hashes,
-        active.embedding_config_id,
-        active.strategies,
-    )
-    if candidate == baseline:
-        # Same file, or new bytes with the same content: re-saved, or rows reordered.
-        same_file = sha256 in active.snapshot_sha256s
-        result.source["no_change"] = "same file" if same_file else "same content"
+        result.reason = "same file" if same_files else "same content"
         return "no_change"
 
+    read = {e.source_id for e in extractions}
+    carried_records = [r for r in active.records if r.source_id not in read]
+    carried_chunks = [c for c in active.chunks if c.source_id not in read]
+    drafts = [draft for e in extractions for draft in e.records]
+    chunks = [chunk for e in extractions for chunk in e.chunks]
+
     async with db.begin() as conn:
-        record_ids, records_new = await repository.put_products(conn, drafts)
+        record_ids, records_new = await repository.put_records(conn, drafts)
         chunk_ids, chunks_new = await repository.put_chunks(conn, chunks, record_ids)
-        missing = await repository.missing_embeddings(conn, chunk_ids.values(), embedder.config_id)
+        # Carried chunks need vectors too when the embedding space changed.
+        member_chunks = list(
+            dict.fromkeys([*chunk_ids.values(), *(c.chunk_id for c in carried_chunks)])
+        )
+        missing = await repository.missing_embeddings(conn, member_chunks, embedder.config_id)
     result.counts |= {
-        "records": len(record_ids),
+        "records": len(drafts) + len(carried_records),
         "records_new": records_new,
-        "chunks": len(chunk_ids),
+        "chunks": len(member_chunks),
         "chunks_new": chunks_new,
         "embeddings_new": 0,
         "embedding_tokens": 0,
@@ -208,29 +215,38 @@ async def _ingest(
 
     members = [
         repository.Member(
-            record_id=record_ids[(draft.logical_key, draft.content_hash)],
+            record_id=record_ids[draft.revision],
             logical_key=draft.logical_key,
-            snapshot_id=snapshot_id,
-            locator={"row": draft.row_number},
+            snapshot_id=snapshot_ids[(e.source_id, snapshot.locator)],
+            locator=draft.locator,
         )
-        for draft in drafts
-    ]
+        for e in extractions
+        for snapshot, page_drafts in e.pages
+        for draft in page_drafts
+    ] + [record.member for record in carried_records]
+    # Which strategy built the version's chunks, from the chunks themselves.
+    strategies = {c.strategy: c.strategy_version for c in carried_chunks} | {
+        c.strategy: c.strategy_version for c in chunks
+    }
+    report = ValidationReport()
     async with db.begin() as conn:
         version_id = await repository.create_version(
             conn,
             run_id=result.run_id,
             config_id=embedder.config_id,
-            strategies=STRATEGIES,
+            strategies=strategies,
             members=members,
-            chunk_ids=chunk_ids.values(),
+            chunk_ids=member_chunks,
         )
         integrity = await repository.version_integrity(conn, version_id, embedder.config_id)
         check_version(
-            report, integrity, expected_records=len(drafts), expected_chunks=len(chunk_ids)
+            report, integrity, expected_records=len(members), expected_chunks=len(member_chunks)
         )
-        result.source["report"] = report.to_json()
+        version_report = report.to_json() | {
+            "sources": {source: details["report"] for source, details in result.sources.items()}
+        }
         status = "validated" if report.passed else "failed"
-        await repository.set_version_status(conn, version_id, status, report.to_json())
+        await repository.set_version_status(conn, version_id, status, version_report)
     result.index_version_id = version_id
     _log(result, "versioned", f"version {version_id} {status}", blocking=report.blocking)
     if not report.passed or policy == "dry_run":

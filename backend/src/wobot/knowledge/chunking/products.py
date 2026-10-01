@@ -1,14 +1,14 @@
 """Chunk strategy product_row@1: one chunk per product, from the fields people search by."""
 
 from wobot.knowledge.chunking.drafts import ChunkDraft, build_chunk
-from wobot.knowledge.records.products import ProductDraft
+from wobot.knowledge.records.drafts import RecordDraft
 
 STRATEGY = "product_row"
 STRATEGY_VERSION = 1
 CATALOG_TITLE = "產品目錄"
 
 
-def product_chunk(draft: ProductDraft) -> ChunkDraft:
+def product_chunk(draft: RecordDraft) -> ChunkDraft:
     fields = draft.fields
     categories = [c for c in (fields["category_l1_label"], fields["category_l2_label"]) if c]
     category_path = " › ".join(categories)

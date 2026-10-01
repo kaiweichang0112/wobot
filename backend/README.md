@@ -57,27 +57,41 @@ them at another local instance.
 
 ## Knowledge ingestion
 
-`wobot-ingest` reads the product catalog, stores it as records, chunks and embeddings,
-and publishes a new version only when the content changed and every check passed. In
-the cloud it runs as the `wobot-ingest` Cloud Run job, which downloads the catalog from
-Google Drive and keeps raw files in a bucket (`infra/README.md`, section 9). Locally,
-run it as the ingest role on a file, with `OPENAI_API_KEY` in `.env`:
+`wobot-ingest` reads the knowledge sources, stores them as records, chunks and
+embeddings, and publishes a new version only when the content changed and every check
+passed. In the cloud it runs as the `wobot-ingest` Cloud Run job, which downloads the
+catalog from Google Drive and keeps raw files in a bucket (`infra/README.md`, section
+9). Locally, run it as the ingest role, with `OPENAI_API_KEY` in `.env`:
 
 ```bash
 DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file ../references/smart-care-products.xlsx
+DB_USER=wobot_ingest_user uv run wobot-ingest run --sources grc_website --policy dry-run
 DB_USER=wobot_ingest_user uv run wobot-ingest search "離床預警 不用穿戴"
 DB_USER=wobot_ingest_user uv run wobot-ingest status
 ```
 
-- One run: read the active version → parse and normalize → check → store records and
-  chunks → embed the chunks that have no vector yet → build a version listing every
-  record and chunk → check what was stored → publish with compare-and-swap.
+| Source | Reads | Records |
+| --- | --- | --- |
+| `product_catalog` | The catalog workbook: a local file, or Drive in the cloud | One product per row |
+| `grc_website` | Five pages of the GRC site, listed in `knowledge/profiles.py` | Students, projects, publications, the profile page |
+
+- One run: read the active version → fetch and parse every source → check → store
+  records and chunks → embed the chunks that have no vector yet → build a version
+  listing every record and chunk → check what was stored → publish with
+  compare-and-swap.
+- A version holds every source. `--sources` reads only some; the others are carried
+  over from the active version unchanged.
+- Only listed pages are fetched, from allowed hosts, after robots.txt, one request a
+  second. Links on those pages (Drive, DOI, theses) are stored, never followed. Each
+  run reports sitemap pages that no profile covers.
 - Records, chunks and embeddings are content-addressed and never updated. A version
   reuses every unchanged one, so an edit to one row embeds one chunk.
 - A run whose content matches the active version ends as `no_change` and embeds
   nothing. `--policy dry-run` builds and validates a version without publishing it.
-- Blocking problems (a missing name, an implausible year) stop the run with the row
-  number; warnings are printed and kept in the version's validation report.
+- Blocking problems stop the run: a missing name or an implausible year in the
+  catalog, a page that yields nothing or a project without an amount on the site.
+  Warnings are printed and kept in the version's validation report; a source's own
+  typos, such as an impossible date, are kept as written and reported, never corrected.
 - The raw file is kept under `KNOWLEDGE_LOCAL_DIR`, or in `KNOWLEDGE_BUCKET` when that
   is set, named by its SHA-256.
 - A source that cannot be read (Drive, a changed column) fails the run, and the failure
