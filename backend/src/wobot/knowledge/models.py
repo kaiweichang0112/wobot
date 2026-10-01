@@ -1,7 +1,7 @@
 """Tables of the shared knowledge corpus and its ingestion runs; migrations define them."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -9,10 +9,12 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Identity,
+    Index,
     Integer,
     SmallInteger,
     Text,
@@ -144,6 +146,79 @@ class ProductRecord(Base):
     category_l2_label: Mapped[str | None] = mapped_column(Text)
     adoption_years: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default=text("'{}'"))
     adoption_years_raw: Mapped[str | None] = mapped_column(Text)
+
+
+class StudentRecord(Base):
+    __tablename__ = "student_records"
+    __table_args__ = (
+        CheckConstraint("degree IN ('master', 'phd')", name="student_records_degree"),
+        CheckConstraint(
+            "thesis_title_zh IS NOT NULL OR thesis_title_en IS NOT NULL",
+            name="student_records_title",
+        ),
+        Index("student_records_degree_year", "degree", "graduation_year"),
+        {"schema": "knowledge"},
+    )
+
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge.records.record_id"), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(Text)
+    degree: Mapped[str] = mapped_column(Text)
+    graduation_year: Mapped[int] = mapped_column(Integer)
+    thesis_title_zh: Mapped[str | None] = mapped_column(Text)
+    thesis_title_en: Mapped[str | None] = mapped_column(Text)
+    fulltext_url: Mapped[str | None] = mapped_column(Text)
+
+
+class ProjectRecord(Base):
+    __tablename__ = "project_records"
+    __table_args__ = (
+        CheckConstraint(
+            "title_zh IS NOT NULL OR title_en IS NOT NULL", name="project_records_title"
+        ),
+        CheckConstraint("period_start <= period_end", name="project_records_period"),
+        CheckConstraint("amount_ntd >= 0", name="project_records_amount"),
+        Index("project_records_year", "year"),
+        {"schema": "knowledge"},
+    )
+
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge.records.record_id"), primary_key=True
+    )
+    title_zh: Mapped[str | None] = mapped_column(Text)
+    title_en: Mapped[str | None] = mapped_column(Text)
+    funder_raw: Mapped[str] = mapped_column(Text)
+    funder_zh: Mapped[str | None] = mapped_column(Text)
+    funder_en: Mapped[str | None] = mapped_column(Text)
+    period_raw: Mapped[str] = mapped_column(Text)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    amount_ntd: Mapped[int] = mapped_column(BigInteger)
+    amount_raw: Mapped[str] = mapped_column(Text)
+    year: Mapped[int] = mapped_column(Integer)
+
+
+class ListItemRecord(Base):
+    __tablename__ = "list_item_records"
+    __table_args__ = (
+        CheckConstraint(
+            "list_kind IN ('publication', 'profile_item')", name="list_item_records_kind"
+        ),
+        Index("list_item_records_kind_category_year", "list_kind", "category", "year"),
+        {"schema": "knowledge"},
+    )
+
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge.records.record_id"), primary_key=True
+    )
+    list_kind: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(Text)
+    section_path: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    year: Mapped[int | None] = mapped_column(Integer)
+    year_raw: Mapped[str | None] = mapped_column(Text)
+    item_text: Mapped[str] = mapped_column(Text)
+    links: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'"))
 
 
 class Chunk(Base):
