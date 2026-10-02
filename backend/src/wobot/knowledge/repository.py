@@ -475,6 +475,19 @@ async def publish(conn: AsyncConnection, version_id: int, expected_revision: int
     Compare-and-swap: the update matches only while the revision is the one this run read
     at its start, so of two runs that read the same revision, one publishes and one fails.
     """
+    if not await point_to(conn, version_id, expected_revision):
+        return False
+    await conn.execute(
+        update(IndexVersion)
+        .where(IndexVersion.index_version_id == version_id)
+        .values(status="published", published_at=func.now())
+    )
+    return True
+
+
+async def point_to(conn: AsyncConnection, version_id: int, expected_revision: int) -> bool:
+    """Move the pointer alone, by the same compare-and-swap: a rollback to a version
+    published before keeps when it was first published."""
     moved = await conn.execute(
         update(ActiveKnowledge)
         .where(ActiveKnowledge.revision == expected_revision)
@@ -484,14 +497,23 @@ async def publish(conn: AsyncConnection, version_id: int, expected_revision: int
             published_at=func.now(),
         )
     )
-    if moved.rowcount != 1:
-        return False
-    await conn.execute(
-        update(IndexVersion)
-        .where(IndexVersion.index_version_id == version_id)
-        .values(status="published", published_at=func.now())
-    )
-    return True
+    return moved.rowcount == 1
+
+
+async def read_version(conn: AsyncConnection, version_id: int) -> Any:
+    """One version's status, report and dates; None when there is no such version."""
+    return (
+        await conn.execute(
+            select(
+                IndexVersion.index_version_id,
+                IndexVersion.status,
+                IndexVersion.validation_report,
+                IndexVersion.embedding_config_id,
+                IndexVersion.created_at,
+                IndexVersion.published_at,
+            ).where(IndexVersion.index_version_id == version_id)
+        )
+    ).one_or_none()
 
 
 # --- Status, for people -----------------------------------------------------------------
