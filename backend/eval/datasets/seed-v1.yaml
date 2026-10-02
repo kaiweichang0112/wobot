@@ -125,13 +125,17 @@ cases:
     split: dev
     user_input: 請列出指定產品說明圖中標示的監測或提醒功能。
     expected_behavior: List the functions the chosen image labels.
-    pending: needs an image fixture (step A7)
+    check:
+      kind: transcription
+      gold: {file: transcriptions.yaml, as: transcription}
   - case_id: CASE-015
     scenario: image_values
     split: heldout
     user_input: 請依指定規格圖列出其中的數值與單位，無法辨識的部分請說明。
     expected_behavior: Give each value with its unit and say which parts are unreadable.
-    pending: needs an image fixture (step A7)
+    check:
+      kind: transcription
+      gold: {file: transcriptions.yaml, as: transcription}
   - case_id: CASE-016
     scenario: product_entity
     split: dev
