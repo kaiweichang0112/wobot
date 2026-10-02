@@ -1,5 +1,5 @@
 # Retrieval cases: for each question, every item whose text helps answer it.
-# Sources so far: the product catalog and the GRC website (G-Tech pages come in step A6).
+# Sources: the product catalog, the GRC website, the G-Tech website and the WhizToys docs.
 #
 # Name each item with one of:
 #   - profile: '<a heading on the 徐業良 page, such as Research Interests, or 簡介>'
@@ -8,6 +8,9 @@
 #   - publication: '<the item as one line, as the page shows it>'
 #   - student: '<name>'
 #   - project: '<the project title, Chinese or English>'
+#   - section: '<a heading on the GRC home page, the G-Tech pages or the WhizToys docs,
+#               as "page › heading" when several pages share it; or a piece of its text
+#               that no other section has>'
 CASE-003:
   question: 請根據 GRC 官網介紹徐業良的研究領域。
   relevant:
@@ -28,3 +31,30 @@ CASE-017:
   question: iProték 智慧床墊的主要功能與使用方式是什麼？
   relevant:
     - product: {name: 'iProték 智慧床墊', company: '嘉碩生醫電子股份有限公司'}
+# Step A6: the GRC home page, the G-Tech website and the WhizToys docs.
+CASE-001:
+  question: GRC 是哪一年成立的？
+  relevant:
+    - section: 'Since 2003'
+CASE-002:
+  question: GRC 的地址與聯絡電話是什麼？
+  relevant:
+    - section: 'Since 2003'
+CASE-009:
+  question: G-Tech 的主要產品有哪些？
+  relevant:
+    - section: 'WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋'
+    - section: '運動地墊遊戲平台'
+CASE-011:
+  question: G-Tech 官網介紹的智慧床墊是否需要插電與 Wi-Fi？請區分床墊與其他系統設備的說明。
+  relevant:
+    - section: '裝電池的智慧床墊'
+    - section: '不需Wi-Fi直接上網'
+CASE-012:
+  question: 我要向 G-Tech 詢問產品，官網提供哪些聯絡方式？
+  relevant:
+    - section: '聯絡我們'
+CASE-013:
+  question: WhizToys 運動地墊遊戲平台主要用於哪些活動或訓練？
+  relevant:
+    - section: '從“嚴肅遊戲”的角度，將運動及復健內容遊戲化，結合認知訓練、互動競爭及聲光刺激回饋，以提高長者參與活動的意願。透過客製化遊戲內 容，亦可應用在幼兒學習及運動訓練領域。'

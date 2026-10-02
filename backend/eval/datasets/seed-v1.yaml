@@ -13,13 +13,17 @@ cases:
     split: dev
     user_input: GRC 是哪一年成立的？
     expected_behavior: State the founding year the GRC home page gives.
-    pending: needs the GRC home page (step A6) and a reference answer
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
   - case_id: CASE-002
     scenario: organization_fact
     split: heldout
     user_input: GRC 的地址與聯絡電話是什麼？
     expected_behavior: Give the address and phone number from the GRC home page.
-    pending: needs the GRC home page (step A6) and a reference answer
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
   - case_id: CASE-003
     scenario: person_profile
     split: dev
@@ -81,7 +85,9 @@ cases:
     split: dev
     user_input: G-Tech 的主要產品有哪些？
     expected_behavior: Name the main products the G-Tech website presents.
-    pending: needs the G-Tech pages (step A6) and a reference answer
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
   - case_id: CASE-010
     scenario: product_feature
     split: dev
@@ -95,19 +101,25 @@ cases:
     split: heldout
     user_input: G-Tech 官網介紹的智慧床墊是否需要插電與 Wi-Fi？請區分床墊與其他系統設備的說明。
     expected_behavior: Separate what the mattress needs from what other devices need; claim nothing unstated.
-    pending: needs the G-Tech pages (step A6) and a reference answer
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
   - case_id: CASE-012
     scenario: organization_contact
     split: dev
     user_input: 我要向 G-Tech 詢問產品，官網提供哪些聯絡方式？
     expected_behavior: Give the contact channels the G-Tech website lists.
-    pending: needs the G-Tech pages (step A6) and a reference answer
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
   - case_id: CASE-013
     scenario: product_use
     split: dev
     user_input: WhizToys 運動地墊遊戲平台主要用於哪些活動或訓練？
     expected_behavior: Describe the activities and training the sources state.
-    pending: needs the G-Tech pages (step A6) and its relevant items labelled
+    check:
+      kind: retrieval
+      gold: {file: retrieval.yaml}
   - case_id: CASE-014
     scenario: image_reading
     split: dev
