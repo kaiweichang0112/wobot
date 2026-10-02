@@ -70,6 +70,9 @@ DB_USER=wobot_ingest_user uv run wobot-ingest run --sources gtech_documents \
   --document-file whizpad_catalog=<path.pdf> --policy dry-run
 DB_USER=wobot_ingest_user uv run wobot-ingest search "離床預警 不用穿戴"
 DB_USER=wobot_ingest_user uv run wobot-ingest status
+DB_USER=wobot_ingest_user uv run wobot-ingest report <version>
+DB_USER=wobot_ingest_user uv run wobot-ingest accept <version>
+DB_USER=wobot_ingest_user uv run wobot-ingest rollback <version>
 ```
 
 | Source | Reads | Records |
@@ -112,6 +115,16 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
   the entry text, never from what the model read.
 - A run whose content matches the active version ends as `no_change` and embeds
   nothing. `--policy dry-run` builds and validates a version without publishing it.
+- A version that would empty a source, or lose more than `PUBLISH_MAX_DROP` of a
+  source's records, is held: built and checked, not published. `report <version>`
+  lists the records each source added and lost; `accept <version>` publishes it as
+  built, unless another version was published since; `rollback <version>` points
+  back at a version published before. All three move the pointer by compare-and-swap.
+- One run at a time: a run first takes a PostgreSQL advisory lock, and one that cannot
+  is recorded as `skipped_concurrent`.
+- The job runs once a month by itself: Cloud Scheduler starts `run --scheduled` every
+  Sunday, and it goes ahead only on the month's first Sunday, Taipei time, before
+  reading any setting otherwise (`infra/README.md`, "Schedule").
 - Blocking problems stop the run: a missing name or an implausible year in the
   catalog, a page that yields nothing, a project without an amount on the site or a
   listed document that is no PDF. An image that cannot be fetched or gets no reading
@@ -123,7 +136,8 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 - A source that cannot be read (Drive, a changed column) fails the run, and the failure
   is recorded in `ops.ingestion_runs` like any other.
 - Each stage logs one line; on Cloud Run the lines are JSON with `run_id` and `stage`.
-- Exit code: 0 for `published`, `no_change` and `validated`; 1 for `failed`.
+- Exit code: 0 for `published`, `no_change`, `validated`, `held` and
+  `skipped_concurrent`, which a retry would not change; 1 for `failed`.
 
 ## Evaluation
 
@@ -195,6 +209,7 @@ docker build -t wobot-api:local .
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
 | `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
 | `VISION_MODEL` | `gpt-6.1-sol` | Reads images and PDF pages; chosen with `wobot-eval vision`; answers are cached per model |
+| `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |
 | `PRODUCT_CATALOG_FILE_ID` | none | Drive file that `wobot-ingest run` downloads when no `--catalog-file` is given; set on the job only |

@@ -62,6 +62,7 @@ gcloud billing projects describe $PROJECT_ID  # billingEnabled: true
 | `firebase.googleapis.com` | Firebase on this project |
 | `identitytoolkit.googleapis.com` | Firebase Authentication backend |
 | `drive.googleapis.com` | The ingestion job downloads the product catalog from Google Drive |
+| `cloudscheduler.googleapis.com` | Starts the ingestion job on its schedule |
 
 Equivalent:
 
@@ -70,7 +71,7 @@ gcloud services enable run.googleapis.com sqladmin.googleapis.com \
   artifactregistry.googleapis.com secretmanager.googleapis.com \
   iam.googleapis.com iamcredentials.googleapis.com \
   sts.googleapis.com firebase.googleapis.com identitytoolkit.googleapis.com \
-  drive.googleapis.com
+  drive.googleapis.com cloudscheduler.googleapis.com
 ```
 
 `cloudbuild.googleapis.com` was enabled at first as well, but images are built
@@ -141,6 +142,7 @@ resources each account needs.
 | `wobot-migrator` | The `wobot-migrate` Cloud Run job (Alembic) |
 | `wobot-ingest` | The `wobot-ingest` Cloud Run job (knowledge ingestion) |
 | `wobot-deployer` | GitHub Actions, through Workload Identity Federation |
+| `wobot-scheduler` | Cloud Scheduler, starting the `wobot-ingest` job on its schedule |
 
 One account per workload keeps a compromise contained: the API cannot change
 the schema and cannot deploy, and ingestion cannot read private data. Every Cloud Run service and job names its account
@@ -647,6 +649,12 @@ only about new or edited talks. Images and PDF pages are read the same way by
 `--args run,--policy,dry-run` on `execute` builds and validates a version
 without publishing it.
 
+Exit codes: `published`, `no_change`, `validated`, `held` and `skipped_concurrent`
+end with 0, since a retry would change none of them; a failure ends non-zero and the
+task is retried once. A run first takes a PostgreSQL advisory lock, on one of the
+job's pooled connections: a run started while another holds it, such as a manual
+execution during a scheduled one, is recorded as `skipped_concurrent` and ends.
+
 Verify:
 
 ```sh
@@ -665,6 +673,95 @@ FROM knowledge.active_knowledge a JOIN knowledge.index_versions v USING (index_v
 SELECT started_at, status, code_version, counts, errors
 FROM ops.ingestion_runs ORDER BY started_at DESC LIMIT 3;
 ```
+
+### Held versions and rollback
+
+A run that would empty a source, or lose more than `PUBLISH_MAX_DROP` (20%) of a
+source's records, builds the version and holds it: the execution succeeds, the
+published version stays as it was, and the `versioned` log line lists why. A page that
+changed shape, or a model that stopped answering, looks just like items deleted at the
+source, so a person decides. Each command's output is in the execution's logs:
+
+```sh
+gcloud run jobs execute wobot-ingest --region $REGION --args=report,<VERSION> --wait
+gcloud run jobs execute wobot-ingest --region $REGION --args=accept,<VERSION> --wait
+gcloud run jobs execute wobot-ingest --region $REGION --args=rollback,<VERSION> --wait
+```
+
+`report` lists the checks and the records each source added and lost. `accept`
+publishes a held version as it was built, and refuses once another version was
+published after it. `rollback` points back at a version published before, embedded
+with the same model. Both move the pointer by compare-and-swap, as the job does.
+
+### Schedule
+
+Ingestion runs by itself once a month, on the first Sunday at 03:00 Taipei time.
+Cloud Scheduler cannot name the first Sunday: a schedule restricting both the day of
+the month and the day of the week runs when
+[either matches](https://docs.cloud.google.com/scheduler/docs/configuring/cron-job-schedules).
+So it starts the job every Sunday with `run --scheduled`, and the run goes ahead only
+on the month's first Sunday (`backend/src/wobot/knowledge/schedule.py`); on the other
+Sundays it ends before reading a setting or opening a connection. Manual executions
+keep the job's own arguments and always run.
+
+**Account:** create `wobot-scheduler` (section 4) with no project roles. Cloud Run →
+Jobs → `wobot-ingest` → Permissions → Grant access → `wobot-scheduler@…` →
+**Cloud Run Jobs Executor With Overrides**. It may start this job with other
+arguments and cancel its executions, nothing more: Cloud Run Invoker cannot pass
+arguments, and Cloud Run Developer, which the Cloud Run docs suggest for overrides,
+could change the job's image.
+
+**Console:** Cloud Scheduler → Create job. Not Cloud Run's Triggers → Add scheduler
+trigger: that one sends no arguments, so every Sunday would be a full run.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Name / region | `wobot-ingest-monthly`, `asia-east1` | |
+| Frequency | `0 3 * * 0` | Every Sunday at 03:00; the run picks the first |
+| Time zone | `Asia/Taipei` | No daylight saving, so 03:00 never repeats or goes missing |
+| Target | HTTP, `POST https://run.googleapis.com/v2/projects/<PROJECT_ID>/locations/asia-east1/jobs/wobot-ingest:run` | The Cloud Run Admin API's `jobs.run` |
+| Headers | `Content-Type: application/json` | |
+| Body | `{"overrides":{"containerOverrides":[{"args":["run","--scheduled"]}]}}` | Replaces the job's arguments for this execution only |
+| Auth header | OAuth token, `wobot-scheduler`, scope `https://www.googleapis.com/auth/cloud-platform` | A Google API takes OAuth, not an OIDC ID token |
+
+Equivalent:
+
+```sh
+gcloud iam service-accounts create wobot-scheduler \
+  --description="Starts the wobot-ingest job on its schedule"
+gcloud run jobs add-iam-policy-binding wobot-ingest --region $REGION \
+  --member="serviceAccount:wobot-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role=roles/run.jobsExecutorWithOverrides
+gcloud scheduler jobs create http wobot-ingest-monthly --location $REGION \
+  --schedule="0 3 * * 0" --time-zone="Asia/Taipei" \
+  --uri="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/wobot-ingest:run" \
+  --http-method=POST --headers="Content-Type=application/json" \
+  --message-body='{"overrides":{"containerOverrides":[{"args":["run","--scheduled"]}]}}' \
+  --oauth-service-account-email="wobot-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \
+  --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
+```
+
+Verify:
+
+```sh
+gcloud scheduler jobs describe wobot-ingest-monthly --location $REGION \
+  --format="value(schedule, timeZone, state)"   # 0 3 * * 0  Asia/Taipei  ENABLED
+gcloud run jobs get-iam-policy wobot-ingest --region $REGION   # wobot-scheduler: jobsExecutorWithOverrides only
+# Force a run: on any day but the first Sunday, the execution ends at once.
+gcloud scheduler jobs run wobot-ingest-monthly --location $REGION
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-ingest" AND jsonPayload.message:"scheduled run skipped"' \
+  --limit 1 --format="value(timestamp)"
+```
+
+Cloud Scheduler includes three jobs per billing account at no charge, and a skipped
+Sunday costs one container start of a few seconds. While Cloud SQL is stopped for a
+long time, pause the schedule
+(`gcloud scheduler jobs pause wobot-ingest-monthly --location $REGION`, `resume` to
+restart it). Left running, a first Sunday with the instance stopped fails to connect,
+is retried once and fails again: the execution shows as failed and the published
+version stays as it was, though the API is down anyway while the instance is.
+Other Sundays never connect, so they still succeed. Run the job by hand once the
+instance is back.
 
 ## 10. Firebase Authentication
 
@@ -938,7 +1035,7 @@ Wobot's roles.
 | API: 3 instances × (pool 2 + overflow 2) | 12 |
 | Migration job | 1 |
 | Developer (Cloud SQL Studio or proxy) | 2 |
-| Ingestion job (pool 2 + overflow 2) | 4 |
+| Ingestion job (pool 2 + overflow 2, one holding the run lock) | 4 |
 | **Total** | **19 of 22** |
 
 Cap the API at the [service level](https://docs.cloud.google.com/run/docs/configuring/max-instances)
@@ -954,6 +1051,7 @@ usage stays well below the table. If connection-slot errors appear, lower
   scaled to zero. Stop it when not developing: SQL → `wobot-pg` → Stop
   (`gcloud sql instances patch wobot-pg --activation-policy=NEVER`; `ALWAYS`
   starts it again). Storage and backups are still billed while it is stopped.
+  For a long stop, pause the ingestion schedule too (section 9, "Schedule").
 - Cloud Run bills only while handling requests (request-based billing, minimum
   0 instances), so the idle API costs nothing.
 - Artifact Registry keeps only the 10 newest versions of each image.

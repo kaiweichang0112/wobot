@@ -8,9 +8,12 @@ personalized cartoon avatar that speaks with the user's cloned voice.
 
 It is built for an internal pilot of up to ten people.
 
-**Status:** Phase 0 (deployment skeleton) is done: the iOS app signs in with
-Google, and the API on Cloud Run checks the Firebase ID token and an allowlist in
-Cloud SQL. CI deploys every merge to `main`. Next: phase A, knowledge ingestion.
+**Status:** Phases 0 and A are done. The iOS app signs in with Google, and the API
+on Cloud Run checks the Firebase ID token and an allowlist in Cloud SQL; CI deploys
+every merge to `main`. A Cloud Run job ingests the two websites, their images, three
+PDFs and the product catalog into versioned, embedded knowledge once a month, and a
+labelled evaluation set scores lists, fields, retrieval and image reading. Next:
+phase B, the agentic RAG answer.
 
 ## Architecture
 
@@ -39,7 +42,7 @@ flowchart LR
 | Path | Contents |
 | --- | --- |
 | [`app/`](app/README.md) | Flutter client: Google Sign-In and the account check on iOS; Android follows |
-| [`backend/`](backend/README.md) | FastAPI service and database migrations; LangGraph agents and jobs to come |
+| [`backend/`](backend/README.md) | FastAPI service, database migrations, knowledge ingestion and its evaluation; LangGraph agents to come |
 | [`infra/`](infra/README.md) | Google Cloud runbook, environment template, database bootstrap |
 | [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for a robot head; out of scope for v1 |
 
@@ -67,8 +70,8 @@ flowchart LR
 | Phase | Scope |
 | --- | --- |
 | 0 · Deployment skeleton | Sign-in → Cloud Run → Cloud SQL end to end; migrations as a job; keyless CI/CD |
-| A · Knowledge | Ingest websites, images and the product catalog into versioned records, chunks and embeddings |
+| A · Knowledge | Ingest websites, images, PDFs and the product catalog into versioned records, chunks and embeddings; monthly updates held when records go missing; RAGAS evaluation of ingestion and retrieval |
 | B · Agentic RAG | LangGraph routing, retrieval tools, neutral recommendation, RAGAS evaluation |
 | C · Identity & chat | Conversations, streaming, cancellation and retry in the app |
 | D · Avatar & voice | 21-frame cartoon avatar, voice clone, spoken turns |
-| E · Operations & pilot | Scheduled updates, deletion, backups, on-device validation |
+| E · Operations & pilot | Deletion, backups, on-device validation |
