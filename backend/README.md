@@ -66,6 +66,8 @@ catalog from Google Drive and keeps raw files in a bucket (`infra/README.md`, se
 ```bash
 DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file ../references/smart-care-products.xlsx
 DB_USER=wobot_ingest_user uv run wobot-ingest run --sources grc_website --policy dry-run
+DB_USER=wobot_ingest_user uv run wobot-ingest run --sources gtech_documents \
+  --document-file whizpad_catalog=<path.pdf> --policy dry-run
 DB_USER=wobot_ingest_user uv run wobot-ingest search "離床預警 不用穿戴"
 DB_USER=wobot_ingest_user uv run wobot-ingest status
 ```
@@ -74,8 +76,9 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 | --- | --- | --- |
 | `product_catalog` | The catalog workbook: a local file, or Drive in the cloud | One product per row |
 | `grc_website` | Seven pages of the GRC site, listed in `knowledge/profiles.py` | Students, projects, publications, speeches, the profile page; the home page by heading |
-| `gtech_website` | Three pages of the G-Tech site, listed in `knowledge/profiles.py` | One section per heading, with the catalog links |
-| `gtech_docs` | The WhizToys documentation, every page its sitemap lists under `/docs/whiztoys/` | One section per heading, tables row by row |
+| `gtech_website` | Four pages of the G-Tech site, listed in `knowledge/profiles.py`, and the images they show | One section per heading, with the catalog links; one image per file a page shows |
+| `gtech_docs` | The WhizToys documentation, every page its sitemap lists under `/docs/whiztoys/`, and its images | One section per heading, tables row by row; one image per file |
+| `gtech_documents` | The three PDFs the G-Tech site links to, listed in `knowledge/profiles.py`; the one on Drive through its API, or a local copy given with `--document-file` | One page per page |
 
 - One run: read the active version → fetch and parse every source → check → store
   records and chunks → embed the chunks that have no vector yet → build a version
@@ -93,6 +96,14 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
   is read once, from its home page.
 - Records, chunks and embeddings are content-addressed and never updated. A version
   reuses every unchanged one, so an edit to one row embeds one chunk.
+- Images a listed page shows are fetched as their original files, except what is shown
+  under 100 pixels (logos, icons) and SVG drawings. Each PDF page keeps its text layer as
+  written and is also drawn as an image. A vision model (`VISION_MODEL`) reads every
+  image and drawn page through structured output: the text it sees, numbers with their
+  units, what the layout relates, a short description. Its reading cannot be checked
+  against a source text, so chunks label every part of it as the model's, and a PDF
+  page's chunk leaves out the lines and values its text layer already holds. Answers
+  are kept by the file's hash, how it was drawn, model and prompt version.
 - Code decides how many records a page holds; a model only labels parts of them.
   Each speech's title, event and location come from `EXTRACTION_MODEL` through
   structured output, and a value is kept only when the entry contains it verbatim,
@@ -102,7 +113,9 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 - A run whose content matches the active version ends as `no_change` and embeds
   nothing. `--policy dry-run` builds and validates a version without publishing it.
 - Blocking problems stop the run: a missing name or an implausible year in the
-  catalog, a page that yields nothing or a project without an amount on the site.
+  catalog, a page that yields nothing, a project without an amount on the site or a
+  listed document that is no PDF. An image that cannot be fetched or gets no reading
+  is a warning, as is a document link that no profile lists.
   Warnings are printed and kept in the version's validation report; a source's own
   typos, such as an impossible date, are kept as written and reported, never corrected.
 - The raw file is kept under `KNOWLEDGE_LOCAL_DIR`, or in `KNOWLEDGE_BUCKET` when that
@@ -115,14 +128,18 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 ## Evaluation
 
 `wobot-eval` scores an index version against labelled datasets with RAGAS: complete lists,
-exact fields and retrieval, all from item identities. RAGAS is a dev dependency, so this
-runs from a checkout. Labels are written by a person from the sources, never from system
-output. See `eval/README.md`.
+exact fields, retrieval, and vision readings against a person's transcriptions, all from
+item identities. RAGAS is a dev dependency, so this runs from a checkout. Labels are
+written by a person from the sources, never from system output. See `eval/README.md`.
 
 ```bash
 uv run wobot-eval check-gold
 uv run wobot-eval run
+DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
 ```
+
+`vision` compares vision models on the dev transcriptions (paid calls); see
+`eval/gold/README.md`.
 
 ## Migrations
 
@@ -177,6 +194,7 @@ docker build -t wobot-api:local .
 | `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
 | `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
+| `VISION_MODEL` | `gpt-6.1-sol` | Reads images and PDF pages; chosen with `wobot-eval vision`; answers are cached per model |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |
 | `PRODUCT_CATALOG_FILE_ID` | none | Drive file that `wobot-ingest run` downloads when no `--catalog-file` is given; set on the job only |

@@ -1,9 +1,9 @@
 # Gold labels
 
 Reference answers for the evaluation dataset, written by a person reading the original
-sources: the GRC and G-Tech websites, the WhizToys documentation and the product catalog
-workbook. Nothing here may come from
-what the system extracted; a label copied from parser output measures nothing.
+sources: the GRC and G-Tech websites, the WhizToys documentation, the PDFs the G-Tech
+website links to and the product catalog workbook. Nothing here may come from what the
+system extracted; a label copied from parser or model output measures nothing.
 
 ## Rules
 
@@ -55,3 +55,46 @@ piece of the entry, copied as written.
 - Leave out the commas that separate the parts, also when one sits inside the closing
   quotation mark: `“Smart care in practice,” keynote speech, …` has the title
   `Smart care in practice`.
+
+## Transcriptions
+
+`transcriptions.yaml` holds what a person reads in one picture: an image a page shows, or
+one page of a PDF. It scores what the vision model reads in the same picture: the share of
+lines it read (text recall) and the numbers it read right (value precision and recall).
+
+- Name the picture by `image:`, its address, or by `document:` (`whizpad_catalog`,
+  `whiztoys_catalog`, `whiztoys_manual`) and `page:`. An image's address may be the one a
+  browser copies: the resized copy Wix serves is traced back to its file.
+- `text`: each line, label or table cell the picture prints, as printed, one per item.
+  Order does not count. Text in a photo, such as a brand on a mattress, counts when it is
+  legible; text you cannot read with certainty is left out.
+- `values`: each number with the unit printed beside it. The value is the number alone,
+  as printed, with its separators and range signs (`1,200`, `5~10`); the unit is the unit
+  or measure word printed beside it (`%`, `cm`, `mmHg`, `年`, `項`), or `''` when there is
+  none. Words that qualify the number, such as `約`, `近`, `超過`, `餘`, `多`, `以上` or `+`,
+  go in neither: `100餘位` is value `100`, unit `位`. A unit printed once for a row, a scale
+  or an axis belongs to each of its numbers. A year counts as a number. Each number once
+  per place it is printed: a scale printing 42 and 36 is two values.
+- Numbers standing alone, such as a scale's, go in `values` only; `text` holds words.
+- A line holding a number goes in `text` as printed, and its number in `values` too. A
+  number that names rather than measures, such as a phone number, an address, a postal
+  code or a model number, goes in `text` only.
+- Text in a logo is left out: a wordmark's letters have no reading order and state no fact.
+- `values: []` says the picture prints no number to list; left as the template's blank
+  row, values are not scored for that picture, as when only some of a page's text is
+  transcribed.
+- What no eye tells apart in print counts as the same: full-width and half-width forms
+  (`２０％` is `20%`), hyphens and dashes, middle dots, and spaces beside a Chinese
+  character (`公司 SEDA` is `公司SEDA`).
+
+The dev cases choose the vision model:
+
+```bash
+DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model> \
+  [--document-file whizpad_catalog=<path.pdf>]
+```
+
+It makes paid calls, so ask before running it, and keeps the answers where ingestion
+does, which takes the ingestion role. The heldout cases are never read by it; `wobot-eval
+run` scores them on the version ingestion built.
+
