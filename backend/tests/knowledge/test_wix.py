@@ -1,5 +1,5 @@
 from tests.knowledge.wix_pages import BLANK, NBSP, ZWSP, a, br_p, h, ol, p, page, rich
-from wobot.knowledge.sources.wix import Link, clean_block_text, page_blocks
+from wobot.knowledge.sources.wix import IMAGE_HOST, Image, Link, clean_block_text, page_blocks
 
 
 def blocks_of(*elements):
@@ -67,3 +67,21 @@ def test_reads_buttons_only_when_asked_named_after_their_owner():
     [button] = [b for b in page_blocks(html, buttons=True) if b.kind == "button"]
     assert (button.element_id, button.text) == ("comp-btn", "型錄")
     assert button.links == (Link("型錄", "https://example.test/c.pdf"),)
+
+
+def test_reads_images_as_their_original_files_only_when_asked():
+    resized = f"https://{IMAGE_HOST}/media/ab_1~mv2.png/v1/fill/w_539,h_245,al_c/a.png"
+    gallery = f"https://{IMAGE_HOST}/media/ab_2~mv2.png/v1/fill/w_774,h_531,q_90/ab_2~mv2.png"
+    html = page(
+        rich("comp-a", h(2, "規格")),
+        f'<div id="comp-img"><img src="{resized}" alt="規格圖" width="539" height="245"></div>',
+        f'<div id="item-g"><img src="{gallery}" alt="懶人包"></div>',
+        '<img src="https://www.facebook.com/tr?id=1" width="1" height="1">',
+    ).decode()
+
+    assert all(b.kind != "image" for b in page_blocks(html))
+    blocks = [b for b in page_blocks(html, images=True) if b.kind == "image"]
+    assert [(b.element_id, b.image) for b in blocks] == [
+        ("comp-img", Image(f"https://{IMAGE_HOST}/media/ab_1~mv2.png", "規格圖", 539, 245)),
+        ("item-g", Image(f"https://{IMAGE_HOST}/media/ab_2~mv2.png", "懶人包", 774, 531)),
+    ]

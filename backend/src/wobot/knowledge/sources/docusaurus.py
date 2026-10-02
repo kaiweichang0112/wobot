@@ -2,13 +2,13 @@
 and code, in page order, from the article's Markdown body only.
 
 Navigation, the table of contents and the footer sit outside that body and are never
-read. Images and embedded videos are left to the visual step; a video's address is kept
-as a link.
+read. Images are yielded where they stand, for the visual step; an embedded video's
+address is kept as a link.
 """
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from wobot.knowledge.sources.wix import Block, Link, clean_block_text
+from wobot.knowledge.sources.wix import Block, Image, Link, clean_block_text
 
 _HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 # Wrappers whose children are read as if they stood in the body: callouts, folded
@@ -48,6 +48,8 @@ def _read(node: Tag, blocks: list[Block]) -> None:
             _paragraph(child, blocks)
         elif child.name == "iframe" and child.get("src"):
             blocks.append(Block("", "button", "", (Link("video", child["src"]),)))
+        elif child.name == "img":
+            _image(child, blocks)
         elif child.name in _CONTAINERS:
             _read(child, blocks)
 
@@ -59,6 +61,19 @@ def _paragraph(node: Tag, blocks: list[Block]) -> None:
     for frame in node.find_all("iframe"):
         if frame.get("src"):
             blocks.append(Block("", "button", "", (Link("video", frame["src"]),)))
+    for img in node.find_all("img"):
+        _image(img, blocks)
+
+
+def _image(img: Tag, blocks: list[Block]) -> None:
+    if src := img.get("src"):
+        alt = clean_block_text(img.get("alt") or "")
+        width, height = (_number(img.get(name)) for name in ("width", "height"))
+        blocks.append(Block("", "image", alt, image=Image(src, alt, width, height)))
+
+
+def _number(value: object) -> int | None:
+    return int(value) if isinstance(value, str) and value.isdigit() else None
 
 
 def _list(node: Tag, blocks: list[Block], depth: int) -> None:

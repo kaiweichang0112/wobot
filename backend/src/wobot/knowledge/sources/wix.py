@@ -3,14 +3,19 @@
 The Docusaurus reader yields the same blocks, so one section parser serves both sites.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Literal
+from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
 # Wix sprinkles zero-width spaces through its text, even inside dates ("201​3/12/31").
 _ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿"), None)
 _HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+IMAGE_HOST = "static.wixstatic.com"
+# A resized copy's size, "/v1/fill/w_774,h_531,...": the size shown when the page states none.
+_SHOWN_SIZE = re.compile(r"/w_(\d+),h_(\d+)")
 
 
 @dataclass(frozen=True)
@@ -22,17 +27,27 @@ class Link:
 
 
 @dataclass(frozen=True)
+class Image:
+    url: str  # the file itself, which a page may show resized; relative on Docusaurus pages
+    alt: str
+    # The size the page shows it at, in CSS pixels, when it says; icons are small.
+    width: int | None = None
+    height: int | None = None
+
+
+@dataclass(frozen=True)
 class Block:
     # The Wix text element holding the block. Repeater items share a suffix after "__",
     # which pairs, say, a year with the list beside it.
     element_id: str
     # A button is a link outside the text, such as a catalog to download; a table and a
-    # code block come from Docusaurus pages only.
-    kind: Literal["heading", "paragraph", "item", "blank", "button", "table", "code"]
+    # code block come from Docusaurus pages only. An image's text is its alt text.
+    kind: Literal["heading", "paragraph", "item", "blank", "button", "table", "code", "image"]
     text: str
     links: tuple[Link, ...] = ()
     level: int | None = None  # headings only
     rows: tuple[tuple[str, ...], ...] = ()  # tables only, the header row first
+    image: Image | None = None  # images only
 
     @property
     def repeater_item(self) -> str | None:
@@ -49,15 +64,21 @@ def clean_block_text(text: str) -> str:
     return "\n".join(" ".join(line.split()) for line in lines).strip()
 
 
-def page_blocks(html: str, *, buttons: bool = False) -> list[Block]:
+def page_blocks(html: str, *, buttons: bool = False, images: bool = False) -> list[Block]:
     """Every heading, paragraph and list item of the page's text elements, in page order,
-    with the link buttons among them when `buttons` is set."""
+    with the link buttons among them when `buttons` is set and the images when `images` is."""
     soup = BeautifulSoup(html, "lxml")
     selector = '[data-testid="richTextElement"]'
     if buttons:
         selector += ', a[data-testid="linkElement"]'
+    if images:
+        selector += ", img"
     blocks = []
     for element in soup.select(selector):
+        if element.name == "img":
+            if (block := _image(element)) is not None:
+                blocks.append(block)
+            continue
         if element.name == "a":
             if element.find_parent(attrs={"data-testid": "richTextElement"}) is None:
                 blocks.append(_button(element))
@@ -77,6 +98,30 @@ def _button(anchor: Tag) -> Block:
     label = clean_block_text(anchor.get_text(" "))
     link = Link(text=label, url=anchor.get("href") or None)
     return Block(owner.get("id", "") if owner else "", "button", label, (link,))
+
+
+def _image(img: Tag) -> Block | None:
+    """An image the site stores, as its original file rather than the resized copy shown.
+
+    Wix shows a picture, a section's background or a gallery item through the same host;
+    a background's first source is a blurred placeholder, but its path still names the file.
+    """
+    src = img.get("src") or ""
+    parts = urlsplit(src)
+    if parts.hostname != IMAGE_HOST or not parts.path.startswith("/media/"):
+        return None  # a tracking pixel, or an image from elsewhere
+    name = parts.path.removeprefix("/media/").split("/")[0]
+    width, height = _number(img.get("width")), _number(img.get("height"))
+    if (width is None or height is None) and (shown := _SHOWN_SIZE.search(parts.path)):
+        width, height = int(shown[1]), int(shown[2])
+    owner = img.find_parent(id=True)
+    alt = clean_block_text(img.get("alt") or "")
+    image = Image(f"https://{IMAGE_HOST}/media/{name}", alt, width, height)
+    return Block(owner.get("id", "") if owner else "", "image", alt, image=image)
+
+
+def _number(value: object) -> int | None:
+    return int(value) if isinstance(value, str) and value.isdigit() else None
 
 
 def _block(element_id: str, node: Tag) -> Block:
