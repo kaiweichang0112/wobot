@@ -264,6 +264,7 @@ async def test_a_run_of_one_source_carries_the_others_over(ingest_sources, inges
         "publication_block",
         "profile_section",
         "lecture_block",
+        "section_text",
     }
 
 

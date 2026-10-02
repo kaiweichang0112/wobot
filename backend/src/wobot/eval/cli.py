@@ -48,6 +48,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     check = commands.add_parser("check-gold", help="read the labels and match them to records")
     check.add_argument("--index-version", type=int, help="a version other than the active one")
+    check.add_argument(
+        "--show",
+        type=lambda value: value.split(","),
+        default=[],
+        metavar="CASE_IDS",
+        help="comma-separated cases whose labels are printed with the records they match, "
+        "since a label that fits one record may still fit the wrong one",
+    )
     check.set_defaults(handler=_check_gold)
 
     args = parser.parse_args(argv)
@@ -177,10 +185,15 @@ async def _check_gold(args: argparse.Namespace, settings: Settings) -> int:
             if not refs:
                 print(f"  {case.case_id}: not labelled yet ({case.check['gold']['file']})")
                 continue
-            unresolved = [r for r in gold.resolve(refs, corpus) if not r.keys]
+            resolved = gold.resolve(refs, corpus)
+            unresolved = [r for r in resolved if not r.keys]
             problems += len(unresolved)
             print(f"  {case.case_id}: {len(refs)} labels, {len(unresolved)} match no record")
             for r in unresolved:
                 problem = f" ({r.problem})" if r.problem else ""
                 print(f"    {r.ref.where}: {r.ref.kind} {r.ref.value!r}{problem}")
+            if case.case_id in args.show:
+                for r in resolved:
+                    for key in r.keys:
+                        print(f"    {r.ref.where}: {r.ref.value!r} -> {key}")
     return 1 if problems else 0

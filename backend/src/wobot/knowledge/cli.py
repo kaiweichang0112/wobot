@@ -12,14 +12,15 @@ from openai import APIError, AsyncOpenAI
 
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
-from wobot.knowledge import catalog, grc, repository
+from wobot.knowledge import catalog, grc, gtech, repository
 from wobot.knowledge.blobs import BlobStore, GcsBlobStore, LocalBlobStore
 from wobot.knowledge.catalog import CatalogFile, FetchCatalog, ProductCatalogSource
 from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import CachedReader, DbAnswerCache, OpenAILectureReader
 from wobot.knowledge.grc import GrcWebsiteSource
+from wobot.knowledge.gtech import GtechDocsSource, GtechWebsiteSource
 from wobot.knowledge.pipeline import RunResult, run_ingestion
-from wobot.knowledge.profiles import GRC_HOST
+from wobot.knowledge.profiles import DOCS_HOST, GRC_HOST, GTECH_HOST
 from wobot.knowledge.search import search_chunks
 from wobot.knowledge.source import Source
 from wobot.knowledge.sources.drive import DriveError, drive_token, fetch_drive_file
@@ -35,7 +36,7 @@ DRIVE_TIMEOUT_SECONDS = 60
 # Failures of the world outside, not of the code: reported in one line, no traceback.
 # A run has already recorded them.
 EXPECTED_ERRORS = (APIError, DriveError, CatalogSchemaError, FetchError)
-SOURCES = (catalog.SOURCE_ID, grc.SOURCE_ID)
+SOURCES = (catalog.SOURCE_ID, grc.SOURCE_ID, gtech.WEBSITE_SOURCE_ID, gtech.DOCS_SOURCE_ID)
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,10 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
                         per_item=args.chunking == "item",
                     )
                 )
+            if gtech.WEBSITE_SOURCE_ID in args.sources:
+                sources.append(GtechWebsiteSource(PageFetcher(client, {GTECH_HOST})))
+            if gtech.DOCS_SOURCE_ID in args.sources:
+                sources.append(GtechDocsSource(PageFetcher(client, {DOCS_HOST})))
             result = await run_ingestion(
                 engine,
                 _blob_store(settings),

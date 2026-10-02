@@ -54,3 +54,16 @@ def test_repeater_items_share_their_suffix():
     )
 
     assert [b.repeater_item for b in blocks] == ["item-k1", "item-k1"]
+
+
+def test_reads_buttons_only_when_asked_named_after_their_owner():
+    html = page(
+        rich("comp-a", p("文字")),
+        '<div id="comp-btn"><a data-testid="linkElement" href="https://example.test/c.pdf">'
+        "<span>型錄</span></a></div>",
+    ).decode()
+
+    assert "button" not in {b.kind for b in page_blocks(html)}
+    [button] = [b for b in page_blocks(html, buttons=True) if b.kind == "button"]
+    assert (button.element_id, button.text) == ("comp-btn", "型錄")
+    assert button.links == (Link("型錄", "https://example.test/c.pdf"),)

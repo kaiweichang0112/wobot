@@ -579,10 +579,10 @@ expand/contract: the previous revision must keep working on the newer schema.
 
 ### Ingestion job
 
-Downloads the product catalog and reads the listed pages of the GRC site over the
-internet, stores them as knowledge and publishes a version (`backend/README.md`,
-"Knowledge ingestion"). Cloud Run jobs reach the internet by default; nothing more
-is needed for the site. It relies on what sections 2–8
+Downloads the product catalog and reads the listed pages of the GRC and G-Tech sites
+and the WhizToys documentation over the internet, stores them as knowledge and
+publishes a version (`backend/README.md`, "Knowledge ingestion"). Cloud Run jobs reach
+the internet by default; nothing more is needed for the sites. It relies on what sections 2–8
 set up for `wobot-ingest`: the Drive API, the account, the secret, the
 knowledge bucket, the database user and its group role.
 
