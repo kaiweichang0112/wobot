@@ -1,7 +1,9 @@
-"""Synthetic G-Tech sites behind a mock transport: the Wix website and the Docusaurus docs.
+"""Synthetic G-Tech sites behind a mock transport: the Wix website, its image host, the
+Docusaurus docs and the PDFs the website links to.
 
 The content is made up; the structure follows the real sites: chrome and a menu on every
-page, a contact form closing each page, catalogs behind buttons, and docs found through
+page, a contact form closing each page, catalogs behind buttons, images served from
+another host whose robots.txt answers 403, a page of images only, and docs found through
 a sitemap that also lists tag and category pages.
 """
 
@@ -10,16 +12,25 @@ from urllib.parse import quote
 import httpx2
 
 from tests.knowledge.docs_pages import doc_page, heading, table
+from tests.knowledge.fakes import fake_vision
+from tests.knowledge.pdf_files import text_pdf
 from tests.knowledge.wix_pages import h, p, rich
-from wobot.knowledge.gtech import GtechDocsSource, GtechWebsiteSource
-from wobot.knowledge.profiles import DOCS_HOST, GTECH_HOST
-from wobot.knowledge.sources.http import PageFetcher
+from wobot.knowledge.extraction import CachedReader
+from wobot.knowledge.gtech import GtechDocsSource, GtechDocumentsSource, GtechWebsiteSource
+from wobot.knowledge.page_images import IMAGE_MAX_BYTES, ImageReading
+from wobot.knowledge.profiles import DOCS_HOST, GTECH_DOCUMENTS, GTECH_HOST, DocumentProfile
+from wobot.knowledge.source import Snapshot
+from wobot.knowledge.sources.http import FetchedPage, PageFetcher
+from wobot.knowledge.sources.wix import IMAGE_HOST
+from wobot.knowledge.vision import VisualInput
 
 SITE = f"https://{GTECH_HOST}"
 DOCS = f"https://{DOCS_HOST}"
-DRIVE_CATALOG = "https://drive.google.com/file/d/catalog/view"
-MANUAL = f"{SITE}/_files/ugd/manual.pdf"
+MEDIA = f"https://{IMAGE_HOST}/media"
+DRIVE_CATALOG = "https://drive.google.com/file/d/catalog/view"  # in no document profile
+MANUAL = next(d.url for d in GTECH_DOCUMENTS if d.key == "whiztoys_manual")
 LINE = "https://line.me/R/ti/p/@example"
+ABOUT = "/" + quote("資深的新創公司")
 
 
 def button(element_id: str, label: str, href: str) -> str:
@@ -29,9 +40,22 @@ def button(element_id: str, label: str, href: str) -> str:
     )
 
 
+def picture(element_id: str, name: str, alt: str, size: tuple[int, int] | None) -> str:
+    """A Wix image: a resized copy of the file, with the size shown or, as a gallery
+    writes it, the size in the copy's address only."""
+    width, height = size or (774, 531)
+    src = f"{MEDIA}/{name}/v1/fill/w_{width},h_{height},al_c/{name}"
+    shown = f' width="{width}" height="{height}"' if size else ""
+    return f'<div id="{element_id}"><img src="{src}" alt="{alt}"{shown}></div>'
+
+
 def wix_page(*elements: str, contact: str) -> bytes:
     """A page between the shared header and footer, its contact form last."""
-    header = rich("comp-brand", p("範例智科")) + button("comp-menu", "首頁", SITE)
+    header = (
+        picture("comp-logo", "logo~mv2.png", "logo.png", (130, 54))
+        + rich("comp-brand", p("範例智科"))
+        + button("comp-menu", "首頁", SITE)
+    )
     form = rich(f"comp-{contact}-h", h(2, "聯絡我們")) + rich(
         f"comp-{contact}", p("歡迎加入 Line 官方帳號")
     )
@@ -44,6 +68,7 @@ def website_pages() -> dict[str, bytes]:
         "/": wix_page(
             rich("comp-h", h(2, "智慧床墊")),
             rich("comp-p", p("不需插電，安全方便。")),
+            picture("comp-feature", "feature~mv2.png", "資產 38_3x.png", (165, 166)),
             button("comp-line", "", LINE),
             contact="c1",
         ),
@@ -51,6 +76,7 @@ def website_pages() -> dict[str, bytes]:
             rich("comp-lead", h(1, "智慧床墊")),  # a heading over a long section
             rich("comp-title", h(1, "安心臥床墊")),
             rich("comp-text", p("離床前提醒照護者。" * 60)),
+            picture("comp-spec", "spec~mv2.png", "體壓分佈測定", (539, 245)),
             button("comp-catalog", "線上型錄", DRIVE_CATALOG),
             contact="c2",
         ),
@@ -58,11 +84,19 @@ def website_pages() -> dict[str, bytes]:
             rich("comp-t1", h(1, "運動地墊")),
             rich("comp-t2", h(2, "運動地墊")),
             rich("comp-t3", p("把運動變成遊戲。")),
+            picture("comp-gone", "gone~mv2.png", "", (400, 300)),  # missing from the host
             button("comp-manual", "操作說明書下載", MANUAL),
             button("comp-contact-us", "Contact us >", f"{SITE}/whiztoys#toys"),
             contact="c3",
         ),
+        ABOUT: wix_page(picture("item-g1", "about~mv2.png", "懶人包-02.png", None), contact="c4"),
     }
+
+
+IMAGES = {
+    f"/media/{name}": (name.encode(), "image/png")
+    for name in ("logo~mv2.png", "feature~mv2.png", "spec~mv2.png", "about~mv2.png")
+}
 
 
 def website_sitemap(extra: tuple[str, ...] = ()) -> bytes:
@@ -70,7 +104,7 @@ def website_sitemap(extra: tuple[str, ...] = ()) -> bytes:
         "",
         "/whizpad",
         "/whiztoys",
-        "/" + quote("資深的新創公司"),
+        ABOUT,
         "/" + quote("資訊安全政策"),
         "/" + quote("whiztoys運動地墊遊戲平台app隱私權聲明"),
         *extra,
@@ -92,6 +126,8 @@ def docs_pages() -> dict[str, bytes]:
             "硬體介紹",
             heading(2, "規格"),
             table(("項目", "數值"), ("地墊尺寸", "30 cm"), ("防水", "IP44")),
+            '<p><img src="/assets/images/kit.png" alt="產品配備圖" width="4032" height="3024"></p>',
+            '<p><img src="/assets/images/ic.svg" alt="測驗圖示" width="1097" height="1097"></p>',
         ),
     }
 
@@ -110,14 +146,20 @@ def docs_sitemap() -> bytes:
     ).encode()
 
 
-def _fetcher(host: str, routes: dict[str, bytes], requests: list[str]) -> PageFetcher:
+Routes = dict[str, bytes | tuple[bytes, str]]  # path → body, or body and content type
+
+
+def _fetcher(host: str, routes: Routes, requests: list[str]) -> PageFetcher:
     def handler(request: httpx2.Request) -> httpx2.Response:
         requests.append(str(request.url))
         path = request.url.raw_path.decode()
         if request.url.host != host:
             return httpx2.Response(404)
         if path in routes:
-            return httpx2.Response(200, content=routes[path])
+            body, content_type = (
+                routes[path] if isinstance(routes[path], tuple) else (routes[path], "text/html")
+            )
+            return httpx2.Response(200, content=body, headers={"content-type": content_type})
         if f"{path}/" in routes:  # Docusaurus serves each page under a trailing slash
             return httpx2.Response(301, headers={"location": f"{path}/"})
         return httpx2.Response(404)
@@ -126,19 +168,59 @@ def _fetcher(host: str, routes: dict[str, bytes], requests: list[str]) -> PageFe
     return PageFetcher(client, {host}, min_interval=0)
 
 
-def website_source(requests: list[str], *, extra_pages: tuple[str, ...] = ()) -> GtechWebsiteSource:
-    routes = {
+def website_source(
+    requests: list[str],
+    *,
+    extra_pages: tuple[str, ...] = (),
+    vision: CachedReader[VisualInput] | None = None,
+) -> GtechWebsiteSource:
+    routes: Routes = {
         "/robots.txt": b"User-agent: *\nAllow: /\n",
         "/sitemap.xml": website_sitemap(extra_pages),
         **website_pages(),
     }
-    return GtechWebsiteSource(_fetcher(GTECH_HOST, routes, requests))
+    # Wix's image host answers 403 for its robots.txt, which sets no rules (RFC 9309).
+    images = _fetcher(IMAGE_HOST, {"/robots.txt": (b"Forbidden", "text/plain"), **IMAGES}, requests)
+    return GtechWebsiteSource(
+        _fetcher(GTECH_HOST, routes, requests),
+        ImageReading(images.fetch, vision or fake_vision()),
+    )
 
 
-def docs_source(requests: list[str], *, sitemap: bytes | None = None) -> GtechDocsSource:
-    routes = {
+def docs_source(
+    requests: list[str],
+    *,
+    sitemap: bytes | None = None,
+    vision: CachedReader[VisualInput] | None = None,
+) -> GtechDocsSource:
+    routes: Routes = {
         "/robots.txt": b"",
         "/sitemap.xml": docs_sitemap() if sitemap is None else sitemap,
+        "/assets/images/kit.png": (b"kit", "image/png"),
         **docs_pages(),
     }
-    return GtechDocsSource(_fetcher(DOCS_HOST, routes, requests))
+    fetcher = _fetcher(DOCS_HOST, routes, requests)
+
+    async def fetch_image(url: str) -> FetchedPage:
+        return await fetcher.fetch(url, max_bytes=IMAGE_MAX_BYTES)
+
+    return GtechDocsSource(fetcher, ImageReading(fetch_image, vision or fake_vision()))
+
+
+def pdfs() -> dict[str, bytes]:
+    """Each listed document as a PDF: a cover drawn only, then pages of text."""
+    return {
+        document.key: text_pdf("", f"{document.key} contents\nSize: 30 cm", "Safety")
+        for document in GTECH_DOCUMENTS
+    }
+
+
+def documents_source(
+    files: dict[str, bytes] | None = None, *, vision: CachedReader[VisualInput] | None = None
+) -> GtechDocumentsSource:
+    files = pdfs() if files is None else files
+
+    async def fetch(document: DocumentProfile) -> Snapshot:
+        return Snapshot(document.url, files[document.key])
+
+    return GtechDocumentsSource(fetch, vision or fake_vision())

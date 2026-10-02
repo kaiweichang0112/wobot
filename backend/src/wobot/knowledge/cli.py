@@ -18,14 +18,18 @@ from wobot.knowledge.catalog import CatalogFile, FetchCatalog, ProductCatalogSou
 from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import CachedReader, DbAnswerCache, OpenAILectureReader
 from wobot.knowledge.grc import GrcWebsiteSource
-from wobot.knowledge.gtech import GtechDocsSource, GtechWebsiteSource
+from wobot.knowledge.gtech import GtechDocsSource, GtechDocumentsSource, GtechWebsiteSource
+from wobot.knowledge.page_images import IMAGE_MAX_BYTES, ImageReading
 from wobot.knowledge.pipeline import RunResult, run_ingestion
-from wobot.knowledge.profiles import DOCS_HOST, GRC_HOST, GTECH_HOST
+from wobot.knowledge.profiles import DOCS_HOST, GRC_HOST, GTECH_DOCUMENTS, GTECH_HOST
 from wobot.knowledge.search import search_chunks
 from wobot.knowledge.source import Source
+from wobot.knowledge.sources.documents import document_fetcher, document_files
 from wobot.knowledge.sources.drive import DriveError, drive_token, fetch_drive_file
-from wobot.knowledge.sources.http import FetchError, PageFetcher, new_client
+from wobot.knowledge.sources.http import FetchedPage, FetchError, PageFetcher, new_client
+from wobot.knowledge.sources.wix import IMAGE_HOST
 from wobot.knowledge.sources.xlsx import CatalogSchemaError
+from wobot.knowledge.vision import OpenAIVisionReader, VisualInput, visual_input
 from wobot.logs import configure_logging
 
 # Statuses that need no one's attention; anything else exits non-zero.
@@ -36,7 +40,13 @@ DRIVE_TIMEOUT_SECONDS = 60
 # Failures of the world outside, not of the code: reported in one line, no traceback.
 # A run has already recorded them.
 EXPECTED_ERRORS = (APIError, DriveError, CatalogSchemaError, FetchError)
-SOURCES = (catalog.SOURCE_ID, grc.SOURCE_ID, gtech.WEBSITE_SOURCE_ID, gtech.DOCS_SOURCE_ID)
+SOURCES = (
+    catalog.SOURCE_ID,
+    grc.SOURCE_ID,
+    gtech.WEBSITE_SOURCE_ID,
+    gtech.DOCS_SOURCE_ID,
+    gtech.DOCUMENTS_SOURCE_ID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +68,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="a local catalog workbook (.xlsx); without it, the Drive file in "
         "PRODUCT_CATALOG_FILE_ID is downloaded",
+    )
+    run.add_argument(
+        "--document-file",
+        action="append",
+        default=[],
+        metavar="KEY=PATH",
+        help="a local copy of a listed PDF, such as a Drive file the local credentials "
+        f"cannot read; keys: {', '.join(d.key for d in GTECH_DOCUMENTS)}",
     )
     run.add_argument(
         "--chunking",
@@ -91,6 +109,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         needs_catalog = catalog.SOURCE_ID in args.sources
         if needs_catalog and not (args.catalog_file or settings.product_catalog_file_id):
             parser.error("pass --catalog-file or set PRODUCT_CATALOG_FILE_ID")
+        try:
+            args.document_files = document_files(args.document_file)
+        except ValueError as error:
+            parser.error(str(error))
     configure_logging()
     handler: Callable[[argparse.Namespace, Settings], Awaitable[int]] = args.handler
     try:
@@ -160,10 +182,29 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
                         per_item=args.chunking == "item",
                     )
                 )
+            # One reader for every source, so an image two sources show is read once.
+            vision = CachedReader[VisualInput](
+                OpenAIVisionReader(openai_client, settings.vision_model),
+                DbAnswerCache(engine),
+                cache_input=visual_input,
+            )
             if gtech.WEBSITE_SOURCE_ID in args.sources:
-                sources.append(GtechWebsiteSource(PageFetcher(client, {GTECH_HOST})))
+                image_host = PageFetcher(client, {IMAGE_HOST}, max_bytes=IMAGE_MAX_BYTES)
+                sources.append(
+                    GtechWebsiteSource(
+                        PageFetcher(client, {GTECH_HOST}), ImageReading(image_host.fetch, vision)
+                    )
+                )
             if gtech.DOCS_SOURCE_ID in args.sources:
-                sources.append(GtechDocsSource(PageFetcher(client, {DOCS_HOST})))
+                docs = PageFetcher(client, {DOCS_HOST})
+
+                async def fetch_docs_image(url: str) -> FetchedPage:
+                    return await docs.fetch(url, max_bytes=IMAGE_MAX_BYTES)
+
+                sources.append(GtechDocsSource(docs, ImageReading(fetch_docs_image, vision)))
+            if gtech.DOCUMENTS_SOURCE_ID in args.sources:
+                fetch = document_fetcher(client, args.document_files)
+                sources.append(GtechDocumentsSource(fetch, vision))
             result = await run_ingestion(
                 engine,
                 _blob_store(settings),
