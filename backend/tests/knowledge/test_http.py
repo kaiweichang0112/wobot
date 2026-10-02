@@ -57,6 +57,25 @@ async def test_respects_robots_txt():
         await fetcher({f"https://{SITE}/robots.txt": ROBOTS}, []).fetch(f"https://{SITE}/private/x")
 
 
+@pytest.mark.parametrize("status", [403, 404])
+async def test_a_robots_txt_that_cannot_be_read_sets_no_rules(status):
+    routes = {
+        f"https://{SITE}/robots.txt": (status, {}, b"Forbidden"),
+        f"https://{SITE}/media/a.png": (200, {}, b"png"),
+    }
+
+    page = await fetcher(routes, []).fetch(f"https://{SITE}/media/a.png")
+
+    assert page.content == b"png"
+
+
+async def test_a_robots_txt_that_fails_on_the_server_stops_the_fetch():
+    routes = {f"https://{SITE}/robots.txt": (503, {}, b"")}
+
+    with pytest.raises(FetchError, match="answered 503"):
+        await fetcher(routes, []).fetch(f"https://{SITE}/projects")
+
+
 async def test_a_listed_page_that_is_gone_fails_the_fetch():
     with pytest.raises(FetchError, match="answered 404"):
         await fetcher({f"https://{SITE}/robots.txt": ROBOTS}, []).fetch(f"https://{SITE}/gone")
