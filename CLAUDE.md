@@ -57,8 +57,9 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   with `ON CONFLICT DO NOTHING` and read IDs back; never `DO UPDATE`. Tests that
   write run inside a rolled-back transaction (`tests/knowledge/conftest.py`).
 - **Ingestion reads only listed pages** (`knowledge/profiles.py`), politely, and never
-  follows links. Parsers decide how many records a page holds; what a page cannot
-  supply is reported, never guessed.
+  follows links; the WhizToys docs alone are found in their sitemap, under one path.
+  Parsers decide how many records a page holds; what a page cannot supply is
+  reported, never guessed.
 - **A model may label, never count or invent.** Fields a model reads are kept only
   as verbatim spans of their source (`knowledge/extraction.py`, enforced by CHECK
   constraints). Answers are cached by prompt version: changing the instructions,

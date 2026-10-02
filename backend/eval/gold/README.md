@@ -1,7 +1,8 @@
 # Gold labels
 
 Reference answers for the evaluation dataset, written by a person reading the original
-sources: the GRC website and the product catalog workbook. Nothing here may come from
+sources: the GRC and G-Tech websites, the WhizToys documentation and the product catalog
+workbook. Nothing here may come from
 what the system extracted; a label copied from parser output measures nothing.
 
 ## Rules
@@ -17,16 +18,21 @@ what the system extracted; a label copied from parser output measures nothing.
   answer, not the answer itself: the patent entries, not the countries they name.
 - A talk, paper or profile passage may be named by a piece of its text, such as its
   title, when no other item has that piece. `check-gold` says when a piece fits several.
+- A section of the GRC home page, the G-Tech pages or the WhizToys docs is named by its
+  whole heading, by `page › heading` when another page has the same heading, or by a piece
+  of one paragraph under it. A heading is not text: `2003` does not name `Since 2003`.
 
 Check the files with:
 
 ```bash
-uv run wobot-eval check-gold
+uv run wobot-eval check-gold [--index-version <version>] [--show CASE-012,CASE-013]
 ```
 
-It reports syntax errors and items it cannot find in the active version. An item it
-cannot find is either a typo in the label or a defect in ingestion; look at the source
-before changing the label.
+It reports syntax errors and items it cannot find in the active version, or in another
+one such as a dry run's. An item it cannot find is either a typo in the label or a defect
+in ingestion; look at the source before changing the label. A piece of text that one item
+holds is taken as naming it, even when that item is on the wrong site: `--show` prints
+what each label of the given cases matched.
 
 ## Speech fields
 

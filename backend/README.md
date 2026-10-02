@@ -73,7 +73,9 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 | Source | Reads | Records |
 | --- | --- | --- |
 | `product_catalog` | The catalog workbook: a local file, or Drive in the cloud | One product per row |
-| `grc_website` | Six pages of the GRC site, listed in `knowledge/profiles.py` | Students, projects, publications, speeches, the profile page |
+| `grc_website` | Seven pages of the GRC site, listed in `knowledge/profiles.py` | Students, projects, publications, speeches, the profile page; the home page by heading |
+| `gtech_website` | Three pages of the G-Tech site, listed in `knowledge/profiles.py` | One section per heading, with the catalog links |
+| `gtech_docs` | The WhizToys documentation, every page its sitemap lists under `/docs/whiztoys/` | One section per heading, tables row by row |
 
 - One run: read the active version → fetch and parse every source → check → store
   records and chunks → embed the chunks that have no vector yet → build a version
@@ -82,8 +84,13 @@ DB_USER=wobot_ingest_user uv run wobot-ingest status
 - A version holds every source. `--sources` reads only some; the others are carried
   over from the active version unchanged.
 - Only listed pages are fetched, from allowed hosts, after robots.txt, one request a
-  second. Links on those pages (Drive, DOI, theses) are stored, never followed. Each
-  run reports sitemap pages that no profile covers.
+  second; the WhizToys documentation alone is found in its sitemap. Links on those
+  pages (Drive, DOI, theses, catalogs) are stored, never followed. Each run reports
+  sitemap pages that no profile covers.
+- Prose pages become one section per heading. Short sections under one heading share a
+  chunk, long ones split between paragraphs near 500 tokens (never past 800), and each
+  table row repeats its header. What every page of a site shows, such as an address,
+  is read once, from its home page.
 - Records, chunks and embeddings are content-addressed and never updated. A version
   reuses every unchanged one, so an edit to one row embeds one chunk.
 - Code decides how many records a page holds; a model only labels parts of them.
