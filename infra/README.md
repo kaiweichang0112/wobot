@@ -747,9 +747,10 @@ Verify:
 gcloud scheduler jobs describe wobot-ingest-monthly --location $REGION \
   --format="value(schedule, timeZone, state)"   # 0 3 * * 0  Asia/Taipei  ENABLED
 gcloud run jobs get-iam-policy wobot-ingest --region $REGION   # wobot-scheduler: jobsExecutorWithOverrides only
-# Force a run: on any day but the first Sunday, the execution ends at once.
+# Force a run: on any day but the first Sunday, the execution ends at once. Cloud
+# Logging keeps a JSON line holding nothing but a message as text, hence textPayload.
 gcloud scheduler jobs run wobot-ingest-monthly --location $REGION
-gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-ingest" AND jsonPayload.message:"scheduled run skipped"' \
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-ingest" AND textPayload:"scheduled run skipped"' \
   --limit 1 --format="value(timestamp)"
 ```
 
