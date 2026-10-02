@@ -17,6 +17,11 @@ KEYNOTES, INVITED = LECTURE_CATEGORIES
 
 def site_pages(project_amount: str = "NTD600,000") -> dict[str, bytes]:
     nav = rich("comp-nav", link_p("Publications", f"{HOST}/publications"))
+    home = page(
+        nav,
+        rich("comp-since", h(2, "Since 2003")),
+        rich("comp-about", p("Gerontechnology:"), p("Design technology for older persons.")),
+    )
     profile = page(
         nav,
         rich("comp-intro", p("徐教授在元智大學服務三十餘年。")),
@@ -87,6 +92,7 @@ def site_pages(project_amount: str = "NTD600,000") -> dict[str, bytes]:
         ),
     )
     return {
+        "/": home,
         "/%E5%BE%90%E6%A5%AD%E8%89%AFyehlianghsu": profile,
         "/publications": publications,
         "/projects": projects,
@@ -97,7 +103,7 @@ def site_pages(project_amount: str = "NTD600,000") -> dict[str, bytes]:
 
 
 def sitemaps(extra: tuple[str, ...] = ()) -> dict[str, bytes]:
-    pages = ["", "/chapter3", "/courses-activities/news", *site_pages(), *extra]
+    pages = ["/chapter3", "/courses-activities/news", *site_pages(), *extra]
     locs = "".join(f"<url><loc>{HOST}{path}</loc></url>" for path in pages)
     index = f"<sitemap><loc>{HOST}/pages-sitemap.xml</loc></sitemap>"
     return {

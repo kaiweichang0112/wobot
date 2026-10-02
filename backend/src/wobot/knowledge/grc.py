@@ -1,22 +1,23 @@
 """The GRC website as an ingestion source: the listed pages, read by their page profiles."""
 
-import re
 from collections.abc import Callable, Sequence
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 from wobot.knowledge.chunking import grc as grc_chunking
 from wobot.knowledge.chunking.drafts import ChunkDraft
+from wobot.knowledge.chunking.sections import section_chunks
 from wobot.knowledge.extraction import CachedReader, ReadStats
-from wobot.knowledge.profiles import GRC_EXCLUDED, GRC_LATER, GRC_PAGES, GRC_SITEMAP
+from wobot.knowledge.profiles import GRC_EXCLUDED, GRC_PAGES, GRC_SITEMAP
 from wobot.knowledge.records import grc as grc_records
 from wobot.knowledge.records.lectures import lecture_records, split_lectures
+from wobot.knowledge.records.sections import SectionPage, section_records
 from wobot.knowledge.source import Extraction, Snapshot
-from wobot.knowledge.sources.http import FetchError, PageFetcher
+from wobot.knowledge.sources.http import PageFetcher
+from wobot.knowledge.sources.sitemaps import unlisted_pages
 from wobot.knowledge.sources.wix import Block, page_blocks
 from wobot.knowledge.validation import check_pages
 
 SOURCE_ID = "grc_website"
-_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 
 Parser = Callable[[Sequence[Block]], grc_records.Parsed]
 Chunker = Callable[..., list[ChunkDraft]]  # (drafts, *, per_item) → chunks
@@ -62,8 +63,16 @@ class GrcWebsiteSource:
         pages, chunks, drafts_by_page, problems_by_page, notes = [], [], {}, {}, []
         model_reads = ReadStats()
         for profile, snapshot in zip(GRC_PAGES, snapshots, strict=True):
-            own_blocks = content_blocks(blocks[profile.url], chrome)
-            if profile.parser == "speeches":
+            # The home page keeps what every page shows, such as the address, so the
+            # site's own facts are read once.
+            own_blocks = content_blocks(
+                blocks[profile.url], set() if profile.parser == "home" else chrome
+            )
+            if profile.parser == "home":
+                page = SectionPage(profile.url, grc_chunking.CENTER, "grc", "首頁", "home")
+                parsed = section_records(own_blocks, page, nested=False)
+                chunk = section_chunks
+            elif profile.parser == "speeches":
                 parsed, model_reads = await self._read_speeches(own_blocks)
                 chunk: Chunker = grc_chunking.lecture_chunks
             else:
@@ -74,7 +83,9 @@ class GrcWebsiteSource:
             drafts_by_page[profile.url] = parsed.drafts
             problems_by_page[profile.url] = parsed.problems
             notes += parsed.notes
-        notes += await self._unlisted_pages()
+        notes += await unlisted_pages(
+            self._fetcher, GRC_SITEMAP, (p.url for p in GRC_PAGES), GRC_EXCLUDED
+        )
         report = check_pages(drafts_by_page, problems_by_page, chunks, notes=notes)
         report.counts |= model_reads.counts("model_reads")
         return Extraction(
@@ -93,23 +104,6 @@ class GrcWebsiteSource:
             lectures, answers, speaker=grc_chunking.PERSON, question=self._lectures.question
         )
         return parsed, stats
-
-    async def _unlisted_pages(self) -> list[str]:
-        """Pages the sitemap lists that no profile covers: new pages a person should see."""
-        known = {_normal(url) for url in (*(p.url for p in GRC_PAGES), *GRC_LATER)}
-        try:
-            index = await self._fetcher.fetch(GRC_SITEMAP)
-            urls = []
-            for sitemap in _LOC.findall(index.content.decode()):
-                urls += _LOC.findall((await self._fetcher.fetch(sitemap)).content.decode())
-        except FetchError as error:
-            return [f"sitemap not read: {error}"]
-        return [
-            f"page not in any profile: {unquote(url)}"
-            for url in urls
-            if _normal(url) not in known
-            and not any(pattern.search(unquote(urlsplit(url).path)) for pattern in GRC_EXCLUDED)
-        ]
 
 
 def site_chrome(pages: Sequence[Sequence[Block]]) -> set[str]:
@@ -135,7 +129,3 @@ def content_blocks(blocks: Sequence[Block], chrome: set[str]) -> list[Block]:
             and urlsplit(block.links[0].url or "").hostname == urlsplit(GRC_SITEMAP).hostname
         )
     ]
-
-
-def _normal(url: str) -> str:
-    return unquote(url).rstrip("/")
