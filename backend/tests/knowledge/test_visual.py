@@ -134,4 +134,3 @@ def test_a_reading_past_the_section_target_stays_one_chunk():
     [chunk] = image_chunks([record(shown, reading(verbatim_text=lines))])
 
     assert 500 < chunk.token_count <= MAX_TOKENS
-
