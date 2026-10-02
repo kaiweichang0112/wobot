@@ -129,3 +129,26 @@ def check_pages(
                 f"over {MAX_EMBEDDING_TOKENS}"
             )
     return report
+
+
+# A source losing more than this share of its records holds the version for a person to
+# accept: a page that changed shape, or a model that stopped answering, looks just like
+# items deleted at the source. Lost pages fail the run before this; this catches the rest.
+MAX_DROP = 0.2
+
+
+def hold_reasons(
+    before: Mapping[str, int], after: Mapping[str, int], *, max_drop: float = MAX_DROP
+) -> list[str]:
+    """Why a version must not publish by itself, comparing record counts per source with the
+    active version's. A source not read this run, or new, gives none."""
+    reasons = []
+    for source, was in sorted(before.items()):
+        now = after.get(source)
+        if now is None or not was:
+            continue
+        if now == 0:
+            reasons.append(f"{source}: no records, down from {was}")
+        elif now < was * (1 - max_drop):
+            reasons.append(f"{source}: {now} records, down {1 - now / was:.0%} from {was}")
+    return reasons

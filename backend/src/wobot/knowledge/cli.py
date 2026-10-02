@@ -1,9 +1,11 @@
-"""wobot-ingest: ingest the knowledge sources, search the active version, show its status."""
+"""wobot-ingest: ingest the knowledge sources, search the active version, show its status,
+and move the published version by hand."""
 
 import argparse
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx2
@@ -19,9 +21,12 @@ from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import CachedReader, DbAnswerCache, OpenAILectureReader
 from wobot.knowledge.grc import GrcWebsiteSource
 from wobot.knowledge.gtech import GtechDocsSource, GtechDocumentsSource, GtechWebsiteSource
+from wobot.knowledge.locks import exclusive_run
+from wobot.knowledge.maintenance import MaintenanceError, accept, rollback
 from wobot.knowledge.page_images import IMAGE_MAX_BYTES, ImageReading
-from wobot.knowledge.pipeline import RunResult, run_ingestion
+from wobot.knowledge.pipeline import RunResult, run_ingestion, skipped_run
 from wobot.knowledge.profiles import DOCS_HOST, GRC_HOST, GTECH_DOCUMENTS, GTECH_HOST
+from wobot.knowledge.schedule import scheduled_run_due
 from wobot.knowledge.search import search_chunks
 from wobot.knowledge.source import Source
 from wobot.knowledge.sources.documents import document_fetcher, document_files
@@ -32,11 +37,14 @@ from wobot.knowledge.sources.xlsx import CatalogSchemaError
 from wobot.knowledge.vision import OpenAIVisionReader, VisualInput, visual_input
 from wobot.logs import configure_logging
 
-# Statuses that need no one's attention; anything else exits non-zero.
-SUCCESSFUL = {"published", "no_change", "validated"}
+# Statuses a retry cannot change; anything else exits non-zero, and the job retries once.
+# A held version needs a person, not a retry: `accept` publishes it.
+SUCCESSFUL = {"published", "no_change", "validated", "held", "skipped_concurrent"}
 # Retries on 429 and 5xx, with backoff, before a run gives up.
 OPENAI_MAX_RETRIES = 3
 DRIVE_TIMEOUT_SECONDS = 60
+# Logical keys a report lists per source and kind of change; the rest are counted.
+REPORT_KEYS = 20
 # Failures of the world outside, not of the code: reported in one line, no traceback.
 # A run has already recorded them.
 EXPECTED_ERRORS = (APIError, DriveError, CatalogSchemaError, FetchError)
@@ -89,6 +97,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="publish",
         help="dry-run builds and validates a version without publishing it",
     )
+    run.add_argument(
+        "--scheduled",
+        action="store_true",
+        help="started by the schedule: goes ahead only on the first Sunday of the month, "
+        "Taipei time, and is recorded as scheduled",
+    )
     run.set_defaults(handler=_run)
 
     search = commands.add_parser("search", help="semantic search over the active version")
@@ -99,7 +113,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     status = commands.add_parser("status", help="show the active version and recent runs")
     status.set_defaults(handler=_status)
 
+    report = commands.add_parser("report", help="show a version's checks and what it changes")
+    report.add_argument("version", type=int)
+    report.set_defaults(handler=_report)
+
+    accept = commands.add_parser("accept", help="publish a held version as it was built")
+    accept.add_argument("version", type=int)
+    accept.set_defaults(handler=_accept)
+
+    rollback = commands.add_parser("rollback", help="point back at a version published before")
+    rollback.add_argument("version", type=int)
+    rollback.set_defaults(handler=_rollback)
+
     args = parser.parse_args(argv)
+    if args.command == "run" and args.scheduled and not scheduled_run_due(_now()):
+        # Before any setting or connection is needed: a Sunday that is not the first costs
+        # one container start and nothing else.
+        configure_logging()
+        logger.info("scheduled run skipped: not the first Sunday of the month in Taipei")
+        return 0
     settings = get_settings()
     if args.command in ("run", "search") and settings.openai_api_key is None:
         parser.error("OPENAI_API_KEY is not set")
@@ -205,14 +237,23 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
             if gtech.DOCUMENTS_SOURCE_ID in args.sources:
                 fetch = document_fetcher(client, args.document_files)
                 sources.append(GtechDocumentsSource(fetch, vision))
-            result = await run_ingestion(
-                engine,
-                _blob_store(settings),
-                OpenAIEmbedder(openai_client, settings.embedding_model),
-                sources,
-                policy="dry_run" if args.policy == "dry-run" else "publish",
-                code_version=settings.app_version,
-            )
+            run = {
+                "policy": "dry_run" if args.policy == "dry-run" else "publish",
+                "triggered_by": "schedule" if args.scheduled else "manual",
+                "code_version": settings.app_version,
+            }
+            async with exclusive_run(engine) as alone:
+                if not alone:
+                    result = await skipped_run(engine, **run)
+                else:
+                    result = await run_ingestion(
+                        engine,
+                        _blob_store(settings),
+                        OpenAIEmbedder(openai_client, settings.embedding_model),
+                        sources,
+                        max_drop=settings.publish_max_drop,
+                        **run,
+                    )
     finally:
         await engine.dispose()
         if connector is not None:
@@ -241,6 +282,10 @@ def _print_run(result: RunResult) -> None:
         for label in ("blocking", "warnings"):
             for message in report[label]:
                 print(f"    {label}: {message}")
+    for reason in result.held:
+        print(f"  held: {reason}")
+    if result.held:
+        print(f"  review with `wobot-ingest report {result.index_version_id}`, then accept it")
     for error in result.errors:
         print(f"  error: {error}")
 
@@ -298,4 +343,75 @@ async def _status(args: argparse.Namespace, settings: Settings) -> int:
         print(f"  {run.started_at:%Y-%m-%d %H:%M}  {run.status:<10} {run.policy:<8} {run.counts}")
         for error in run.errors:
             print(f"    error: {error}")
+    return 0
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+async def _report(args: argparse.Namespace, settings: Settings) -> int:
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version = await repository.read_version(conn, args.version)
+            pointer = await repository.read_pointer(conn)
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    if version is None:
+        print(f"no version {args.version}")
+        return 1
+    active = " (active)" if pointer.index_version_id == version.index_version_id else ""
+    print(f"version {version.index_version_id}: {version.status}{active}")
+    print(
+        f"  created {version.created_at:%Y-%m-%d %H:%M %Z}, embedded {version.embedding_config_id}"
+    )
+    if version.published_at is not None:
+        print(f"  first published {version.published_at:%Y-%m-%d %H:%M %Z}")
+    report = version.validation_report or {}
+    for label in ("blocking", "held"):
+        for message in report.get(label, []):
+            print(f"  {label}: {message}")
+    for source, details in report.get("sources", {}).items():
+        print(f"  {source}: {details['counts']}, {len(details['warnings'])} warnings")
+    for source, change in report.get("changes", {}).items():
+        print(f"  {source}: {len(change['added'])} added, {len(change['removed'])} removed")
+        for label in ("added", "removed"):
+            shown = change[label][:REPORT_KEYS]
+            for key in shown:
+                print(f"    {label}: {key}")
+            if len(change[label]) > len(shown):
+                print(f"    … {len(change[label]) - len(shown)} more {label}")
+    return 0
+
+
+async def _accept(args: argparse.Namespace, settings: Settings) -> int:
+    engine, connector = await create_engine(settings)
+    try:
+        await accept(engine, args.version)
+    except MaintenanceError as error:
+        print(f"not accepted: {error}")
+        return 1
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    logger.info("version %s accepted and published", args.version)
+    return 0
+
+
+async def _rollback(args: argparse.Namespace, settings: Settings) -> int:
+    engine, connector = await create_engine(settings)
+    try:
+        replaced = await rollback(engine, args.version)
+    except MaintenanceError as error:
+        print(f"not rolled back: {error}")
+        return 1
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    logger.info("rolled back from version %s to version %s", replaced, args.version)
     return 0

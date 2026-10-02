@@ -19,6 +19,7 @@ DB_USER=wobot_migrator_user uv run alembic upgrade head
 DB_USER=wobot_migrator_user uv run alembic check
 DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file <path.xlsx> [--sources grc_website]
 DB_USER=wobot_ingest_user uv run wobot-ingest search "<query>"
+DB_USER=wobot_ingest_user uv run wobot-ingest report|accept|rollback <version>
 uv run wobot-eval check-gold [--index-version <version>] [--show <case IDs>]
 uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
@@ -53,6 +54,11 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **The API's database role is limited on purpose.** `wobot_api` has no DDL,
   only reads `knowledge`, and cannot write `app.allowed_emails`. Do not widen it
   to make something work.
+- **Ingestion publishes by itself only what loses nothing.** A version that empties a
+  source or drops more than `PUBLISH_MAX_DROP` of its records is held for
+  `wobot-ingest accept`. The schedule lives in two places: Cloud Scheduler starts
+  `run --scheduled` every Sunday, and `knowledge/schedule.py` lets it go ahead only on
+  the month's first Sunday; change both together.
 - **Ingestion is append-only.** `wobot_ingest` may insert into `knowledge` but not
   update or delete, except moving `active_knowledge` and version status. Write
   with `ON CONFLICT DO NOTHING` and read IDs back; never `DO UPDATE`. Tests that

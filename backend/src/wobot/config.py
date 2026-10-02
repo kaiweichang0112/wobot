@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     # Reads the parts of list entries, such as a speech's title, during ingestion.
     extraction_model: str = "gpt-5.6-luna"
+    # A source losing more than this share of its records holds the version for review.
+    publish_max_drop: float = 0.2
     # Reads images and PDF pages during ingestion; chosen by the A7 evaluation (DEC-049).
     vision_model: str = "gpt-6.1-sol"
     # Raw source bytes go to this bucket, or to the local directory when it is unset.

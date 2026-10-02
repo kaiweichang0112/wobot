@@ -18,7 +18,7 @@ from wobot.knowledge.blobs import BlobStore
 from wobot.knowledge.embeddings import MAX_BATCH_SIZE, Embedder
 from wobot.knowledge.repository import Database
 from wobot.knowledge.source import Extraction, Source
-from wobot.knowledge.validation import ValidationReport, check_version
+from wobot.knowledge.validation import MAX_DROP, ValidationReport, check_version, hold_reasons
 
 Policy = Literal["publish", "dry_run"]
 
@@ -36,6 +36,7 @@ class RunResult:
     # Per source: its snapshots and its validation report.
     sources: dict[str, dict[str, Any]] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    held: list[str] = field(default_factory=list)  # why the version waits for a person
 
 
 async def run_ingestion(
@@ -47,6 +48,7 @@ async def run_ingestion(
     policy: Policy = "publish",
     triggered_by: str = "manual",
     code_version: str = "dev",
+    max_drop: float = MAX_DROP,
 ) -> RunResult:
     # Committed on its own, so even a run that crashes leaves a trace.
     async with db.begin() as conn:
@@ -55,7 +57,7 @@ async def run_ingestion(
         )
     result = RunResult(run_id)
     try:
-        result.status = await _ingest(db, blobs, embedder, sources, policy, result)
+        result.status = await _ingest(db, blobs, embedder, sources, policy, max_drop, result)
     except Exception as error:
         result.status = "failed"
         result.errors.append(f"{type(error).__name__}: {error}")
@@ -87,12 +89,29 @@ def _log(result: RunResult, stage: str, message: str, **fields: Any) -> None:
     logger.info(message, extra={"run_id": str(result.run_id), "stage": stage, **fields})
 
 
+async def skipped_run(
+    db: Database, *, triggered_by: str, policy: Policy, code_version: str
+) -> RunResult:
+    """A run that found another in progress: recorded, so the history shows it, and done."""
+    async with db.begin() as conn:
+        run_id = await repository.start_run(
+            conn, triggered_by=triggered_by, policy=policy, code_version=code_version
+        )
+        result = RunResult(run_id, status="skipped_concurrent")
+        await repository.finish_run(
+            conn, run_id, status=result.status, source_results={}, counts={}, errors=[]
+        )
+    _log(result, "finished", "run skipped: another run holds the lock", status=result.status)
+    return result
+
+
 async def _ingest(
     db: Database,
     blobs: BlobStore,
     embedder: Embedder,
     sources: Sequence[Source],
     policy: Policy,
+    max_drop: float,
     result: RunResult,
 ) -> str:
     # The baseline, read once. If another run publishes after this, publishing below
@@ -222,6 +241,18 @@ async def _ingest(
         c.strategy: c.strategy_version for c in chunks
     }
     report = ValidationReport()
+    # Against the active version, source by source: what was added and what went missing,
+    # for whoever reviews a held version.
+    changes = {}
+    for extraction in extractions:
+        was = {key for key, _ in active.record_revisions(extraction.source_id)}
+        now = {draft.logical_key for draft in extraction.records}
+        changes[extraction.source_id] = {"added": sorted(now - was), "removed": sorted(was - now)}
+    result.held = hold_reasons(
+        {e.source_id: len(active.record_revisions(e.source_id)) for e in extractions},
+        {e.source_id: len(e.records) for e in extractions},
+        max_drop=max_drop,
+    )
     async with db.begin() as conn:
         version_id = await repository.create_version(
             conn,
@@ -236,13 +267,24 @@ async def _ingest(
             report, integrity, expected_records=len(members), expected_chunks=len(member_chunks)
         )
         version_report = report.to_json() | {
-            "sources": {source: details["report"] for source, details in result.sources.items()}
+            "sources": {source: details["report"] for source, details in result.sources.items()},
+            # The pointer revision the version was built from: accepting it later is a
+            # compare-and-swap against it, so it can never undo a newer publish.
+            "built_on_revision": active.revision,
+            "held": result.held,
+            "changes": changes,
         }
-        status = "validated" if report.passed else "failed"
+        status = "failed" if not report.passed else "held" if result.held else "validated"
         await repository.set_version_status(conn, version_id, status, version_report)
     result.index_version_id = version_id
-    _log(result, "versioned", f"version {version_id} {status}", blocking=report.blocking)
-    if not report.passed or policy == "dry_run":
+    _log(
+        result,
+        "versioned",
+        f"version {version_id} {status}",
+        blocking=report.blocking,
+        held=result.held,
+    )
+    if status != "validated" or policy == "dry_run":
         return status
 
     async with db.begin() as conn:
