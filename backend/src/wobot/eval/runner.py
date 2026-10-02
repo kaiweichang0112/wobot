@@ -1,11 +1,13 @@
 """Run datasets against one index version: each case's check, from labels to scores.
 
-Three checks, all on item identities:
+Four checks, all on item identities:
 - list: the records a structured filter returns against the labelled items. This is the
   query the answer agent will run for "list every …" questions.
 - fields: labelled field values against the matched records' fields.
 - retrieval: the top k chunks of a semantic search, mapped to their records, against the
   labelled relevant items.
+- transcription: what a vision model read in one image or PDF page against what a person
+  transcribed from it.
 """
 
 import hashlib
@@ -23,9 +25,11 @@ from wobot.eval.metrics import (
     FieldScore,
     RetrievalScore,
     SetScore,
+    TranscriptionScore,
     field_score,
     retrieval_score,
     set_score,
+    transcription_score,
 )
 from wobot.knowledge.embeddings import Embedder
 from wobot.knowledge.search import chunk_record_keys, search_chunks
@@ -45,6 +49,7 @@ class CaseResult:
     set: SetScore | None = None
     fields: FieldScore | None = None
     retrieval: RetrievalScore | None = None
+    transcription: TranscriptionScore | None = None
 
 
 @dataclass
@@ -89,6 +94,9 @@ async def run_datasets(
             if result.kind == "retrieval":
                 retrieval.append((result, case, resolved))
                 continue
+            if result.kind == "transcription":
+                await _score_transcription(result, resolved, corpus)
+                continue
             await _score_records(result, case, resolved, corpus)
     if retrieval and embedder is not None:
         await _score_retrieval(conn, embedder, corpus.version_id, retrieval, k)
@@ -118,6 +126,8 @@ def case_refs(case: Case, gold_dir: Path, used: dict[str, str]) -> list[gold.Ref
             return gold.project_refs(path)
         case "speech_fields":
             return gold.speech_field_refs(path)
+        case "transcription":
+            return gold.transcription_refs(path, case.case_id)
         case None:
             return gold.named_refs(path, case.case_id, spec.get("key", "relevant"))
     raise gold.GoldError(f"{case.case_id}: unknown gold format {spec.get('as')!r}")
@@ -159,6 +169,23 @@ async def _score_records(
         seen.add(tuple(r.keys))
     if duplicates:
         result.detail = f"{duplicates} labels name an item already labelled"
+    result.status = "scored"
+
+
+async def _score_transcription(
+    result: CaseResult, resolved: list[gold.Resolved], corpus: Corpus
+) -> None:
+    [label] = resolved
+    if not label.keys:
+        result.status, result.detail = "error", "the picture is not in this version"
+        return
+    item = next(i for i in corpus.items if i.logical_key == label.keys[0])
+    expected = label.ref.expected
+    result.transcription = await transcription_score(
+        expected["text"], expected["values"], item.fields["reading"]
+    )
+    if item.fields["reading"] is None:
+        result.detail = "the model gave no reading"
     result.status = "scored"
 
 

@@ -1,10 +1,9 @@
 import json
 
-import httpx2
 import pytest
-from openai import AsyncOpenAI
 
 from tests.knowledge.fakes import FakeLectureReader, MemoryAnswerCache
+from tests.knowledge.openai_responses import openai_answering
 from wobot.knowledge.extraction import (
     INSTRUCTIONS,
     LECTURE_FIELDS,
@@ -144,44 +143,6 @@ async def test_the_database_keeps_one_answer_per_question(ingest_db):
 
 
 # --- The OpenAI request -----------------------------------------------------------------
-
-
-def openai_answering(content, requests, **response):
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        requests.append(json.loads(request.content))
-        return httpx2.Response(
-            200,
-            json={
-                "id": "resp_test",
-                "object": "response",
-                "created_at": 0,
-                "model": "gpt-test-2026-01-01",
-                "status": "completed",
-                "output": [
-                    {
-                        "type": "message",
-                        "id": "msg_test",
-                        "role": "assistant",
-                        "status": "completed",
-                        "content": [content],
-                    }
-                ],
-                "usage": {
-                    "input_tokens": 420,
-                    "input_tokens_details": {"cached_tokens": 0},
-                    "output_tokens": 31,
-                    "output_tokens_details": {"reasoning_tokens": 0},
-                    "total_tokens": 451,
-                },
-                **response,
-            },
-        )
-
-    return AsyncOpenAI(
-        api_key="test-key",
-        max_retries=0,
-        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
-    )
 
 
 async def test_sends_the_entry_as_json_data_under_a_strict_schema():

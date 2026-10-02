@@ -11,7 +11,7 @@ version: an entry is never paid for twice, and reruns read the same fields.
 
 import asyncio
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
@@ -97,11 +97,11 @@ class Answer:
     output_tokens: int
 
 
-class FieldReader(Protocol):
+class FieldReader[T](Protocol):
     question: Question
 
-    async def read(self, entry: str) -> Answer:
-        """Ask the model about one entry."""
+    async def read(self, item: T, /) -> Answer:
+        """Ask the model about one item: an entry, an image."""
         ...
 
 
@@ -137,10 +137,11 @@ class OpenAILectureReader:
         tokens = (usage.input_tokens, usage.output_tokens) if usage else (0, 0)
         if (parsed := response.output_parsed) is not None:
             return Answer(parsed.model_dump(), None, response.model, *tokens)
-        return Answer(None, _failure(response), response.model, *tokens)
+        return Answer(None, response_failure(response), response.model, *tokens)
 
 
-def _failure(response: ParsedResponse[LectureFields]) -> str:
+def response_failure(response: ParsedResponse[Any]) -> str:
+    """Why a response carries no structured output."""
     for item in response.output:
         if item.type == "message":
             for content in item.content:
@@ -208,23 +209,34 @@ class ReadStats:
         return {f"{prefix}_{name}": value for name, value in asdict(self).items()}
 
 
-class CachedReader:
-    """Answers for many entries: kept ones first, then the model for the rest, a few at a time."""
+class CachedReader[T]:
+    """Answers for many items: kept ones first, then the model for the rest, a few at a time.
+
+    `cache_input` says what an answer is kept under: everything that decides it, and
+    nothing larger than needed, such as an image's hash rather than its bytes.
+    """
 
     def __init__(
-        self, reader: FieldReader, cache: AnswerCache, *, concurrency: int = CONCURRENCY
+        self,
+        reader: FieldReader[T],
+        cache: AnswerCache,
+        *,
+        cache_input: Callable[[T], Mapping[str, Any]] = model_input,
+        concurrency: int = CONCURRENCY,
     ) -> None:
         self._reader = reader
         self._cache = cache
+        self._cache_input = cache_input
         self._concurrency = concurrency
 
     @property
     def question(self) -> Question:
         return self._reader.question
 
-    async def read_all(self, entries: Sequence[str]) -> tuple[dict[str, Answer], ReadStats]:
+    async def read_all(self, entries: Sequence[T]) -> tuple[dict[T, Answer], ReadStats]:
         question = self.question
-        hashes = {entry: content_hash(model_input(entry)) for entry in dict.fromkeys(entries)}
+        inputs = {entry: self._cache_input(entry) for entry in dict.fromkeys(entries)}
+        hashes = {entry: content_hash(dict(value)) for entry, value in inputs.items()}
         answers = await self._cache.get(question, list(hashes.values()))
         stats = ReadStats(entries=len(hashes), cached=len(answers))
         semaphore = asyncio.Semaphore(self._concurrency)
@@ -232,11 +244,11 @@ class CachedReader:
         # connection budget has no room for a write per request in flight.
         writing = asyncio.Lock()
 
-        async def ask(entry: str) -> None:
+        async def ask(entry: T) -> None:
             async with semaphore:
                 answer = await self._reader.read(entry)
             async with writing:
-                await self._cache.put(question, hashes[entry], model_input(entry), answer)
+                await self._cache.put(question, hashes[entry], inputs[entry], answer)
             answers[hashes[entry]] = answer
             stats.calls += 1
             stats.input_tokens += answer.input_tokens

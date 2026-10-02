@@ -15,15 +15,27 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
 from wobot.eval.corpus import Corpus, Item
 from wobot.knowledge.records.text import key_text
+from wobot.knowledge.sources.wix import IMAGE_HOST
 
 # backend/eval/gold, beside the datasets that refer to it.
 GOLD_DIR = Path(__file__).resolve().parents[3] / "eval" / "gold"
-KINDS = ("speech", "publication", "product", "student", "project", "profile", "section")
+KINDS = (
+    "speech",
+    "publication",
+    "product",
+    "student",
+    "project",
+    "profile",
+    "section",
+    "image",
+    "document_page",
+)
 # A date as labels write it: YYYY-MM-DD, or YYYY/MM/DD as the pages do.
 _DATE = re.compile(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})")
 # Anchor labels that end a pasted line and name a link, not the item.
@@ -178,6 +190,36 @@ def named_refs(path: Path, case_id: str, key: str) -> list[Ref]:
     return refs
 
 
+def transcription_refs(path: Path, case_id: str) -> list[Ref]:
+    """The one picture a transcription case reads, with what a person saw in it: every
+    line of text, and every number with its unit."""
+    data = read_yaml(path) or {}
+    if case_id not in data:
+        raise GoldError(f"{path.name}: no entry for {case_id}")
+    entry, where = data[case_id] or {}, f"{path.name}:{case_id}"
+    text = [line for line in map(_optional, entry.get("text") or []) if line is not None]
+    rows = entry.get("values")
+    listed = [
+        (number, _optional(str(row.get("unit") or "")))
+        for row in rows or []
+        if (number := _optional(str((row or {}).get("value") or ""))) is not None
+    ]
+    # `values: []` says the picture holds none; no rows, or blank ones, that nobody listed
+    # them, and they are not scored.
+    values = listed if listed or rows == [] else None
+    if not text and not listed:
+        return []  # not transcribed yet
+    if not blank(entry.get("image")):
+        ref_kind, value = "image", entry["image"].strip()
+    elif not blank(entry.get("document")):
+        if not isinstance(entry.get("page"), int):
+            raise GoldError(f"{where}: a document's page is a number, got {entry.get('page')!r}")
+        ref_kind, value = "document_page", {"document": entry["document"], "page": entry["page"]}
+    else:
+        raise GoldError(f"{where}: name an image, or a document and a page")
+    return [Ref(ref_kind, value, where, {"text": text, "values": values})]
+
+
 def _iso_date(value: Any, where: str) -> str | None:
     """A label's date as YYYY-MM-DD. A date the page states but that does not exist is
     expected to stay empty in the record, as ingestion keeps such typos only as text; text
@@ -275,6 +317,20 @@ class _Index:
                 return self._profile(ref)
             case "section":
                 return self._section(ref)
+            case "image":
+                url = image_address(ref.value)
+                return Resolved(
+                    ref,
+                    [
+                        item.logical_key
+                        for item in self._corpus.of("image")
+                        if image_address(item.fields["image_url"]) == url
+                    ],
+                )
+            case "document_page":
+                key = f"document_page:{ref.value['document']}:{ref.value['page']}"
+                found = any(item.logical_key == key for item in self._corpus.of("document_page"))
+                return Resolved(ref, [key] if found else [])
         raise GoldError(f"{ref.where}: unknown kind {ref.kind!r}")
 
     def _profile(self, ref: Ref) -> Resolved:
@@ -325,3 +381,13 @@ def _project_titles(fields: Mapping[str, Any]) -> set[str]:
     """A project's titles, alone or as the page shows them, Chinese then English."""
     zh, en = fields["title_zh"] or "", fields["title_en"] or ""
     return {key_text(zh), key_text(en), key_text(f"{zh} {en}")} - {""}
+
+
+def image_address(url: str) -> str:
+    """An image's file as the record names it, from the address a browser copies: Wix
+    serves a resized copy under the file's own path, "…/media/<file>/v1/fill/…"."""
+    parts = urlsplit(url.strip())
+    path = parts.path
+    if parts.hostname == IMAGE_HOST and path.startswith("/media/"):
+        path = "/media/" + path.removeprefix("/media/").split("/")[0]
+    return f"{parts.scheme}://{parts.hostname}{path}"

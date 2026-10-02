@@ -1,6 +1,6 @@
 from tests.knowledge.docs_pages import code, doc_page, heading, table
 from wobot.knowledge.sources.docusaurus import article_blocks
-from wobot.knowledge.sources.wix import Link
+from wobot.knowledge.sources.wix import Image, Link
 
 
 def blocks_of(*body):
@@ -17,16 +17,18 @@ def test_reads_the_article_body_only_without_heading_anchors():
     ]
 
 
-def test_keeps_links_and_video_addresses_but_not_images():
+def test_keeps_links_videos_and_images_where_they_stand():
     blocks = blocks_of(
-        '<p>見 <a href="/docs/sdk">SDK 說明</a>。<img src="/a.png" alt="示意圖"></p>',
+        '<p>見 <a href="/docs/sdk">SDK 說明</a>。<img src="/a.png" alt="示意圖" width="618"></p>',
         '<p><iframe src="https://www.youtube.com/embed/abc"></iframe></p>',
     )
 
     assert [(b.kind, b.text, b.links) for b in blocks[1:]] == [
         ("paragraph", "見 SDK 說明。", (Link("SDK 說明", "/docs/sdk"),)),
+        ("image", "示意圖", ()),
         ("button", "", (Link("video", "https://www.youtube.com/embed/abc"),)),
     ]
+    assert blocks[2].image == Image("/a.png", "示意圖", 618, None)
 
 
 def test_lists_keep_nesting_as_indentation():

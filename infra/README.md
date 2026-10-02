@@ -579,10 +579,11 @@ expand/contract: the previous revision must keep working on the newer schema.
 
 ### Ingestion job
 
-Downloads the product catalog and reads the listed pages of the GRC and G-Tech sites
-and the WhizToys documentation over the internet, stores them as knowledge and
-publishes a version (`backend/README.md`, "Knowledge ingestion"). Cloud Run jobs reach
-the internet by default; nothing more is needed for the sites. It relies on what sections 2–8
+Downloads the product catalog and reads the listed pages of the GRC and G-Tech sites,
+the images the G-Tech pages show, the WhizToys documentation and the three PDFs the
+G-Tech site links to over the internet, stores them as knowledge and publishes a version
+(`backend/README.md`, "Knowledge ingestion"). Cloud Run jobs reach the internet by
+default; nothing more is needed for the sites. It relies on what sections 2–8
 set up for `wobot-ingest`: the Drive API, the account, the secret, the
 knowledge bucket, the database user and its group role.
 
@@ -600,6 +601,12 @@ an IAM role: the file's owner grants and revokes it, outside the project.
 
 The file must be a stored `.xlsx`, not a Google Sheet. Its ID is the part of
 its URL after `/d/`; it is set on the job and never enters the repository.
+
+The WhizPad catalog, one of the three PDFs, is on Drive too, linked from the public
+WhizPad page and shared the same way, so the account reads it by the ID that page
+publishes, listed in `knowledge/profiles.py`. A local run cannot: the developer's
+default credentials carry no Drive scope, so a local run is given a copy downloaded
+from the page with `--document-file whizpad_catalog=<path>`.
 
 **Console:** Cloud Run → Jobs → Deploy container.
 
@@ -635,7 +642,8 @@ products took 6 s, and the `no_change` run that followed under 1 s.
 The speeches are read by a model (`EXTRACTION_MODEL`, with the same key): the first
 run asks about each of the ~280 talks, which took 2 minutes and about US$0.05 with
 `gpt-5.6-luna` when measured locally. The answers stay in `knowledge.llm_extractions`, so later runs ask
-only about new or edited talks.
+only about new or edited talks. Images and PDF pages are read the same way by
+`VISION_MODEL` (default in `backend/src/wobot/config.py`), once per file.
 `--args run,--policy,dry-run` on `execute` builds and validates a version
 without publishing it.
 

@@ -1,0 +1,87 @@
+# Transcriptions: what a person reads in one picture, to score what a vision model reads in
+# it. Rules in README.md. Look at the picture itself: open the image address in a browser,
+# or the PDF at the page. Never copy from what the system read.
+#
+# A case names one picture, `image: <address>` or `document: <key>` with `page: <n>`, and
+# lists:
+#   text: every line, label or table cell the picture prints, as printed.
+#   values: every number with the unit printed beside it; unit '' when none is printed;
+#     `values: []` when the picture prints none.
+# Copy a line or a value to add another. Blank entries are skipped.
+VIS-01:
+  # The about page (資深的新創公司), first picture: "我們是誰？".
+  image: 'https://static.wixstatic.com/media/2927b2_11d86a4866dd4ea19d70d94600bce093~mv2.png'
+  text:
+    - '我們是誰？'
+    - '元智大學老人福祉科技研究中心與世大化成股份有限公司合作成立的新創事業'
+    - '20年老人福祉科技學術重鎮'
+    - '世大化成股份有限公司'
+    - '50年泡綿專家'
+    - '寢具大廠'
+    - '世大智科致力於老人福祉科技產品開發，透過科技及設計的應用，協助長輩達到獨立生活及社會參與，同時站在支持照護者的角度設計產品，減輕照護者負擔。'
+  values:
+    - {value: '20', unit: '年'}
+    - {value: '50', unit: '年'}
+VIS-02:
+  # The about page, second picture: the timeline.
+  image: 'https://static.wixstatic.com/media/2927b2_8cd563d276e1469898e1f483dbd58fe8~mv2.png'
+  text:
+    - '資深的新創公司'
+    - '20年大學研究中心轉型創業'
+    - '多次執行科技部、經濟部大型研發計畫'
+    - '50餘項國內外發明專利'
+    - '主辦國際老人福祉科技學會(ISG)世界年會'
+    - '主編老人福祉科技國際期刊'
+    - '2003年元智大學老人福祉科技研究中心成立'
+    - '2016年世大智科終於成立！'
+    - '2014年'
+  values:
+    - {value: '20', unit: '年'}
+    - {value: '50', unit: '項'}
+    - {value: '2003', unit: '年'}
+    - {value: '2016', unit: '年'}
+    - {value: '2014', unit: '年'}
+VIS-03:
+  # The WhizToys catalog, page 1: its slogans and contact details are drawn, not text.
+  document: whiztoys_catalog
+  page: 1
+  text:
+    - '運動地墊遊戲平台'
+    - 'ONE TOY MANY GAMES'
+    - '長者基本體能檢測'
+    - '認知訓練互動遊戲'
+    - '自由拼接方便攜帶'
+    - 'SEDA G-Tech'
+    - '世大智科'
+    - 'Smart Living / IoT / Gerontechnology'
+    - '世大福智科技股份有限公司 SEDA G-Tech CO., LTD.'
+    - '+8862-8978-3018'
+    - 'whiztoys.sales@seda-gtech.com.tw'
+    - '239新北市鶯歌區八德路56號3樓'
+  values: []
+CASE-014:
+  # A product picture that labels monitoring or alert functions: choose one, then name it.
+  document: whizpad_catalog
+  page: 5
+  text:
+    - '智慧床墊管理系統'
+    - '照護者輕鬆掌握長者狀態'
+    - '三階段臥離床提醒'
+    - '及早發出離床提醒,有效預防跌倒'
+CASE-015:
+  # The WhizPad page: "體壓分佈測定", two pressure maps over a colour scale.
+  image: 'https://static.wixstatic.com/media/2927b2_7f78874c47f84e3ea6aeecb8c32795cb~mv2.png'
+  text:
+    - '體壓分佈測定'
+    - 'WhizPad智慧床墊'
+    - '(IMAGER–37溫感釋壓記憶泡綿床墊)'
+    - '傳統彈簧床'
+    - '紅、橘色代表高壓力點，黃、綠、青、藍色依序代表低壓力點。'
+  values:
+    - {value: '42', unit: 'mmHg'}
+    - {value: '36', unit: 'mmHg'}
+    - {value: '30', unit: 'mmHg'}
+    - {value: '24', unit: 'mmHg'}
+    - {value: '18', unit: 'mmHg'}
+    - {value: '12', unit: 'mmHg'}
+    - {value: '6', unit: 'mmHg'}

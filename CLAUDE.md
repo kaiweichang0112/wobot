@@ -19,8 +19,9 @@ DB_USER=wobot_migrator_user uv run alembic upgrade head
 DB_USER=wobot_migrator_user uv run alembic check
 DB_USER=wobot_ingest_user uv run wobot-ingest run --catalog-file <path.xlsx> [--sources grc_website]
 DB_USER=wobot_ingest_user uv run wobot-ingest search "<query>"
-uv run wobot-eval check-gold
+uv run wobot-eval check-gold [--index-version <version>] [--show <case IDs>]
 uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
+DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -56,14 +57,18 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   update or delete, except moving `active_knowledge` and version status. Write
   with `ON CONFLICT DO NOTHING` and read IDs back; never `DO UPDATE`. Tests that
   write run inside a rolled-back transaction (`tests/knowledge/conftest.py`).
-- **Ingestion reads only listed pages** (`knowledge/profiles.py`), politely, and never
-  follows links; the WhizToys docs alone are found in their sitemap, under one path.
+- **Ingestion reads only listed pages and documents** (`knowledge/profiles.py`),
+  politely, and never follows links; the WhizToys docs alone are found in their
+  sitemap, under one path, and images are read where a listed page shows them.
   Parsers decide how many records a page holds; what a page cannot supply is
   reported, never guessed.
 - **A model may label, never count or invent.** Fields a model reads are kept only
   as verbatim spans of their source (`knowledge/extraction.py`, enforced by CHECK
-  constraints). Answers are cached by prompt version: changing the instructions,
-  schema or request settings means bumping `PROMPT_VERSION`, which a test pins.
+  constraints). A vision model's reading of a picture has no source text to check, so
+  it stays marked as the model's in records and chunks (`knowledge/vision.py`) and is
+  measured against a person's transcriptions. Answers are cached by prompt version:
+  changing the instructions, schema or request settings means bumping that module's
+  `PROMPT_VERSION`, which a test pins.
 - **Gold labels come from a person reading the sources** (`backend/eval/gold`), never
   from parser or model output, which would only measure the system against itself.
 - **RAGAS scores evaluation and is a dev dependency**, kept installable by two pins in

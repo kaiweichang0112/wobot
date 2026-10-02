@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     # Reads the parts of list entries, such as a speech's title, during ingestion.
     extraction_model: str = "gpt-5.6-luna"
+    # Reads images and PDF pages during ingestion; chosen by the A7 evaluation (DEC-049).
+    vision_model: str = "gpt-6.1-sol"
     # Raw source bytes go to this bucket, or to the local directory when it is unset.
     knowledge_bucket: str | None = None
     knowledge_local_dir: Path = Path(".data/knowledge")

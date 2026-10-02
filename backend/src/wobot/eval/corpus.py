@@ -61,23 +61,36 @@ async def load_corpus(conn: AsyncConnection, version_id: int) -> Corpus:
         for row in rows:
             values = dict(row._mapping)
             items.append(Item(values.pop("logical_key"), record_type, values))
-    sections = await conn.execute(
-        select(IndexVersionRecord.logical_key, Record.raw)
+    untyped = await conn.execute(
+        select(IndexVersionRecord.logical_key, Record.record_type, Record.raw)
         .join(Record, Record.record_id == IndexVersionRecord.record_id)
-        .where(IndexVersionRecord.index_version_id == version_id, Record.record_type == "section")
+        .where(
+            IndexVersionRecord.index_version_id == version_id,
+            Record.record_type.in_(("section", "image", "document_page")),
+        )
     )
-    for row in sections:
-        heading_path = row.raw["heading_path"]
-        rows = [line for table in row.raw.get("tables", []) for line in table_rows(table["rows"])]
-        fields = {
-            "heading": heading_path[-1],
-            "path": heading_path,
-            "text": [*row.raw["paragraphs"], *rows],
-        }
-        items.append(Item(row.logical_key, "section", fields))
+    for row in untyped:
+        items.append(Item(row.logical_key, row.record_type, _raw_fields(row.record_type, row.raw)))
     return Corpus(
         version_id=version_id,
         embedding_config_id=version.embedding_config_id,
         strategies=dict(version.strategies),
         items=items,
     )
+
+
+def _raw_fields(record_type: str, raw: dict[str, Any]) -> dict[str, Any]:
+    """Fields of a record type without a table of its own, from what the reader saw."""
+    if record_type == "section":
+        heading_path = raw["heading_path"]
+        rows = [line for table in raw.get("tables", []) for line in table_rows(table["rows"])]
+        return {
+            "heading": heading_path[-1],
+            "path": heading_path,
+            "text": [*raw["paragraphs"], *rows],
+        }
+    # An image or a PDF page: where it is, and what the model read in it.
+    fields = {"path": raw["heading_path"], "reading": raw["reading"]}
+    if record_type == "image":
+        return fields | {"image_url": raw["image_url"], "alts": raw["alts"]}
+    return fields | {"document_url": raw["document_url"], "page": raw["page"], "text": raw["text"]}

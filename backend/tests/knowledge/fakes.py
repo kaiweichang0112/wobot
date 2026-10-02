@@ -16,6 +16,8 @@ from wobot.knowledge.extraction import (
     Question,
 )
 from wobot.knowledge.models import EMBEDDING_DIMENSIONS
+from wobot.knowledge.vision import PROMPT_VERSION as VISION_PROMPT_VERSION
+from wobot.knowledge.vision import VISUAL_CONTENT, VisualInput, visual_input
 
 
 def fake_vector(text: str) -> list[float]:
@@ -84,3 +86,37 @@ class MemoryAnswerCache:
 
 def fake_lectures(reader: FakeLectureReader | None = None) -> CachedReader:
     return CachedReader(reader or FakeLectureReader(), MemoryAnswerCache())
+
+
+def labelled_picture(item: VisualInput) -> dict[str, Any]:
+    """A stand-in reading: the picture's bytes, or the page number, as its only text."""
+    text = f"page {item.page}" if item.page is not None else item.content.decode(errors="replace")
+    return {
+        "contains_information": True,
+        "verbatim_text": [text],
+        "values": [],
+        "relationships": [],
+        "description": f"一張圖：{text}",
+        "unreadable": [],
+    }
+
+
+class FakeVisionReader:
+    question = Question(VISUAL_CONTENT, "fake-vision", VISION_PROMPT_VERSION)
+
+    def __init__(
+        self, answer: Callable[[VisualInput], Answer | dict[str, Any]] = labelled_picture
+    ) -> None:
+        self._answer = answer
+        self.calls: list[VisualInput] = []
+
+    async def read(self, item: VisualInput) -> Answer:
+        self.calls.append(item)
+        answer = self._answer(item)
+        if isinstance(answer, Answer):
+            return answer
+        return Answer(answer, None, "fake-vision-2026-01-01", 800, 60)
+
+
+def fake_vision(reader: FakeVisionReader | None = None) -> CachedReader[VisualInput]:
+    return CachedReader(reader or FakeVisionReader(), MemoryAnswerCache(), cache_input=visual_input)

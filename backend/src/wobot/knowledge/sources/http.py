@@ -48,7 +48,8 @@ class PageFetcher:
         self._last_request: dict[str, float] = {}
         self._lock = asyncio.Lock()
 
-    async def fetch(self, url: str) -> FetchedPage:
+    async def fetch(self, url: str, *, max_bytes: int | None = None) -> FetchedPage:
+        """`max_bytes` replaces the fetcher's limit for this file, such as an image's."""
         for _ in range(MAX_REDIRECTS + 1):
             # Every hop is checked: a redirect must not lead outside the allowed hosts.
             host = self._check_host(url)
@@ -62,7 +63,7 @@ class PageFetcher:
                     continue
                 if response.status_code != 200:
                     raise FetchError(f"{url} answered {response.status_code}")
-                content = await self._read_capped(response, url)
+                content = await self._read_capped(response, url, max_bytes or self._max_bytes)
                 return FetchedPage(
                     url=url,
                     status=response.status_code,
@@ -83,13 +84,12 @@ class PageFetcher:
             await self._wait_turn(host)
             response = await self._client.get(robots_url, headers={"User-Agent": USER_AGENT})
             parser = RobotFileParser(robots_url)
-            if response.status_code in (401, 403):
-                parser.disallow_all = True
-            elif response.status_code >= 500:
+            if response.status_code >= 500:
                 raise FetchError(f"{robots_url} answered {response.status_code}")
-            else:
-                # A missing robots.txt (404) allows everything.
-                parser.parse(response.text.splitlines() if response.status_code == 200 else [])
+            # RFC 9309: rules that cannot be read (any 4xx, 401 and 403 included) mean none
+            # apply. urllib reads 401 and 403 as "disallow all", an older convention that
+            # would bar Wix's image host, whose robots.txt answers 403 to everyone.
+            parser.parse(response.text.splitlines() if response.status_code == 200 else [])
             self._robots[host] = parser
         await self._wait_turn(host)
         return self._robots[host].can_fetch(USER_AGENT, url)
@@ -101,12 +101,12 @@ class PageFetcher:
                 await asyncio.sleep(wait)
             self._last_request[host] = time.monotonic()
 
-    async def _read_capped(self, response: httpx2.Response, url: str) -> bytes:
+    async def _read_capped(self, response: httpx2.Response, url: str, max_bytes: int) -> bytes:
         chunks, size = [], 0
         async for chunk in response.aiter_bytes():
             size += len(chunk)
-            if size > self._max_bytes:
-                raise FetchError(f"{url} is over {self._max_bytes} bytes")
+            if size > max_bytes:
+                raise FetchError(f"{url} is over {max_bytes} bytes")
             chunks.append(chunk)
         return b"".join(chunks)
 

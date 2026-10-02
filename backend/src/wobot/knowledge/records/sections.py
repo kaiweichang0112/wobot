@@ -3,10 +3,11 @@
 The headings decide how many records a page holds. A Wix page's heading levels are
 styling, so its headings are read as one level; a Docusaurus page's levels nest, and its
 title (h1) names the page. Tables keep their cells, and buttons leading off the site or
-to a file, such as a catalog, are kept as links of the section they sit in.
+to a file, such as a catalog, are kept as links of the section they sit in. Images are
+placed under the same headings, for the visual step.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -14,7 +15,7 @@ from urllib.parse import urljoin, urlsplit
 from wobot.knowledge.records.drafts import RecordDraft, record_draft, separate_collisions
 from wobot.knowledge.records.grc import Parsed, link_json
 from wobot.knowledge.records.text import key_text
-from wobot.knowledge.sources.wix import Block, Link
+from wobot.knowledge.sources.wix import Block, Image, Link
 
 
 @dataclass(frozen=True)
@@ -40,21 +41,46 @@ class _Section:
         return not (self.paragraphs or self.tables or self.links)
 
 
-def section_records(blocks: Sequence[Block], page: SectionPage, *, nested: bool) -> Parsed:
-    """`nested`: heading levels nest, and the first h1 is the page's title, not a section."""
-    root = _Section([])
-    sections = [root]
+@dataclass(frozen=True)
+class ImagePlacement:
+    """An image where the page shows it: under the same headings as the text around it."""
+
+    path: tuple[str, ...]  # the headings above it, below the page title
+    image: Image
+
+
+def image_placements(blocks: Sequence[Block], *, nested: bool) -> list[ImagePlacement]:
+    return [
+        ImagePlacement(tuple(path), block.image)
+        for block, path in _placed(blocks, nested=nested)
+        if block.image is not None
+    ]
+
+
+def _placed(blocks: Sequence[Block], *, nested: bool) -> Iterator[tuple[Block, list[str]]]:
+    """Each block with the headings it sits under; a heading comes with its own path.
+
+    `nested`: heading levels nest, and the first h1 is the page's title, not a section.
+    """
     open_headings: list[tuple[int, str]] = []
-    current = root
     for block in blocks:
         if block.kind == "heading":
             level = (block.level or 1) if nested else 1
-            if nested and level == 1 and not open_headings and current is root:
+            if nested and level == 1 and not open_headings:
                 continue  # the page title
             while open_headings and open_headings[-1][0] >= level:
                 open_headings.pop()
             open_headings.append((level, block.text))
-            path = [text for _, text in open_headings]
+        yield block, [text for _, text in open_headings]
+
+
+def section_records(blocks: Sequence[Block], page: SectionPage, *, nested: bool) -> Parsed:
+    """`nested`: heading levels nest, and the first h1 is the page's title, not a section."""
+    root = _Section([])
+    sections = [root]
+    current = root
+    for block, path in _placed(blocks, nested=nested):
+        if block.kind == "heading":
             if path != current.path:  # a heading repeated at once, as Wix pages do, goes on
                 current = _Section(path)
                 sections.append(current)

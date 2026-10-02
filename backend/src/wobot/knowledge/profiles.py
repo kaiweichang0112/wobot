@@ -2,7 +2,9 @@
 
 A page added to a site is never ingested on its own: each run compares the site's
 sitemap with these lists and reports pages it does not know. The one exception is the
-WhizToys documentation, whose pages are found in its sitemap under one path.
+WhizToys documentation, whose pages are found in its sitemap under one path. Documents
+linked from the pages are listed the same way, and images are read where a listed page
+shows them.
 """
 
 import re
@@ -60,13 +62,46 @@ GTECH_PAGES = (
     ProsePage(f"https://{GTECH_HOST}", "首頁", "home"),
     ProsePage(f"https://{GTECH_HOST}/whizpad", "WhizPad 安心臥智慧床墊", "whizpad"),
     ProsePage(f"https://{GTECH_HOST}/whiztoys", "WhizToys 運動地墊遊戲平台", "whiztoys"),
+    # Two images and no text: only the visual step finds anything here.
+    ProsePage(f"https://{GTECH_HOST}/{quote('資深的新創公司')}", "資深的新創公司", "about"),
 )
-# In scope, read by the visual step: the about page is two images and no text.
-GTECH_LATER = (f"https://{GTECH_HOST}/{quote('資深的新創公司')}",)
 # Out of scope by decision: the security policy and the app's privacy notice.
 GTECH_EXCLUDED = (re.compile(r"/資訊安全政策$"), re.compile(r"隱私權聲明$"))
 # Every page ends with the same contact form; it is read once, on the home page.
 GTECH_CONTACT_HEADING = "聯絡我們"
+
+
+@dataclass(frozen=True)
+class DocumentProfile:
+    """A PDF the site links to, read page by page. The link is listed, never followed: the
+    website source reports a document link it does not find here."""
+
+    key: str  # the document in record keys
+    title: str  # as the site's link names it
+    url: str  # as the site links it
+    drive_file_id: str | None = None  # stored on Google Drive, read through its API
+
+
+GTECH_DOCUMENTS = (
+    DocumentProfile(
+        "whizpad_catalog",
+        "WhizPad 線上型錄",
+        "https://drive.google.com/file/d/12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X/view",
+        drive_file_id="12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X",
+    ),
+    DocumentProfile(
+        "whiztoys_catalog",
+        "WhizToys 線上型錄（中文版）",
+        f"https://{GTECH_HOST}/_files/ugd/2927b2_d8142d8a2d4248aca03996a339e16c3e.pdf",
+    ),
+    DocumentProfile(
+        "whiztoys_manual",
+        "WhizToys 操作說明書",
+        f"https://{GTECH_HOST}/_files/ugd/2927b2_27c6d06e70eb472f9ee162217be1b30f.pdf",
+    ),
+)
+# Linked to, not read, by decision: the English catalog repeats the Chinese one.
+GTECH_LINKED_ONLY = ("https://drive.google.com/file/d/1riXW5NKj8O5dzKOTIsZroOqJ8nTq3wfj/view",)
 
 DOCS_HOST = "docusaurus.seda-gtech.com.tw"
 DOCS_SITEMAP = f"https://{DOCS_HOST}/sitemap.xml"

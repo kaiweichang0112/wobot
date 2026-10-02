@@ -46,3 +46,27 @@ cases:
       records: lecture
       gold: {file: speech-fields.yaml, as: speech_fields}
       fields: [title, event, location]
+  - case_id: VIS-01
+    scenario: image_text
+    split: dev
+    user_input: 「資深的新創公司」頁的第一張懶人包寫了什麼？
+    expected_behavior: Every line of text and every number the picture prints, as printed.
+    check:
+      kind: transcription
+      gold: {file: transcriptions.yaml, as: transcription}
+  - case_id: VIS-02
+    scenario: image_values
+    split: dev
+    user_input: 「資深的新創公司」頁的時間軸列了哪些年份與數字？
+    expected_behavior: Every line of text and every number the picture prints, as printed.
+    check:
+      kind: transcription
+      gold: {file: transcriptions.yaml, as: transcription}
+  - case_id: VIS-03
+    scenario: drawn_text
+    split: dev
+    user_input: WhizToys 中文型錄封面上的標語與聯絡資訊是什麼？
+    expected_behavior: The text drawn as outlines, which the PDF's text layer lacks.
+    check:
+      kind: transcription
+      gold: {file: transcriptions.yaml, as: transcription}
