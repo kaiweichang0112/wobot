@@ -1,4 +1,7 @@
-"""Wix pages → text blocks in page order, the structure GRC and G-Tech parsers read."""
+"""Wix pages → text blocks in page order, the structure GRC and G-Tech parsers read.
+
+The Docusaurus reader yields the same blocks, so one section parser serves both sites.
+"""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -23,10 +26,13 @@ class Block:
     # The Wix text element holding the block. Repeater items share a suffix after "__",
     # which pairs, say, a year with the list beside it.
     element_id: str
-    kind: Literal["heading", "paragraph", "item", "blank"]
+    # A button is a link outside the text, such as a catalog to download; a table and a
+    # code block come from Docusaurus pages only.
+    kind: Literal["heading", "paragraph", "item", "blank", "button", "table", "code"]
     text: str
     links: tuple[Link, ...] = ()
     level: int | None = None  # headings only
+    rows: tuple[tuple[str, ...], ...] = ()  # tables only, the header row first
 
     @property
     def repeater_item(self) -> str | None:
@@ -43,17 +49,34 @@ def clean_block_text(text: str) -> str:
     return "\n".join(" ".join(line.split()) for line in lines).strip()
 
 
-def page_blocks(html: str) -> list[Block]:
-    """Every heading, paragraph and list item of the page's text elements, in page order."""
+def page_blocks(html: str, *, buttons: bool = False) -> list[Block]:
+    """Every heading, paragraph and list item of the page's text elements, in page order,
+    with the link buttons among them when `buttons` is set."""
     soup = BeautifulSoup(html, "lxml")
+    selector = '[data-testid="richTextElement"]'
+    if buttons:
+        selector += ', a[data-testid="linkElement"]'
     blocks = []
-    for element in soup.select('[data-testid="richTextElement"]'):
+    for element in soup.select(selector):
+        if element.name == "a":
+            if element.find_parent(attrs={"data-testid": "richTextElement"}) is None:
+                blocks.append(_button(element))
+            continue
         element_id = element.get("id", "")
         for node in element.find_all([*_HEADINGS, "p", "li"]):
             if node.name == "p" and node.find_parent("li") is not None:
                 continue  # read as part of its list item
             blocks.append(_block(element_id, node))
     return blocks
+
+
+def _button(anchor: Tag) -> Block:
+    """A link button, named after the nearest element with an ID: the same button on every
+    page, such as a menu entry, then shares its ID like any other chrome."""
+    owner = anchor if anchor.get("id") else anchor.find_parent(id=True)
+    label = clean_block_text(anchor.get_text(" "))
+    link = Link(text=label, url=anchor.get("href") or None)
+    return Block(owner.get("id", "") if owner else "", "button", label, (link,))
 
 
 def _block(element_id: str, node: Tag) -> Block:
