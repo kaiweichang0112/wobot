@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     publish_max_drop: float = 0.2
     # Reads images and PDF pages during ingestion; chosen by the A7 evaluation (DEC-049).
     vision_model: str = "gpt-6.1-sol"
+    # The chat agent: one model both picks tools and writes answers (DEC-054). A
+    # placeholder until the phase B evaluation chooses one (DEC-049).
+    agent_model: str = "gpt-5.6-luna"
+    # The lowest effort every candidate accepts: gpt-6.1-sol has no "none".
+    agent_reasoning_effort: str = "low"
     # Raw source bytes go to this bucket, or to the local directory when it is unset.
     knowledge_bucket: str | None = None
     knowledge_local_dir: Path = Path(".data/knowledge")
