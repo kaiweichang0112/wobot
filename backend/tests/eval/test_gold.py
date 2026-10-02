@@ -172,3 +172,49 @@ def test_a_section_is_named_by_its_heading_by_the_one_above_or_by_its_text():
 
     assert [r.keys for r in resolved] == [["s:pad"], [], ["s:home"], ["s:mat"]]
     assert resolved[1].problem == "heading of 2 sections; add the one above"
+
+
+# --- Transcriptions ---------------------------------------------------------------------
+
+MEDIA = "https://static.wixstatic.com/media"
+
+
+def test_a_transcription_names_one_picture_with_its_lines_and_values(tmp_path):
+    path = write(
+        tmp_path,
+        "t.yaml",
+        "A:\n  image: ''\n  text: ['']\n  values: [{value: '', unit: ''}]\n"
+        "B:\n  document: catalog\n  page: 2\n  text: ['  體壓  分佈 ', '']\n"
+        "  values: [{value: 42, unit: mmHg}, {value: '88', unit: ''}]\n"
+        "C:\n  document: catalog\n  page: two\n  text: [封面]\n",
+    )
+
+    assert gold.transcription_refs(path, "A") == []  # a template not yet filled in
+    unlisted = write(tmp_path, "u.yaml", "D:\n  image: x\n  text: [a]\n  values: [{value: ''}]\n")
+    none = write(tmp_path, "n.yaml", "D:\n  image: x\n  text: [a]\n  values: []\n")
+    assert gold.transcription_refs(unlisted, "D")[0].expected["values"] is None
+    assert gold.transcription_refs(none, "D")[0].expected["values"] == []
+    [ref] = gold.transcription_refs(path, "B")
+    assert (ref.kind, ref.value) == ("document_page", {"document": "catalog", "page": 2})
+    assert ref.expected == {"text": ["體壓 分佈"], "values": [("42", "mmHg"), ("88", None)]}
+    with pytest.raises(gold.GoldError, match="page is a number"):
+        gold.transcription_refs(path, "C")
+
+
+def test_an_image_is_found_by_the_address_a_browser_copies():
+    resized = f"{MEDIA}/ab_1~mv2.png/v1/fill/w_539,h_245,al_c/x.png"
+    items = corpus(
+        Item("image:a", "image", {"image_url": f"{MEDIA}/ab_1~mv2.png"}),
+        Item("document_page:catalog:2", "document_page", {}),
+    )
+
+    resolved = gold.resolve(
+        [
+            gold.Ref("image", resized, "t"),
+            gold.Ref("document_page", {"document": "catalog", "page": 2}, "t"),
+            gold.Ref("document_page", {"document": "catalog", "page": 9}, "t"),
+        ],
+        items,
+    )
+
+    assert [r.keys for r in resolved] == [["image:a"], ["document_page:catalog:2"], []]

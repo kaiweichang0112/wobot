@@ -9,7 +9,9 @@ not chunks: a chunk counts as relevant when it holds a relevant record.
 """
 
 import re
+import unicodedata
 import warnings
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -174,6 +176,99 @@ async def retrieval_score(
         context_tokens=sum(tokens for _, tokens in top),
         missing=sorted(relevant - set(held)),
     )
+
+
+@dataclass
+class TranscriptionScore:
+    lines: int  # lines of text a person transcribed
+    lines_found: int  # of them, present in the model's transcription
+    values: int  # numbers with units a person transcribed
+    values_read: int  # numbers with units the model gave
+    values_matched: int
+    # Whether a person listed the picture's values; an empty list says it has none.
+    values_transcribed: bool = True
+    missing_lines: list[str] = field(default_factory=list)
+    missing_values: list[str] = field(default_factory=list)
+    extra_values: list[str] = field(default_factory=list)  # read, but not transcribed
+
+    @property
+    def text_recall(self) -> float | None:
+        """The mean of RAGAS's string presence over the transcribed lines."""
+        return self.lines_found / self.lines if self.lines else None
+
+    @property
+    def value_precision(self) -> float | None:
+        if not self.values_transcribed:
+            return None
+        if not self.values_read:
+            return None if self.values else 1.0  # none there, and none read
+        return self.values_matched / self.values_read
+
+    @property
+    def value_recall(self) -> float | None:
+        return self.values_matched / self.values if self.values else None
+
+
+async def transcription_score(
+    lines: Sequence[str],
+    values: Sequence[tuple[str, str | None]] | None,
+    reading: Mapping[str, Any] | None,
+) -> TranscriptionScore:
+    """A model's reading of a picture against a person's transcription of it.
+
+    Each transcribed line counts when RAGAS's string presence finds it in the model's text.
+    Values count as (value, unit) pairs, each matched at most once, so precision shows
+    numbers the model read that are not there, or read wrong. The label beside a value is
+    not compared: the same number may be named in other words. `values` is None when the
+    person did not list them, and then they are not scored.
+    """
+    reading = reading or {"verbatim_text": [], "values": []}
+    transcribed = _folded("\n".join(reading["verbatim_text"])) or ""
+    score = TranscriptionScore(
+        len(lines),
+        0,
+        len(values or ()),
+        len(reading["values"]),
+        0,
+        values_transcribed=values is not None,
+    )
+    for line in lines:
+        sample = SingleTurnSample(reference=_folded(line), response=transcribed)
+        if await STRING_PRESENCE.single_turn_ascore(sample) == 1:
+            score.lines_found += 1
+        else:
+            score.missing_lines.append(line)
+    read = Counter(_pair(v["value"], v["unit"]) for v in reading["values"])
+    if values is None:
+        return score
+    for value, unit in values:
+        pair = _pair(value, unit)
+        if read[pair] > 0:
+            read[pair] -= 1
+            score.values_matched += 1
+        else:
+            score.missing_values.append(f"{value}{unit or ''}")
+    score.extra_values = sorted(
+        f"{value}{unit}" for (value, unit), n in read.items() for _ in range(n)
+    )
+    return score
+
+
+def _pair(value: str, unit: str | None) -> tuple[str, str]:
+    return _folded(value) or "", _folded(unit or "") or ""
+
+
+# Marks no eye tells apart in print: hyphens and dashes, middle dots.
+_DASHES = str.maketrans(dict.fromkeys("‐‑‒–—―−", "-") | dict.fromkeys("・･‧", "·"))
+# A space beside a Chinese character, as between "公司" and "SEDA", may be layout too.
+_SPACE_BY_CJK = re.compile(rf"(?<={_CJK}) +| +(?={_CJK})")
+
+
+def _folded(text: str) -> str | None:
+    """Text as compared for transcriptions: full-width forms folded, as "２０％" is "20%",
+    dashes and middle dots as one, and spaces beside Chinese characters gone."""
+    text = unicodedata.normalize("NFKC", text).translate(_DASHES)
+    return comparable(_SPACE_BY_CJK.sub("", " ".join(text.split())))
 
 
 def mean(values: Sequence[float | None]) -> float | None:

@@ -3,6 +3,9 @@
 Reads only, so it runs as the API's read-only role. Retrieval checks embed each question
 once with the version's embedding model; every other check is computed from records.
 Scores come from RAGAS, a dev dependency: this runs from a checkout, not in the API image.
+
+`vision` is the exception: it asks vision models to read the dev pictures and keeps their
+answers where ingestion does, so it runs as the ingestion role.
 """
 
 import argparse
@@ -21,9 +24,15 @@ from wobot.db import create_engine
 from wobot.eval import gold
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
-from wobot.eval.report import summary, write_report
+from wobot.eval.report import summary, write_report, write_vision_report
 from wobot.eval.runner import case_refs, run_datasets
+from wobot.eval.vision import compare_models, dev_transcriptions, fetch_pictures
 from wobot.knowledge.embeddings import OpenAIEmbedder
+from wobot.knowledge.extraction import DbAnswerCache
+from wobot.knowledge.sources.documents import document_files
+from wobot.knowledge.sources.http import new_client
+from wobot.knowledge.vision import PROMPT_VERSION as VISION_PROMPT_VERSION
+from wobot.knowledge.vision import OpenAIVisionReader
 
 RUNS_DIR = Path(__file__).resolve().parents[3] / "eval" / "runs"
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -58,6 +67,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     check.set_defaults(handler=_check_gold)
 
+    vision = commands.add_parser(
+        "vision", help="compare vision models on the dev transcriptions (paid calls)"
+    )
+    vision.add_argument(
+        "--model", action="append", required=True, help="a model to compare; repeat for more"
+    )
+    vision.add_argument(
+        "--document-file",
+        action="append",
+        default=[],
+        metavar="KEY=PATH",
+        help="a local copy of a listed PDF, as for wobot-ingest run",
+    )
+    vision.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    vision.set_defaults(handler=_vision)
+
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
 
@@ -85,6 +110,48 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
     path = write_report(result, meta, args.out, stem)
     for group, values in summary(result).items():
         print(f"{group}: {values}")
+    print(f"report: {path}")
+    return 0
+
+
+async def _vision(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    labelled = dev_transcriptions([load_dataset(name) for name in dataset_names()])
+    if not labelled:
+        print("no dev case is transcribed yet: see eval/gold/README.md")
+        return 1
+    started = datetime.now().astimezone()
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(),
+        timeout=settings.openai_timeout_seconds,
+        max_retries=3,
+    )
+    engine, connector = await create_engine(settings)
+    try:
+        async with new_client() as http:
+            fixtures = await fetch_pictures(labelled, http, document_files(args.document_file))
+        readers = [OpenAIVisionReader(client, model) for model in args.model]
+        results = await compare_models(readers, fixtures, DbAnswerCache(engine))
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "ragas": metadata.version("ragas"),
+        "prompt_version": VISION_PROMPT_VERSION,
+        "cases": [fixture.case_id for fixture in fixtures],
+    }
+    path = write_vision_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-vision")
+    for r in results:
+        print(
+            f"{r.model}: text recall {r.mean('text_recall')}, values P {r.mean('value_precision')}"
+            f" R {r.mean('value_recall')}, {r.input_tokens} + {r.output_tokens} tokens,"
+            f" {r.calls} new calls"
+        )
     print(f"report: {path}")
     return 0
 

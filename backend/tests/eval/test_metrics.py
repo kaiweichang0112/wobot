@@ -1,7 +1,7 @@
 import os
 from datetime import date
 
-from wobot.eval.metrics import field_score, retrieval_score, set_score
+from wobot.eval.metrics import field_score, retrieval_score, set_score, transcription_score
 
 
 def test_ragas_reports_no_usage():
@@ -77,3 +77,55 @@ async def test_retrieval_counts_records_and_ranks_chunks():
     assert score.chunk_precision == 0.5
     assert score.context_tokens == 350
     assert score.missing == ["c"]
+
+
+async def test_a_transcription_counts_lines_present_and_each_value_once():
+    reading = {
+        "verbatim_text": ["體壓分佈測定", "42 36 30 24 mmHg", "２０年老人福祉科技學術重鎮"],
+        "values": [
+            {"label": "高壓", "value": "42", "unit": "mmHg"},
+            {"label": "", "value": "36", "unit": "mmHg"},
+            {"label": "", "value": "30", "unit": "mmhg"},  # misread unit
+        ],
+    }
+
+    score = await transcription_score(
+        ["體壓分佈測定", "20年老人福祉科技學術重鎮", "傳統彈簧床"],
+        [("42", "mmHg"), ("36", "mmHg"), ("36", "mmHg"), ("30", "mmHg")],
+        reading,
+    )
+
+    assert (score.lines_found, score.missing_lines) == (2, ["傳統彈簧床"])  # ２０ is 20
+    assert (score.values_matched, score.values_read) == (2, 3)
+    assert score.missing_values == ["36mmHg", "30mmHg"]
+    assert score.extra_values == ["30mmhg"]
+    assert (score.value_precision, score.value_recall) == (2 / 3, 0.5)
+
+
+async def test_no_reading_reads_nothing_and_claims_no_precision():
+    score = await transcription_score(["封面"], [("1", None)], None)
+
+    assert (score.text_recall, score.value_recall, score.value_precision) == (0.0, 0.0, None)
+
+
+async def test_marks_no_eye_tells_apart_count_as_the_same():
+    reading = {
+        "verbatim_text": ["(IMAGER-37溫感釋壓記憶泡綿床墊)", "世大福智科技股份有限公司SEDA G-Tech"],
+        "values": [],
+    }
+
+    score = await transcription_score(
+        ["(IMAGER–37溫感釋壓記憶泡綿床墊)", "世大福智科技股份有限公司 SEDA G-Tech"], [], reading
+    )
+
+    assert score.lines_found == 2
+
+
+async def test_values_nobody_listed_are_not_scored_but_an_empty_list_is():
+    reading = {"verbatim_text": [], "values": [{"label": "電話", "value": "02", "unit": None}]}
+
+    unlisted = await transcription_score(["封面"], None, reading)
+    none_there = await transcription_score(["封面"], [], reading)
+
+    assert (unlisted.value_precision, unlisted.value_recall) == (None, None)
+    assert (none_there.value_precision, none_there.extra_values) == (0.0, ["02"])

@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from tests.knowledge.fakes import FakeEmbedder
 from tests.knowledge.grc_site import grc_source
+from tests.knowledge.gtech_site import documents_source
 from tests.knowledge.workbooks import catalog_workbook, product_row
 from wobot.eval.corpus import load_corpus
 from wobot.eval.dataset import Case, Dataset
@@ -200,3 +201,26 @@ async def test_cases_that_cannot_run_say_why(ingest_db, ingested, gold_dir):
     assert (results["C2"].status, results["C2"].detail) == ("pending", "not labelled yet")
     assert results["C3"].status == "error"
     assert results["C4"].split == "heldout"
+
+
+async def test_a_vision_reading_against_a_person_s_transcription(ingest_db, tmp_path, gold_dir):
+    result = await run_ingestion(
+        ingest_db, LocalBlobStore(tmp_path / "blobs"), FakeEmbedder(), [documents_source()]
+    )
+    async with ingest_db.begin() as conn:
+        corpus = await load_corpus(conn, result.index_version_id)
+    (gold_dir / "t.yaml").write_text(
+        "V1:\n  document: whiztoys_manual\n  page: 1\n  text: ['page 1', '封面標語']\n"
+        "V2:\n  document: whiztoys_manual\n  page: 9\n  text: ['x']\n",
+        encoding="utf-8",
+    )
+    check = {"kind": "transcription", "gold": {"file": "t.yaml", "as": "transcription"}}
+
+    results = await score(ingest_db, corpus, gold_dir, case("V1", check), case("V2", check))
+
+    t = results["V1"].transcription
+    assert (results["V1"].status, t.lines_found, t.missing_lines) == ("scored", 1, ["封面標語"])
+    assert (results["V2"].status, results["V2"].detail) == (
+        "error",
+        "the picture is not in this version",
+    )
