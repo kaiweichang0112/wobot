@@ -23,7 +23,7 @@ from wobot.knowledge.records.text import key_text
 
 # backend/eval/gold, beside the datasets that refer to it.
 GOLD_DIR = Path(__file__).resolve().parents[3] / "eval" / "gold"
-KINDS = ("speech", "publication", "product", "student", "project", "profile")
+KINDS = ("speech", "publication", "product", "student", "project", "profile", "section")
 # A date as labels write it: YYYY-MM-DD, or YYYY/MM/DD as the pages do.
 _DATE = re.compile(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})")
 # Anchor labels that end a pasted line and name a link, not the item.
@@ -225,8 +225,9 @@ class _Index:
             if item.fields["list_kind"] == "publication":
                 self._add("publication", item.fields["item_text"], item)
         for item in corpus.of("section"):
-            for paragraph in item.fields["text"]:
-                self._add("profile", paragraph, item)
+            for text in item.fields["text"]:
+                self._add("profile", text, item)
+                self._add("section", text, item)
 
     def _add(self, kind: str, text: str, item: Item) -> None:
         self._texts[kind].append((match_text(text), item.logical_key))
@@ -272,6 +273,8 @@ class _Index:
                 )
             case "profile":
                 return self._profile(ref)
+            case "section":
+                return self._section(ref)
         raise GoldError(f"{ref.where}: unknown kind {ref.kind!r}")
 
     def _profile(self, ref: Ref) -> Resolved:
@@ -290,6 +293,19 @@ class _Index:
         ]
         keys += [item.logical_key for item in listed if key_text(item.fields["category"]) == label]
         keys += [item.logical_key for item in listed if key_text(item.fields["item_text"]) == label]
+        return Resolved(ref, keys) if keys else self._by_text(ref)
+
+    def _section(self, ref: Ref) -> Resolved:
+        """A heading names its section, with the headings above it when several pages
+        share it ("page › heading"); any other text names the section that holds it."""
+        tail = [key_text(part) for part in ref.value.split("›")]
+        keys = [
+            item.logical_key
+            for item in self._corpus.of("section")
+            if [key_text(part) for part in item.fields["path"][-len(tail) :]] == tail
+        ]
+        if len(keys) > 1:
+            return Resolved(ref, [], f"heading of {len(keys)} sections; add the one above")
         return Resolved(ref, keys) if keys else self._by_text(ref)
 
     def _by_text(self, ref: Ref) -> Resolved:

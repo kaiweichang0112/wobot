@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from wobot.knowledge.chunking.sections import table_rows
 from wobot.knowledge.models import ActiveKnowledge, IndexVersion, IndexVersionRecord, Record
 from wobot.knowledge.repository import TYPED_TABLES
 
@@ -66,10 +67,14 @@ async def load_corpus(conn: AsyncConnection, version_id: int) -> Corpus:
         .where(IndexVersionRecord.index_version_id == version_id, Record.record_type == "section")
     )
     for row in sections:
-        heading_path, paragraphs = row.raw["heading_path"], row.raw["paragraphs"]
-        items.append(
-            Item(row.logical_key, "section", {"heading": heading_path[-1], "text": paragraphs})
-        )
+        heading_path = row.raw["heading_path"]
+        rows = [line for table in row.raw.get("tables", []) for line in table_rows(table["rows"])]
+        fields = {
+            "heading": heading_path[-1],
+            "path": heading_path,
+            "text": [*row.raw["paragraphs"], *rows],
+        }
+        items.append(Item(row.logical_key, "section", fields))
     return Corpus(
         version_id=version_id,
         embedding_config_id=version.embedding_config_id,

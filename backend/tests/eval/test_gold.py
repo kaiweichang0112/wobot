@@ -148,3 +148,27 @@ def test_a_piece_of_text_names_the_one_item_that_holds_it():
 
     assert [r.keys for r in resolved] == [["lecture:b"], [], ["section:p:簡介"], ["project:1"]]
     assert resolved[1].problem == "fits 2 items; copy more of the line"
+
+
+def section(key, *path, text=()):
+    return Item(key, "section", {"heading": path[-1], "path": list(path), "text": list(text)})
+
+
+def test_a_section_is_named_by_its_heading_by_the_one_above_or_by_its_text():
+    items = corpus(
+        section("s:home", "範例智科", "首頁", text=["不需插電。"]),
+        section("s:pad", "範例智科", "安心臥", "規格", text=["重 2 公斤"]),
+        section("s:mat", "範例智科", "運動地墊", "規格", text=["長 30 cm"]),
+        section("s:docs", "技術文件", "首頁", text=["SDK 下載"]),
+    )
+    refs = [
+        gold.Ref("section", "安心臥 › 規格", "a"),
+        gold.Ref("section", "規格", "b"),
+        gold.Ref("section", "範例智科 › 首頁", "c"),
+        gold.Ref("section", "長 30", "d"),
+    ]
+
+    resolved = gold.resolve(refs, items)
+
+    assert [r.keys for r in resolved] == [["s:pad"], [], ["s:home"], ["s:mat"]]
+    assert resolved[1].problem == "heading of 2 sections; add the one above"
