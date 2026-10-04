@@ -2,13 +2,15 @@
 
 `wobot-eval` scores an index version against labelled datasets with RAGAS metrics that
 need no model, computed on item identities, so no judge runs and every number repeats.
-RAGAS's judge metrics need the answer agent and come in phase B.
+RAGAS's judge metrics need the answer agent and come in phase B. `wobot-eval agent` plays
+the cases that check the chat agent itself, with paid model calls.
 
 | Path | Holds |
 | --- | --- |
 | `datasets/seed-v1.yaml` | The 29 seed questions, split 20 dev / 9 held out by scenario |
 | `datasets/fixtures-v1.yaml` | Engineering checks of ingestion outside the 30 questions |
 | `datasets/items-v1.yaml` | Questions about one item, for comparing chunk strategies |
+| `datasets/tool-selection-v1.yaml` | 30 messages and the tools the agent should call, 20 dev / 10 held out |
 | `gold/` | Labels a person wrote from the sources; see `gold/README.md` |
 | `runs/` | Reports, gitignored |
 
@@ -20,6 +22,7 @@ From `backend/`, against the local database; the API's read-only role is enough.
 uv run wobot-eval check-gold
 uv run wobot-eval run
 uv run wobot-eval run --dataset items-v1 --split dev --index-version <version>
+uv run --env-file .env wobot-eval agent [--model <model>] [--effort <effort>] [--split dev]
 ```
 
 `run` writes `runs/<time>-v<version>-k<k>.json` and `.md`, and records the commit, the
@@ -34,6 +37,7 @@ version's embedding model; without `OPENAI_API_KEY` those cases stay pending.
 | `list` | The records a structured filter returns, the query behind "list every …", with the labelled items | precision and recall: `IDBasedContextPrecision`, `IDBasedContextRecall` | F1, missing and unlabelled items |
 | `fields` | Labelled values with the matched records' fields, after collapsing spaces | accuracy: the mean of `ExactMatch`; presence: the mean of `StringPresence`, a value that holds the label (an empty label needs an empty value) | mismatches |
 | `retrieval` | The top k chunks of a semantic search, mapped to their records, with the labelled relevant items | recall@k and record precision: `IDBasedContextRecall`, `IDBasedContextPrecision` | MRR, chunk precision, tokens read, missed items |
+| `tools` | The set of tools the agent called in a case's last turn with the acceptable sets a person labelled; scored by `wobot-eval agent` | none: RAGAS's tool-call metrics take one expected sequence, not alternatives | accuracy per split and scenario, calls written as text instead of made, refused arguments, failed tools, seconds and tokens |
 | `transcription` | What the vision model read in one image or PDF page with what a person transcribed from it | text recall: the mean of `StringPresence` over the transcribed lines | value precision and recall on (value, unit) pairs, lines and values missed or misread |
 
 - Labels name items as a person sees them and are matched by normalized text. A label
@@ -71,3 +75,21 @@ DB_USER=wobot_ingest_user uv run wobot-ingest run --sources grc_website --policy
 uv run wobot-eval run --dataset items-v1 --dataset seed-v1 --split dev
 uv run wobot-eval run --dataset items-v1 --dataset seed-v1 --split dev --index-version <version>
 ```
+
+## Agent checks
+
+`wobot-eval agent` builds the chat agent with the configured model, or `--model` and
+`--effort`, against the active version, and plays each `tools` case once, in a new thread
+with an in-memory checkpointer. It writes `runs/<time>-agent-<model>-<effort>.json` and
+`.md`, recording the model, effort, prompt version, index version and dataset hash.
+
+- It runs dev by default: tune on dev, and play held-out once, when choosing the model.
+- `--effort default` sends no reasoning effort, leaving the model's own default; every
+  effort goes through the Responses API, so efforts compare on one API.
+- A case's `history` scripts earlier turns. Their tools run for real against the version,
+  so follow-ups see real IDs, and only the last turn is measured: a slip in an earlier
+  turn would otherwise be scored as the follow-up's.
+- A call the model writes as text instead of making is counted apart: the answer then
+  rests on no lookup at all.
+- Each case runs once, so one run shows what a model does, not how often. With
+  `--env-file .env` and LangSmith set, every turn is also traced.
