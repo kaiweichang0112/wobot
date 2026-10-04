@@ -22,6 +22,7 @@ DB_USER=wobot_ingest_user uv run wobot-ingest search "<query>"
 DB_USER=wobot_ingest_user uv run wobot-ingest report|accept|rollback <version>
 uv run wobot-eval check-gold [--index-version <version>] [--show <case IDs>]
 uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
+uv run --env-file .env wobot-eval agent [--model <model>] [--split dev]
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
 ```
 

@@ -63,10 +63,12 @@ PRODUCT_CATEGORIES = {
     "5-1": "工作協助機器人",
     "5-2": "溝通機器人",
 }
+# Codes and labels apart: shown "4-3 認知訓練/運動遊戲", models passed the label too.
 CATEGORY_HELP = (
     "lecture: keynote or invited. publication: Journal papers, Conference papers, "
-    "Books / book chapters, Patents or General publications. product: the code of one of "
-    + "; ".join(f"{code} {label}" for code, label in PRODUCT_CATEGORIES.items())
+    "Books / book chapters, Patents or General publications. product: the code alone, "
+    'such as "4-3", one of '
+    + "; ".join(f'"{code}" = {label}' for code, label in PRODUCT_CATEGORIES.items())
 )
 # What the model is shown of each item; the artifact keeps every column.
 SHOWN_FIELDS: dict[str, tuple[str, ...]] = {
@@ -101,6 +103,7 @@ class TurnContext:
     query_time: datetime
     # Every tool call of a turn reads this version, even if another is published meanwhile.
     index_version: int
+    chatbot_name: str = "Wobot"  # what the account calls its assistant
 
 
 class ToolStatus(StrEnum):

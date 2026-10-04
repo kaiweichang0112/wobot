@@ -80,6 +80,9 @@ async def run_datasets(
             if case.check is None:
                 result.detail = case.pending or "no check defined"
                 continue
+            if result.kind in AGENT_CHECKS:
+                result.detail = "scored by wobot-eval agent"
+                continue
             try:
                 refs = case_refs(case, gold_dir, run.gold_files)
             except gold.GoldError as error:
@@ -104,6 +107,11 @@ async def run_datasets(
         if result.retrieval is None:
             result.detail = "needs an embedder"
     return run
+
+
+# Checks scored from what the chat agent did, by `wobot-eval agent`: they need paid model
+# calls, which `run` never makes.
+AGENT_CHECKS = frozenset({"tools"})
 
 
 def _kind(case: Case) -> str | None:

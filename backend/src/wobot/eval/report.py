@@ -7,6 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from wobot.eval.agent import AgentCaseResult
 from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
 from wobot.eval.runner import CaseResult, RunResult
 from wobot.eval.vision import ModelResult
@@ -263,4 +264,107 @@ def write_vision_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(vision_markdown(results, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Agent checks -----------------------------------------------------------------------
+
+
+def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
+    """Tool-selection accuracy per split and scenario, and what the turns cost."""
+    scored = [r for r in results if r.status == "scored"]
+    records = [r.record for r in scored if r.record]
+    out: dict[str, Any] = {
+        "cases": len(results),
+        "scored": len(scored),
+        "pending": sum(r.status == "pending" for r in results),
+        "errors": sum(r.status == "error" for r in results),
+    }
+    for split in ("dev", "heldout"):
+        cases = [r for r in scored if r.split == split]
+        if cases:
+            out[f"accuracy {split}"] = mean([float(bool(r.passed)) for r in cases])
+    if records:
+        out |= {
+            # Unsent: the model wrote a call as text and called nothing (see eval.agent).
+            "unsent_calls": sum(bool(r.unsent_calls) for r in records),
+            "refused_calls": sum(any(t.outcome == "error" for t in r.tools) for r in records),
+            "failed_tools": sum(any(t.outcome == "failed" for t in r.tools) for r in records),
+            "mean_seconds": mean([r.seconds for r in records]),
+            "max_seconds": max(r.seconds for r in records),
+            "model_calls": sum(r.model_calls for r in records),
+            "input_tokens": sum(r.input_tokens for r in records),
+            "output_tokens": sum(r.output_tokens for r in records),
+        }
+    return out
+
+
+def _scenarios(results: Sequence[AgentCaseResult]) -> dict[str, str]:
+    groups: dict[str, list[bool]] = defaultdict(list)
+    for r in results:
+        if r.status == "scored":
+            groups[r.scenario].append(bool(r.passed))
+    return {name: f"{sum(p)} of {len(p)}" for name, p in sorted(groups.items())}
+
+
+def agent_markdown(results: Sequence[AgentCaseResult], meta: Mapping[str, Any]) -> str:
+    lines = [
+        "# Tool selection",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Summary",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in agent_summary(results).items()),
+        "",
+        "## By scenario",
+        "",
+        *(f"- {name}: {value}" for name, value in _scenarios(results).items()),
+        "",
+        "## Cases",
+        "",
+        "| Case | Split | Scenario | Result | Expected | Called | Calls | Seconds |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        if r.status != "scored" or r.record is None:
+            cells = f"| {r.case_id} | {r.split} | {r.scenario} | {r.status}: {r.detail} |"
+            lines.append(cells + " |" * 4)
+            continue
+        result = "pass" if r.passed else "**fail**"
+        expected = " or ".join("{" + ", ".join(e) + "}" for e in r.expect)
+        calls = ", ".join(f"{t.name} {t.outcome}" for t in r.record.tools) or "none"
+        lines.append(
+            f"| {r.case_id} | {r.split} | {r.scenario} | {result} | {expected} "
+            f"| {{{', '.join(r.called)}}} | {calls} | {r.record.seconds:.1f} |"
+        )
+    lines += ["", "## Turns", ""]
+    for r in results:
+        if r.record is None:
+            continue
+        lines.append(f"### {r.case_id}: {r.user_input}")
+        lines.append("")
+        for tool in r.record.tools:
+            args = json.dumps(tool.args, ensure_ascii=False)
+            lines.append(f"- {tool.name} {args} → {tool.outcome}")
+        for text in r.record.unsent_calls:
+            lines.append(f"- unsent call, written as text: `{text}`")
+        lines += ["", "> " + r.record.answer.replace("\n", "\n> "), ""]
+    return "\n".join(lines) + "\n"
+
+
+def write_agent_report(
+    results: Sequence[AgentCaseResult], meta: Mapping[str, Any], directory: Path, stem: str
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "summary": agent_summary(results),
+        "cases": [asdict(r) for r in results],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(agent_markdown(results, meta), encoding="utf-8")
     return markdown

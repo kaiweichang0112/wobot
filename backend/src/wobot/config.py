@@ -43,7 +43,8 @@ class Settings(BaseSettings):
     # The chat agent: one model both picks tools and writes answers (DEC-054). A
     # placeholder until the phase B evaluation chooses one (DEC-049).
     agent_model: str = "gpt-5.6-luna"
-    # The lowest effort every candidate accepts: gpt-6.1-sol has no "none".
+    # The lowest effort every candidate accepts: gpt-6.1-sol has no "none". "default"
+    # sends none, leaving the provider's own default.
     agent_reasoning_effort: str = "low"
     # Raw source bytes go to this bucket, or to the local directory when it is unset.
     knowledge_bucket: str | None = None
