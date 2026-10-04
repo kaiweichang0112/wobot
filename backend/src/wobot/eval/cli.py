@@ -6,6 +6,9 @@ Scores come from RAGAS, a dev dependency: this runs from a checkout, not in the 
 
 `vision` is the exception: it asks vision models to read the dev pictures and keeps their
 answers where ingestion does, so it runs as the ingestion role.
+
+`agent` plays the agent checks through the chat agent, with paid model calls; `run`
+leaves those cases pending.
 """
 
 import argparse
@@ -17,14 +20,25 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from langgraph.checkpoint.memory import InMemorySaver
 from openai import AsyncOpenAI
 
+from wobot.agent.build import build_agent, chat_model
+from wobot.agent.prompts import PROMPT_VERSION as AGENT_PROMPT_VERSION
+from wobot.agent.tools import build_tools
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.eval import gold
+from wobot.eval.agent import run_tool_selection
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
-from wobot.eval.report import summary, write_report, write_vision_report
+from wobot.eval.report import (
+    agent_summary,
+    summary,
+    write_agent_report,
+    write_report,
+    write_vision_report,
+)
 from wobot.eval.runner import case_refs, run_datasets
 from wobot.eval.vision import compare_models, dev_transcriptions, fetch_pictures
 from wobot.knowledge.embeddings import OpenAIEmbedder
@@ -82,6 +96,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     vision.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     vision.set_defaults(handler=_vision)
+
+    agent = commands.add_parser(
+        "agent", help="play the tools cases through the chat agent (paid calls)"
+    )
+    agent.add_argument(
+        "--dataset",
+        action="append",
+        choices=dataset_names(),
+        help="a dataset to play; repeat for several (default: tool-selection-v1)",
+    )
+    agent.add_argument("--model", help="the agent model (default: AGENT_MODEL)")
+    agent.add_argument("--effort", help="its reasoning effort (default: AGENT_REASONING_EFFORT)")
+    agent.add_argument("--index-version", type=int, help="a version other than the active one")
+    agent.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    agent.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    agent.set_defaults(handler=_agent)
 
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
@@ -152,6 +182,49 @@ async def _vision(args: argparse.Namespace, settings: Settings) -> int:
             f" R {r.mean('value_recall')}, {r.input_tokens} + {r.output_tokens} tokens,"
             f" {r.calls} new calls"
         )
+    print(f"report: {path}")
+    return 0
+
+
+async def _agent(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    overrides = {"agent_model": args.model, "agent_reasoning_effort": args.effort}
+    settings = settings.model_copy(update={k: v for k, v in overrides.items() if v})
+    datasets = [load_dataset(name) for name in (args.dataset or ["tool-selection-v1"])]
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+        embedder = _embedder(settings, corpus)
+        tools = build_tools(engine, embedder)
+        agent = build_agent(chat_model(settings), tools, InMemorySaver())
+        started = datetime.now().astimezone()
+        results = await run_tool_selection(agent, tools, datasets, version_id, splits=splits)
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "model": settings.agent_model,
+        "reasoning_effort": settings.agent_reasoning_effort,
+        "prompt_version": AGENT_PROMPT_VERSION,
+        "index_version": version_id,
+        "splits": list(splits),
+        "datasets": {d.name: d.sha256[:12] for d in datasets},
+    }
+    stem = f"{started:%Y%m%d-%H%M%S}-agent-{settings.agent_model}-{settings.agent_reasoning_effort}"
+    path = write_agent_report(results, meta, args.out, stem)
+    for name, value in agent_summary(results).items():
+        print(f"{name}: {value}")
     print(f"report: {path}")
     return 0
 
