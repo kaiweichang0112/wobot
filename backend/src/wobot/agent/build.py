@@ -1,0 +1,43 @@
+"""The chat agent: one model that picks tools and writes answers (DEC-054)."""
+
+from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
+from langchain_core.tools import BaseTool
+from langchain_openai import ChatOpenAI
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Checkpointer
+
+from wobot.agent.prompts import turn_prompt
+from wobot.agent.tools import TurnContext
+from wobot.config import Settings
+
+# The LangSmith name of every turn's root run.
+AGENT_NAME = "wobot-chat"
+
+
+def chat_model(settings: Settings) -> ChatOpenAI:
+    effort = settings.agent_reasoning_effort
+    return ChatOpenAI(
+        model=settings.agent_model,
+        reasoning=None if effort == "default" else {"effort": effort},
+        # Explicit: without a reasoning setting ChatOpenAI would fall back to Chat
+        # Completions, and a comparison of efforts would also compare two APIs.
+        use_responses_api=True,
+        api_key=settings.openai_api_key,
+        timeout=settings.openai_timeout_seconds,
+        max_retries=3,
+    )
+
+
+def build_agent(
+    model: BaseChatModel, tools: list[BaseTool], checkpointer: Checkpointer = None
+) -> CompiledStateGraph:
+    """The agent graph; each turn is invoked with a TurnContext."""
+    return create_agent(
+        model,
+        tools,
+        middleware=[turn_prompt],
+        context_schema=TurnContext,
+        checkpointer=checkpointer,
+        name=AGENT_NAME,
+    )
