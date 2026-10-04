@@ -15,6 +15,7 @@ from wobot.knowledge.models import (
     Embedding,
     IndexVersionChunk,
     IndexVersionRecord,
+    Record,
 )
 
 
@@ -79,23 +80,46 @@ async def search_chunks(
     return [SearchHit(**row._mapping) for row in rows]
 
 
-async def chunk_record_keys(
+@dataclass(frozen=True)
+class Member:
+    """A record a chunk is built from."""
+
+    record_id: uuid.UUID
+    record_type: str
+    logical_key: str
+
+
+async def chunk_members(
     conn: AsyncConnection, chunk_ids: Sequence[uuid.UUID], version_id: int
-) -> dict[uuid.UUID, list[str]]:
-    """The logical keys of the records each chunk is built from, as this version lists them.
+) -> dict[uuid.UUID, list[Member]]:
+    """The records each chunk is built from, as this version lists them.
 
     A reused chunk keeps links to older revisions too; only the version's own count.
     """
     rows = await conn.execute(
-        select(ChunkRecord.chunk_id, IndexVersionRecord.logical_key)
+        select(
+            ChunkRecord.chunk_id,
+            IndexVersionRecord.record_id,
+            Record.record_type,
+            IndexVersionRecord.logical_key,
+        )
         .join(IndexVersionRecord, IndexVersionRecord.record_id == ChunkRecord.record_id)
+        .join(Record, Record.record_id == ChunkRecord.record_id)
         .where(
             ChunkRecord.chunk_id.in_(list(chunk_ids)),
             IndexVersionRecord.index_version_id == version_id,
         )
         .order_by(ChunkRecord.chunk_id, ChunkRecord.position)
     )
-    keys: dict[uuid.UUID, list[str]] = {chunk_id: [] for chunk_id in chunk_ids}
+    members: dict[uuid.UUID, list[Member]] = {chunk_id: [] for chunk_id in chunk_ids}
     for row in rows:
-        keys[row.chunk_id].append(row.logical_key)
-    return keys
+        members[row.chunk_id].append(Member(row.record_id, row.record_type, row.logical_key))
+    return members
+
+
+async def chunk_record_keys(
+    conn: AsyncConnection, chunk_ids: Sequence[uuid.UUID], version_id: int
+) -> dict[uuid.UUID, list[str]]:
+    """The logical keys of the records each chunk is built from, as this version lists them."""
+    members = await chunk_members(conn, chunk_ids, version_id)
+    return {chunk_id: [m.logical_key for m in found] for chunk_id, found in members.items()}
