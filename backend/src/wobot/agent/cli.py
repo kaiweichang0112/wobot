@@ -78,8 +78,13 @@ async def _chat(args: argparse.Namespace, settings: Settings) -> int:
                             args_text = json.dumps(call["args"], ensure_ascii=False)
                             print(f"  · {call['name']} {args_text}")
                 for held in state.get("retries", []):
-                    print(f"  · asked again, {held['reason']}")
-                reply = turn_reply(messages, state.get("structured_response"), context.artifacts)
+                    print(f"  · asked again, {held['reason']}: {'; '.join(held['detail'])}")
+                reply = turn_reply(
+                    messages,
+                    state.get("structured_response"),
+                    context.artifacts,
+                    state.get("requirements"),
+                )
                 print(f"\n{reply.text}")
                 if reply.status is not ReplyStatus.ANSWERED:
                     print(f"  [{reply.status}: {'; '.join(reply.problems)}]")

@@ -23,6 +23,46 @@ class ListRef(BaseModel):
     )
 
 
+class Check(BaseModel):
+    """How one product meets one of the user's conditions."""
+
+    model_config = STRICT
+
+    requirement_id: str = Field(description="the condition's ID from requirements, such as n1")
+    status: Literal["supported", "contradicted", "unknown"] = Field(
+        description="supported only when this turn's evidence states it; a related feature "
+        "or no mention is unknown"
+    )
+    evidence_ids: list[str] = Field(
+        description="the k- and r- IDs from this turn's tool results that state it"
+    )
+
+
+class Pick(BaseModel):
+    """One product recommended, and how it meets every condition."""
+
+    model_config = STRICT
+
+    product_id: str = Field(description="the product's r- ID, whose details this turn read")
+    checks: list[Check] = Field(description="one per condition in requirements.must_have")
+
+
+class Recommendation(BaseModel):
+    """The decision on a product recommendation."""
+
+    model_config = STRICT
+
+    action: Literal["recommend", "clarify", "explain_limitation"] = Field(
+        description="recommend when a product is supported on every condition; clarify "
+        "when only the user can tell something that changes which products fit; "
+        "explain_limitation when no product is supported on every condition"
+    )
+    requirements_version: int = Field(description="the version of requirements decided on")
+    products: list[Pick] = Field(
+        description="the products recommended, best first; empty unless action is recommend"
+    )
+
+
 class Answer(BaseModel):
     """The reply to the user."""
 
@@ -36,7 +76,8 @@ class Answer(BaseModel):
         description="grounded: the answer rests on what this turn's tools returned, "
         "including when they found what was asked about but it lacks what the user wants; "
         "no_info: you looked it up and the tools returned nothing relevant at all; "
-        "general: small talk, general knowledge or writing, with nothing looked up"
+        "general: small talk, general knowledge, writing, or a question back to the user, "
+        "with nothing looked up"
     )
     citations: list[str] = Field(
         description="the k- and r- IDs from this turn's tool results that the answer rests "
@@ -44,4 +85,7 @@ class Answer(BaseModel):
     )
     lists: list[ListRef] = Field(
         description="the query_records results to show in full, in order; empty when none"
+    )
+    recommendation: Recommendation | None = Field(
+        description="when the user wants a product recommended: the decision; else null"
     )

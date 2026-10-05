@@ -36,6 +36,7 @@ def answers(
     *,
     grounding: str = "general",
     citations: list[str] = (),
+    recommendation: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> AIMessage:
     """A final reply in the agent's answer schema, as the provider returns it: JSON text."""
@@ -44,6 +45,7 @@ def answers(
         "grounding": grounding,
         "citations": list(citations),
         "lists": list(lists),
+        "recommendation": recommendation,
     }
     return AIMessage(json.dumps(answer, ensure_ascii=False), **kwargs)
 

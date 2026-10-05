@@ -47,7 +47,13 @@ def passage(*members):
 
 
 def answer(grounding="grounded", citations=(), lists=()):
-    return Answer(answer="好。", grounding=grounding, citations=list(citations), lists=list(lists))
+    return Answer(
+        answer="好。",
+        grounding=grounding,
+        citations=list(citations),
+        lists=list(lists),
+        recommendation=None,
+    )
 
 
 def test_the_turn_starts_after_its_own_question():

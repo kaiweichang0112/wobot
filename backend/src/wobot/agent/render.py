@@ -16,7 +16,7 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from wobot.agent.answers import Answer, Grounding
+from wobot.agent.answers import Answer, Grounding, Pick
 from wobot.agent.guard import TurnEvidence, problems, turn_evidence
 from wobot.agent.tools import RecordsResult, record_handle
 from wobot.knowledge.lists import Listed
@@ -93,25 +93,31 @@ class Reply:
     lists: list[ShownList] = field(default_factory=list)
     # Why the guard held the answer back, in the words the model would be told.
     problems: list[str] = field(default_factory=list)
+    action: str | None = None  # the recommendation's decision, when there was one
+    products: list[Listed] = field(default_factory=list)  # the products recommended
 
 
 def turn_reply(
     messages: Sequence[BaseMessage],
     answer: Answer | None,
     artifacts: Mapping[str, Any] | None = None,
+    requirements: Mapping[str, Any] | None = None,
 ) -> Reply:
-    """The reply to one turn, from its messages after the question, the parsed answer and
-    the artifacts its context kept."""
+    """The reply to one turn, from its messages after the question, the parsed answer, the
+    artifacts its context kept and the user's needs as its state holds them."""
     evidence = turn_evidence(messages, artifacts)
     if evidence.failed or answer is None:
         return Reply(RETRYABLE_TEXT, ReplyStatus.RETRYABLE)
-    if found := problems(answer, evidence):
+    if found := problems(answer, evidence, requirements):
         return Reply(UNVERIFIED_TEXT, ReplyStatus.UNVERIFIED, problems=found)
-    return render(answer, evidence)
+    return render(answer, evidence, requirements)
 
 
-def render(answer: Answer, evidence: TurnEvidence) -> Reply:
-    """An answer the guard passed, with the sources it cites and its lists in full."""
+def render(
+    answer: Answer, evidence: TurnEvidence, requirements: Mapping[str, Any] | None = None
+) -> Reply:
+    """An answer the guard passed, with the sources it cites, the products it recommends
+    and its lists in full."""
     # Nothing answered the question, so nothing is its source: sources under "not found"
     # would read as where the answer is.
     citations = [] if answer.grounding == "no_info" else answer.citations
@@ -124,8 +130,17 @@ def render(answer: Answer, evidence: TurnEvidence) -> Reply:
             items = [i for i in items if record_handle(i.record_id) in wanted]
             uncertain = [i for i in uncertain if record_handle(i.record_id) in wanted]
         shown.append(ShownList(ref.result_id, items, uncertain))
-    # A source a list below already names is not named twice.
+    decision = answer.recommendation
+    picks = decision.products if decision is not None else []
+    # A source a list or a product card below already names is not named twice.
     listed = {i.source_url for s in shown for i in [*s.items, *s.uncertain]}
+    listed |= {
+        url
+        for pick in picks
+        for check in pick.checks
+        for i in check.evidence_ids
+        for url in evidence.sources[i]
+    }
     cited = [
         url
         for url in dict.fromkeys(u for c in citations for u in evidence.sources[c])
@@ -143,14 +158,33 @@ def render(answer: Answer, evidence: TurnEvidence) -> Reply:
         text += "\n\n來源：" + "、".join(cited)
     if pdfs:
         text += ("\n" if cited else "\n\n") + "PDF：" + "、".join(pdfs)
-    blocks = [text, *(_block(s, evidence.results[s.result_id]) for s in shown)]
+    cards = [_card(pick, evidence, requirements or {}) for pick in picks]
+    blocks = [text, *cards, *(_block(s, evidence.results[s.result_id]) for s in shown)]
     return Reply(
         "\n\n".join(b for b in blocks if b),
         ReplyStatus.ANSWERED,
         answer.grounding,
         citations,
         shown,
+        action=decision.action if decision is not None else None,
+        products=[evidence.products[pick.product_id] for pick in picks],
     )
+
+
+def _card(pick: Pick, evidence: TurnEvidence, requirements: Mapping[str, Any]) -> str:
+    """A recommended product as code shows it: what it is, where each condition is stated,
+    and how to reach its maker. A field the catalog does not give is left out."""
+    f = evidence.products[pick.product_id].fields
+    needs = {need["id"]: need["text"] for need in requirements.get("must_have", [])}
+    lines = [f"推薦：{f['product_name']}（{f['company_name']}）"]
+    for check in pick.checks:
+        sources = dict.fromkeys(u for i in check.evidence_ids for u in evidence.sources[i])
+        lines.append(f"- {needs[check.requirement_id]}：依據 " + "、".join(sources))
+    if f["product_url"]:
+        lines.append(f"產品網頁：{f['product_url']}")
+    if f["contact_phone"]:
+        lines.append(f"廠商電話：{f['contact_phone']}")
+    return "\n".join(lines)
 
 
 def _block(shown: ShownList, result: RecordsResult) -> str:
