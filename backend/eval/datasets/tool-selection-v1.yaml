@@ -138,7 +138,7 @@ cases:
     history:
       - user: WhizPad 是什麼？
         tools:
-          - {name: search_knowledge, args: {query: WhizPad 安心臥智慧床墊}}
+          - {name: search_knowledge, args: {queries: [WhizPad 安心臥智慧床墊, WhizPad smart mattress]}}
         answer: WhizPad 是一款鋪在床墊下的智慧床墊，用來了解長者在床上的狀態。
     user_input: 那它能偵測離床嗎？
     check: {kind: tools, expect: [[search_knowledge], [get_product_details], [search_knowledge, get_product_details]]}
