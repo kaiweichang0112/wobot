@@ -225,6 +225,12 @@ cases:
   - case_id: CASE-030
     scenario: missing_value_list
     split: dev
-    user_input: 請列出 fixture 指定日期範圍的全部演講；其中有一筆沒有地點，仍需保留該筆。
-    expected_behavior: Keep the talk without a location in the list.
-    pending: needs a speech fixture with a talk without a location
+    # The real 2024 talks serve: most of them give no location, so no fixture is needed.
+    # That a missing location is left out, not shown empty, is tested in code.
+    user_input: 請列出徐業良 2024 年的全部演講，包含標題、日期與地點；沒有記載地點的也要列出。
+    expected_behavior: Keep the talks without a location in the list, and leave the location out.
+    check:
+      kind: list
+      records: lecture
+      where: {year: 2024}
+      gold: {file: speeches-2024.txt, as: speech}
