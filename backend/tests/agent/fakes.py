@@ -30,10 +30,22 @@ class ScriptedChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=self.script.pop(0))])
 
 
-def answers(text: str, lists: list[dict[str, Any]] = (), **kwargs: Any) -> AIMessage:
+def answers(
+    text: str,
+    lists: list[dict[str, Any]] = (),
+    *,
+    grounding: str = "general",
+    citations: list[str] = (),
+    **kwargs: Any,
+) -> AIMessage:
     """A final reply in the agent's answer schema, as the provider returns it: JSON text."""
-    content = json.dumps({"answer": text, "lists": list(lists)}, ensure_ascii=False)
-    return AIMessage(content, **kwargs)
+    answer = {
+        "answer": text,
+        "grounding": grounding,
+        "citations": list(citations),
+        "lists": list(lists),
+    }
+    return AIMessage(json.dumps(answer, ensure_ascii=False), **kwargs)
 
 
 def calls(name: str, args: dict[str, Any], call_id: str = "call-1") -> AIMessage:

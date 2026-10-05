@@ -1,6 +1,7 @@
 """The chat agent: one model that picks tools and writes answers (DEC-054)."""
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
 from langchain.agents.structured_output import ProviderStrategy
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
@@ -9,12 +10,17 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer
 
 from wobot.agent.answers import Answer
+from wobot.agent.guard import AnswerGuard
 from wobot.agent.prompts import turn_prompt
 from wobot.agent.tools import TurnContext
 from wobot.config import Settings
 
 # The LangSmith name of every turn's root run.
 AGENT_NAME = "wobot-chat"
+# Per turn. Of 123 evaluated turns none took more than 5 model calls or 5 tool calls; past
+# these the loop is stuck, and the turn ends as a failure to try again.
+MODEL_CALLS = 8
+TOOL_CALLS = 10
 
 
 def chat_model(settings: Settings) -> ChatOpenAI:
@@ -38,7 +44,14 @@ def build_agent(
     return create_agent(
         model,
         tools,
-        middleware=[turn_prompt],
+        middleware=[
+            turn_prompt,
+            # Ends the turn with no answer, which the reply shows as retryable.
+            ModelCallLimitMiddleware(run_limit=MODEL_CALLS, exit_behavior="end"),
+            # Refuses the calls past the limit, so the model answers from what it has.
+            ToolCallLimitMiddleware(run_limit=TOOL_CALLS),
+            AnswerGuard(),
+        ],
         # The provider's own structured output, strict, so the reply always parses; every
         # candidate model passed tools and this together in B1.
         response_format=ProviderStrategy(Answer, strict=True),

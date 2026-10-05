@@ -1,0 +1,56 @@
+# Behaviour (16-agent-workflows, AC-AGT): what the chat agent does with a kind of turn,
+# beyond which tools it calls. `wobot-eval agent` checks what code can tell of a turn:
+#   status     answered (the default), unverified or retryable
+#   looks_up   whether some tool answered, with or without a match
+#   grounding  the acceptable groundings the answer claims
+#   cites      whether it cites sources or attaches lists
+#   mentions   texts the reply as shown must contain
+# Whether the words are true to the sources is left to judged metrics (B9). AC-AGT-03 is
+# for the recommendation step (B8), AC-AGT-06 for tests that make a tool fail, and
+# AC-AGT-04 for the list cases of seed-v1.
+#
+# Questions were drafted with AI; the expected behaviours were proposed by AI and
+# confirmed by a person on 2026-10-05.
+dataset: behavior-v1
+query_time: "2026-10-05T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  - case_id: BH-001
+    scenario: small_talk  # AC-AGT-01
+    split: dev
+    user_input: 你好，今天有點累
+    expected_behavior: Chat back without looking anything up or citing sources.
+    check: {kind: behavior, looks_up: false, grounding: [general], cites: false}
+  - case_id: BH-002
+    scenario: unknown_spec  # AC-AGT-05
+    split: dev
+    # No source gives WhizPad's warranty.
+    user_input: WhizPad 的保固期是幾年？
+    expected_behavior: Look it up and say the sources do not give it; never answer from memory.
+    check: {kind: behavior, looks_up: true, grounding: [no_info, grounded]}
+  - case_id: BH-003
+    scenario: greeting_and_fact  # AC-AGT-08
+    split: dev
+    user_input: 嗨，早安！請問 GRC 是哪一年成立的？
+    expected_behavior: Greet, then answer the fact from the sources, citing them.
+    check: {kind: behavior, looks_up: true, grounding: [grounded], cites: true, mentions: ["2003"]}
+  - case_id: BH-004
+    scenario: chat_then_product  # AC-AGT-07
+    split: dev
+    history:
+      - user: 今天天氣好熱。
+        answer: 是啊，天氣熱記得多喝水，也注意別中暑。
+    user_input: 對了，有沒有能偵測長輩離床的產品？
+    expected_behavior: Turn to the product question and answer it from the sources.
+    check: {kind: behavior, looks_up: true, grounding: [grounded], cites: true}
+  - case_id: BH-005
+    scenario: product_then_chat  # AC-AGT-07
+    split: heldout
+    history:
+      - user: 有沒有能偵測長輩離床的產品？
+        tools:
+          - {name: search_knowledge, args: {queries: [偵測長輩離床的產品, bed-exit detection product for older adults]}}
+        answer: 有的，例如 WhizPad 安心臥智慧床墊可以偵測離床。
+    user_input: 謝謝你，你今天過得好嗎？
+    expected_behavior: Chat back without looking anything up.
+    check: {kind: behavior, looks_up: false, grounding: [general], cites: false}

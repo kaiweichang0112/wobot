@@ -90,6 +90,9 @@ SHOWN_FIELDS: dict[str, tuple[str, ...]] = {
     "publication": ("year", "category", "item_text"),
     "product": ("product_name", "company_name", "category_l2_label"),
 }
+# Fields the model is told only exist, as true: code shows their links, the model reads
+# none of what they lead to.
+SHOWN_FLAGS: dict[str, tuple[str, ...]] = {"lecture": ("pdf_url",)}
 # Every catalog field a details call shows; codes and parsed years stay in the artifact.
 DETAIL_FIELDS = (
     "product_name",
@@ -178,11 +181,13 @@ def records_content(result: RecordsResult) -> str:
     if result.status is ToolStatus.FAILED:
         return FAILED_CONTENT
     names = SHOWN_FIELDS[result.query.kind]
+    flags = SHOWN_FLAGS.get(result.query.kind, ())
 
     def shown(items: list[Listed]) -> list[dict[str, Any]]:
         return [
             {"id": record_handle(item.record_id)}
             | {name: item.fields[name] for name in names if item.fields[name] is not None}
+            | {name: True for name in flags if item.fields[name]}
             for item in items[:SHOWN_ITEMS]
         ]
 
@@ -293,6 +298,7 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
         products. The list is complete, never a sample: use it for "all", "list", "how many",
         or anything asked by year, degree or category. Students and projects have years,
         products do not. At most 50 items are shown; the whole list is kept for display.
+        A lecture's pdf_url is a link to its PDF, which code shows; no tool reads PDFs.
         With last_years, records dated only by a year that straddles the window's start or
         today are listed apart as uncertain."""
         if last_years is not None and last_years < 1:

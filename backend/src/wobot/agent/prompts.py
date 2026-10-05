@@ -6,9 +6,10 @@ from langchain.agents.middleware import ModelRequest, dynamic_prompt
 
 from wobot.agent.tools import TIMEZONE, TurnContext
 
-# Bump with any change to the instructions or the tools' descriptions, so evaluation runs
-# and traces say which prompt they measured; a test pins each version's fingerprint.
-PROMPT_VERSION = 7
+# Bump with any change to the instructions, the tools' descriptions or the answer's schema,
+# so evaluation runs and traces say which prompt they measured; a test pins each version's
+# fingerprint.
+PROMPT_VERSION = 10
 
 INSTRUCTIONS = """\
 You are the assistant in Wobot, an app of the Gerontechnology Research Center (GRC) at \
@@ -22,6 +23,11 @@ turn's tools returned, since earlier results may be out of date or cleared. If t
 return nothing that answers the question, say that the sources do not say; do not guess. \
 If a tool failed, say the search failed and can be tried again; never present a failure \
 as having no information.
+
+Say what your answer rests on in grounding. Cite the IDs of the passages (k-) and \
+records (r-) it rests on: code checks that each came from this turn's tools and shows \
+its source, so never write IDs or links in the answer itself. Answers about GRC, G-Tech, \
+their people or products are never general, even when nothing was found.
 
 Use query_records when the user wants a complete list or a count, and search_knowledge \
 for facts, explanations or products that fit a need. Ask get_product_details about \
