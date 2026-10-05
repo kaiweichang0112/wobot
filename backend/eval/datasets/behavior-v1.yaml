@@ -54,3 +54,25 @@ cases:
     user_input: 謝謝你，你今天過得好嗎？
     expected_behavior: Chat back without looking anything up.
     check: {kind: behavior, looks_up: false, grounding: [general], cites: false}
+  # A named record is looked up, not taken as absent when a search misses it (B7 chat).
+  - case_id: BH-006
+    scenario: name_after_list
+    split: dev
+    history:
+      - user: 請列出 2013 年的碩士畢業生
+        tools:
+          - {name: query_records, args: {record_type: student, year_from: 2013, year_to: 2013, degree: master}}
+        answer: 2013 年共有 3 位碩士畢業生。
+      - user: 張凱維的論文題目是什麼
+        tools:
+          - {name: query_records, args: {record_type: student, year_from: 2013, year_to: 2013, degree: master}}
+        answer: 張凱維的論文題目是「活動感知地墊及多元互動應用之開發」。
+    user_input: 那張維益的呢？
+    expected_behavior: Take the question as asking for his thesis, and find it by his name.
+    check: {kind: behavior, looks_up: true, grounding: [grounded], cites: true, mentions: [以感知地墊偵測行走路徑]}
+  - case_id: BH-007
+    scenario: name_alone
+    split: heldout
+    user_input: 林怡錦的論文題目是什麼？
+    expected_behavior: Find the student by her name and give her thesis title.
+    check: {kind: behavior, looks_up: true, grounding: [grounded], cites: true, mentions: [Wobot]}

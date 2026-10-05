@@ -10,8 +10,8 @@ the cases that check the chat agent itself, with paid model calls.
 | `datasets/seed-v1.yaml` | The 29 seed questions, split 20 dev / 9 held out by scenario |
 | `datasets/fixtures-v1.yaml` | Engineering checks of ingestion outside the 30 questions |
 | `datasets/items-v1.yaml` | Questions about one item, for comparing chunk strategies |
-| `datasets/tool-selection-v1.yaml` | 30 messages and the tools the agent should call, 20 dev / 10 held out |
-| `datasets/behavior-v1.yaml` | What the agent should do with kinds of turns (AC-AGT), 4 dev / 1 held out |
+| `datasets/tool-selection-v1.yaml` | 31 messages and the tools the agent should call, 21 dev / 10 held out |
+| `datasets/behavior-v1.yaml` | What the agent should do with kinds of turns (AC-AGT), 5 dev / 2 held out |
 | `gold/` | Labels a person wrote from the sources; see `gold/README.md` |
 | `runs/` | Reports, gitignored |
 
