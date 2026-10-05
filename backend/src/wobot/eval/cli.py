@@ -29,7 +29,7 @@ from wobot.agent.tools import FUSION_DEPTH, SEARCH_QUERIES, SEARCHED_CHUNKS, bui
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.eval import gold
-from wobot.eval.agent import run_agent_checks
+from wobot.eval.agent import AGENT_KINDS, run_agent_checks
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
 from wobot.eval.report import (
@@ -111,6 +111,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     agent.add_argument("--effort", help="its reasoning effort (default: AGENT_REASONING_EFFORT)")
     agent.add_argument("--index-version", type=int, help="a version other than the active one")
     agent.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    agent.add_argument(
+        "--check",
+        action="append",
+        choices=AGENT_KINDS,
+        help="play only cases of this check; repeat for several (default: all)",
+    )
     agent.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     agent.set_defaults(handler=_agent)
 
@@ -209,7 +215,13 @@ async def _agent(args: argparse.Namespace, settings: Settings) -> int:
         started = datetime.now().astimezone()
         gold_files: dict[str, str] = {}
         results = await run_agent_checks(
-            agent, tools, datasets, corpus, splits=splits, gold_files=gold_files
+            agent,
+            tools,
+            datasets,
+            corpus,
+            splits=splits,
+            kinds=args.check or AGENT_KINDS,
+            gold_files=gold_files,
         )
     finally:
         await engine.dispose()
