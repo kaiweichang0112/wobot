@@ -12,8 +12,8 @@ status, whether it cited sources, and what the reply mentions.
 import logging
 import time
 import uuid
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,7 +24,7 @@ from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 
 from wobot.agent.answers import Answer
-from wobot.agent.guard import NO_ANSWER, this_turn
+from wobot.agent.guard import NO_ANSWER, this_turn, tool_artifact
 from wobot.agent.messages import commentary
 from wobot.agent.render import turn_reply
 from wobot.agent.tools import SEARCHED_CHUNKS, SearchResult, TurnContext
@@ -127,13 +127,20 @@ async def play(
     for number, turn in enumerate(turns):
         started = time.perf_counter()
         before = list(history) if number == 0 else []
+        turn_context = replace(context, artifacts={})  # each turn keeps its own
         state = await agent.ainvoke(
-            {"messages": [*before, HumanMessage(turn)]}, config=config, context=context
+            {"messages": [*before, HumanMessage(turn)]}, config=config, context=turn_context
         )
         seconds = time.perf_counter() - started
-        answer = state.get("structured_response")
-        retries = state.get("retries", [])
-        records.append(record_turn(this_turn(state["messages"]), seconds, answer, retries))
+        records.append(
+            record_turn(
+                this_turn(state["messages"]),
+                seconds,
+                state.get("structured_response"),
+                state.get("retries", []),
+                turn_context.artifacts,
+            )
+        )
     return records
 
 
@@ -142,17 +149,18 @@ def record_turn(
     seconds: float,
     answer: Answer | None = None,
     retries: Sequence[dict[str, Any]] = (),
+    artifacts: Mapping[str, Any] | None = None,
 ) -> TurnRecord:
-    """What the turn did, from its messages after the question and the guard's held-back
-    tries, which the messages leave out."""
+    """What the turn did, from its messages after the question, the guard's held-back
+    tries and the artifacts its context kept, both of which the messages leave out."""
     replies = [m for m in messages if isinstance(m, AIMessage) and m.response_metadata != NO_ANSWER]
     results = {m.tool_call_id: m for m in messages if isinstance(m, ToolMessage)}
     tools = [
         ToolUse(
             call["name"],
             call["args"],
-            _outcome(results.get(call["id"])),
-            _retrieved(results.get(call["id"])),
+            _outcome(results.get(call["id"]), artifacts),
+            _retrieved(results.get(call["id"]), artifacts),
         )
         for reply in replies
         for call in reply.tool_calls
@@ -160,7 +168,7 @@ def record_turn(
     usage = [reply.usage_metadata or {} for reply in replies] + list(retries)
     unsent = [text for r in replies if not r.tool_calls for text in commentary(r)]
     unsent += [text for held in retries if held["reason"] == "unparsed" for text in held["detail"]]
-    reply = turn_reply(messages, answer)
+    reply = turn_reply(messages, answer, artifacts)
     return TurnRecord(
         answer=reply.text,
         tools=tools,
@@ -185,21 +193,22 @@ def record_turn(
     )
 
 
-def _retrieved(result: ToolMessage | None) -> list[Retrieved]:
-    if result is None or not isinstance(result.artifact, SearchResult):
+def _retrieved(result: ToolMessage | None, artifacts: Mapping[str, Any] | None) -> list[Retrieved]:
+    found = None if result is None else tool_artifact(result, artifacts)
+    if not isinstance(found, SearchResult):
         return []
     return [
         Retrieved(str(e.hit.chunk_id), [m.logical_key for m in e.members], e.hit.token_count)
-        for e in result.artifact.evidence
+        for e in found.evidence
     ]
 
 
-def _outcome(result: ToolMessage | None) -> str:
+def _outcome(result: ToolMessage | None, artifacts: Mapping[str, Any] | None) -> str:
     if result is None:
         return "missing"
     if result.status == "error":
         return "error"
-    return str(result.artifact.status)
+    return str(tool_artifact(result, artifacts).status)
 
 
 async def scripted_history(
@@ -225,7 +234,9 @@ async def scripted_history(
             )
             args = {**call["args"], "runtime": runtime}
             tool_call = {**call, "args": args, "type": "tool_call"}
-            messages.append(await by_name[call["name"]].ainvoke(tool_call))
+            result = await by_name[call["name"]].ainvoke(tool_call)
+            # Earlier turns' artifacts are never read, and are not kept (TurnArtifacts).
+            messages.append(result.model_copy(update={"artifact": None}))
         messages.append(AIMessage(turn["answer"]))
     return messages
 

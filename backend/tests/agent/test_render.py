@@ -171,7 +171,7 @@ async def ask(db, embedder, version_id, script):
     agent = build_agent(ScriptedChatModel(script=script), build_tools(db, embedder))
     context = TurnContext("account-1", datetime(2026, 10, 3, tzinfo=UTC), version_id)
     state = await agent.ainvoke({"messages": [HumanMessage("列出演講")]}, context=context)
-    return turn_reply(state["messages"][1:], state["structured_response"])
+    return turn_reply(state["messages"][1:], state["structured_response"], context.artifacts)
 
 
 async def test_a_turn_shows_the_list_it_named(knowledge):

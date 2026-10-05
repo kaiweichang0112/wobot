@@ -13,6 +13,7 @@ LangGraph agents will live here too. Google Cloud setup is in
 | `src/wobot/models.py` | SQLAlchemy models; the migrations define the schema |
 | `src/wobot/api/` | FastAPI app, Firebase ID token verification, error envelope |
 | `src/wobot/knowledge/` | Knowledge ingestion: sources → records → chunks → embeddings → versions, and search |
+| `src/wobot/agent/` | The chat agent: its read-only tools, prompt, answer guard, rendering and checkpoint tables |
 | `migrations/` | Alembic migrations, run as the `wobot_migrator` group role |
 | `tests/` | API and privilege tests against a migrated local database |
 
@@ -155,6 +156,19 @@ DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <mode
 `vision` compares vision models on the dev transcriptions (paid calls); see
 `eval/gold/README.md`.
 
+## Chat
+
+`wobot-chat` talks with the chat agent in a terminal (paid calls). Conversations are
+kept in the local database as the API's role, and `--thread` takes one up again; each
+turn prints the tools called and any answer the guard asked again.
+
+```bash
+DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>] [--name <name>]
+```
+
+Only `DB_MODE=local` keeps conversations for now: async psycopg through the Cloud SQL
+connector is still to be settled.
+
 ## Migrations
 
 ```bash
@@ -172,6 +186,10 @@ DB_USER=wobot_migrator_user uv run alembic check
 - Never downgrade Cloud SQL; fix forward with a new revision. `downgrade` is for
   checking locally that a revision reverses cleanly.
 - `alembic check` fails when the models and the migrations disagree.
+- The agent's checkpoint tables (`0005`) are written in the state the pinned
+  `langgraph-checkpoint-postgres` reaches, and its `setup()` is never run: the API's
+  role has no DDL. A test builds the library's own tables and compares them with ours,
+  so upgrading the package means a new revision for whatever migrations it adds.
 
 ## Container image
 
@@ -204,11 +222,14 @@ docker build -t wobot-api:local .
 | `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | `2`, `2` | Connections per instance, sized against the budget in `infra/README.md` |
 | `DB_POOL_TIMEOUT_SECONDS` | `10` | Longest wait for a free pooled connection |
 | `DB_CONNECT_TIMEOUT_SECONDS` | `10` | Longest wait to open a connection |
+| `CHECKPOINT_POOL_SIZE` | `2` | Most connections the chat agent's checkpoints hold, on a psycopg pool of their own |
 | `OPENAI_API_KEY` | none | Ingestion and search only; from Secret Manager in the cloud |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
 | `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
 | `VISION_MODEL` | `gpt-6.1-sol` | Reads images and PDF pages; chosen with `wobot-eval vision`; answers are cached per model |
+| `AGENT_MODEL` | `gpt-5.6-luna` | The chat agent's model, until the phase B evaluation chooses one |
+| `AGENT_REASONING_EFFORT` | `low` | Its reasoning effort; `default` sends none |
 | `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |

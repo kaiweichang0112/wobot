@@ -6,7 +6,7 @@ nothing, looked something up. Whether the words follow from the sources is measu
 evaluation instead.
 """
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Annotated, Any, NotRequired
 
@@ -16,6 +16,7 @@ from langchain.agents.middleware import (
     ExtendedModelResponse,
     ModelRequest,
     ModelResponse,
+    ToolCallRequest,
 )
 from langchain.agents.middleware.types import OmitFromInput
 from langchain.agents.structured_output import StructuredOutputValidationError
@@ -61,14 +62,17 @@ def this_turn(messages: Sequence[BaseMessage]) -> Sequence[BaseMessage]:
     return messages[last + 1 :]
 
 
-def turn_evidence(messages: Sequence[BaseMessage]) -> TurnEvidence:
-    """The evidence among a turn's messages after the question. A call whose arguments
-    were refused returned nothing and counts for nothing."""
+def turn_evidence(
+    messages: Sequence[BaseMessage], artifacts: Mapping[str, Any] | None = None
+) -> TurnEvidence:
+    """The evidence among a turn's messages after the question, with the artifacts the
+    turn's context keeps for them. A call whose arguments were refused returned nothing
+    and counts for nothing."""
     evidence = TurnEvidence()
     for message in messages:
         if not isinstance(message, ToolMessage) or message.status == "error":
             continue
-        artifact = message.artifact
+        artifact = tool_artifact(message, artifacts)
         if artifact.status is ToolStatus.FAILED:
             evidence.failed = True
             continue
@@ -92,6 +96,13 @@ def turn_evidence(messages: Sequence[BaseMessage]) -> TurnEvidence:
                     _add(evidence, handle, member.source_url)
                     _add(evidence, record_handle(member.record_id), member.source_url)
     return evidence
+
+
+def tool_artifact(message: ToolMessage, artifacts: Mapping[str, Any] | None) -> Any:
+    """A tool message's artifact: kept by the turn's context, or still on the message."""
+    if message.artifact is not None:
+        return message.artifact
+    return (artifacts or {}).get(message.tool_call_id)
 
 
 def _add(evidence: TurnEvidence, handle: str, source_url: str) -> None:
@@ -195,7 +206,8 @@ class AnswerGuard(AgentMiddleware[GuardState]):
             answer = response.structured_response
             if answer is None:  # tool calls: checked once the answer comes
                 return response
-            evidence = turn_evidence(this_turn(request.messages))
+            artifacts = request.runtime.context.artifacts
+            evidence = turn_evidence(this_turn(request.messages), artifacts)
             # After a failed tool the reply is retryable whatever the answer: no second try.
             if evidence.failed or not (found := problems(answer, evidence)):
                 return response
@@ -209,3 +221,23 @@ class AnswerGuard(AgentMiddleware[GuardState]):
             response = ModelResponse(result=[AIMessage("", response_metadata=NO_ANSWER)])
         retries = [*request.state.get("retries", []), *held]
         return ExtendedModelResponse(response, Command(update={"retries": retries}))
+
+
+class TurnArtifacts(AgentMiddleware):
+    """Keeps each tool's artifact in the turn's context instead of its message (D1, B7).
+
+    The model never reads artifacts, and answers rest only on the turn's own results, so
+    no later turn needs them. Kept in the messages, a complete list would be stored again
+    at every step of the conversation, in types a checkpoint would have to revive.
+    """
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+    ) -> ToolMessage | Command:
+        message = await handler(request)
+        if isinstance(message, ToolMessage) and message.artifact is not None:
+            request.runtime.context.artifacts[message.tool_call_id] = message.artifact
+            return message.model_copy(update={"artifact": None})
+        return message

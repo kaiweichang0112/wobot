@@ -35,11 +35,13 @@ def context(version_id, name="Wobot"):
     return TurnContext("account-1", datetime(2026, 10, 3, 23, 30, tzinfo=UTC), version_id, name)
 
 
-async def ask(knowledge, model, question, name="Wobot"):
+async def ask(knowledge, model, question, name="Wobot", kept=None):
+    """The turn's messages; `kept` collects the artifacts its context kept."""
     agent = build_agent(model, build_tools(knowledge.db, knowledge.embedder))
-    state = await agent.ainvoke(
-        {"messages": [HumanMessage(question)]}, context=context(knowledge.version_id, name)
-    )
+    turn = context(knowledge.version_id, name)
+    state = await agent.ainvoke({"messages": [HumanMessage(question)]}, context=turn)
+    if kept is not None:
+        kept.update(turn.artifacts)
     return state["messages"]
 
 
@@ -48,10 +50,13 @@ async def test_a_turn_calls_a_tool_and_answers_from_its_result(knowledge):
         script=[calls("query_records", {"record_type": "lecture"}), answers("兩場演講。")]
     )
 
-    messages = await ask(knowledge, model, "列出所有演講")
+    kept = {}
+    messages = await ask(knowledge, model, "列出所有演講", kept=kept)
 
     human, call, result, answer = messages
-    assert isinstance(result, ToolMessage) and len(result.artifact.items) == 2
+    assert isinstance(result, ToolMessage) and len(kept[result.tool_call_id].items) == 2
+    # The full result stays with the turn, out of the messages a checkpoint stores.
+    assert result.artifact is None
     assert json.loads(answer.content)["answer"] == "兩場演講。"
     # The second request carries the tool's content: the model answers from it.
     assert model.requests[1][-1].content == result.content

@@ -148,7 +148,9 @@ async def play(knowledge, script):
     agent = build_agent(model, build_tools(knowledge.db, knowledge.embedder))
     context = TurnContext("account-1", datetime(2026, 10, 3, tzinfo=UTC), knowledge.version_id)
     state = await agent.ainvoke({"messages": [HumanMessage("列出演講")]}, context=context)
-    reply = turn_reply(this_turn(state["messages"]), state["structured_response"])
+    reply = turn_reply(
+        this_turn(state["messages"]), state["structured_response"], context.artifacts
+    )
     return model, state, reply
 
 
