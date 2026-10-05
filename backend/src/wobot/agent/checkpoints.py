@@ -17,7 +17,7 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy import Column, Index, Integer, LargeBinary, Table, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 
-from wobot.agent.answers import Answer, ListRef
+from wobot.agent.answers import Answer, Check, ListRef, Pick, Recommendation
 from wobot.config import Settings
 from wobot.models import Base
 
@@ -82,7 +82,9 @@ def checkpoint_serde() -> JsonPlusSerializer:
     be stored; one that is comes back as plain data, with a warning a test looks for,
     rather than as a class a stored row could name.
     """
-    return JsonPlusSerializer(allowed_msgpack_modules=[Answer, ListRef])
+    return JsonPlusSerializer(
+        allowed_msgpack_modules=[Answer, ListRef, Recommendation, Pick, Check]
+    )
 
 
 @asynccontextmanager

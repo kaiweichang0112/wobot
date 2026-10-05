@@ -1,0 +1,73 @@
+# Product recommendation (18, 19 REC-FX): what the agent decides for a need, and which
+# real catalog products may or may never be recommended for it. `wobot-eval agent` checks
+# the decision, every product recommended against the products a source states to fit,
+# those that never fit, and words the recorded needs must hold; the behaviour keys apply
+# too. Whether the reasons are true to the sources is left to judged metrics (B9).
+#
+# The seed's CASE-021 to 025 cover REC-FX-01, 02, 05 and 06's carry-over; REC-FX-08 (a
+# failed tool) is tested in code, REC-FX-09 (one product) is enforced by the guard, and
+# REC-FX-07 and 10 wait for their labels.
+#
+# Questions were drafted with AI; the fitting products were proposed by AI from the words
+# of every approved source, the official sites and their pictures as well as the catalog,
+# and confirmed by a person on 2026-10-05.
+dataset: recommendation-v1
+query_time: "2026-10-05T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  - case_id: REC-FX-04
+    scenario: interface_constraint
+    split: dev
+    user_input: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
+    expected_behavior: Recommend only a product a source states can be viewed on a computer.
+    # Fits: bed-exit alerts and a computer or desktop stated; WhizPad's site manages it
+    # from a central nurse station and shows it on a desktop screen (labels added after
+    # the first run). Never: a phone app only.
+    # It says nothing of home or institution, where the fitting products differ: asking
+    # about it is as good as recommending one that fits.
+    check:
+      kind: recommendation
+      action: [recommend, clarify]
+      recommends: ["毫米波雷達跌倒偵測系統", "南丁格爾智慧照護系統", "WhizPad 安心臥智慧床墊"]
+      never: ["ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶"]
+      records: [電腦]
+  - case_id: REC-FX-06
+    scenario: greeting_keeps_needs
+    split: dev
+    history:
+      - user: 想找離床預警、不用配戴的產品，在家裡用。
+        tools:
+          - {name: update_requirements, args: {goal: 照顧在家的長輩, must_have: [離床預警, 不需配戴, 居家使用]}}
+        answer: 好的，我來找找看。
+    user_input: 謝謝你！
+    expected_behavior: Answer the thanks; keep the needs and look nothing up.
+    check: {kind: recommendation, looks_up: false, grounding: [general], cites: false, action: [null], records: [離床, 不需配戴]}
+  # REC-FX-03, from a person's chats (B8): the products that fit differ in what the user
+  # can tell, so the first answer asks about it rather than picking one.
+  - case_id: REC-FX-03
+    scenario: decisive_difference
+    split: dev
+    user_input: 我爸最近很容易跌倒，我想找一個照護產品
+    expected_behavior: Ask whether a worn device is acceptable, or where it is used, before recommending.
+    check: {kind: recommendation, action: [clarify], records: [跌倒]}
+  - case_id: REC-FX-03B
+    scenario: decisive_difference
+    split: dev
+    user_input: 我想找離床預警的產品
+    expected_behavior: Ask where it is used, or what kind of device is acceptable, before recommending.
+    check: {kind: recommendation, action: [clarify], records: [離床]}
+  # REC-FX-05B, from a person's chat (B8): the sources never say "no camera", but they say
+  # how each product senses, which rules a camera out or in.
+  - case_id: REC-FX-05B
+    scenario: exclusion_by_mechanism
+    split: dev
+    user_input: 家裡的長輩臥床，需要離床警示，不要穿戴、不要攝影機
+    expected_behavior: Infer nothing worn and no camera from how a product senses, and recommend.
+    # Fits: bed-exit alerts and home use stated, sensing by a mattress pad, optical fibre
+    # or radar. Never: AI-Care, AI照護感知系統 and 奧比森 analyse images; worn devices.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站"]
+      never: ["AI-Care 日夜照護安全系統", "AI照護感知系統", "奧比森長照輔助系統", "家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型"]
+      records: [離床]

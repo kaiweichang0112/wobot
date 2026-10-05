@@ -13,6 +13,7 @@ from wobot.agent.answers import Answer
 from wobot.agent.guard import AnswerGuard, TurnArtifacts
 from wobot.agent.history import earlier_turns
 from wobot.agent.prompts import turn_prompt
+from wobot.agent.requirements import ChatState
 from wobot.agent.tools import TurnContext
 from wobot.config import Settings
 
@@ -58,6 +59,7 @@ def build_agent(
         # The provider's own structured output, strict, so the reply always parses; every
         # candidate model passed tools and this together in B1.
         response_format=ProviderStrategy(Answer, strict=True),
+        state_schema=ChatState,
         context_schema=TurnContext,
         checkpointer=checkpointer,
         name=AGENT_NAME,

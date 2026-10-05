@@ -5,7 +5,7 @@ import pytest
 
 from wobot.agent.tools import build_tools
 from wobot.eval import gold
-from wobot.eval.agent import BEHAVIORS
+from wobot.eval.agent import BEHAVIORS, RECOMMENDATION_CHECKS
 from wobot.eval.dataset import dataset_names, load_dataset
 from wobot.eval.runner import case_refs
 
@@ -56,5 +56,8 @@ def test_scripted_history_calls_fit_the_tools_as_they_are():
 @pytest.mark.parametrize("name", dataset_names())
 def test_behavior_checks_expect_only_known_behaviors(name):
     for case in load_dataset(name).cases:
-        if case.check and case.check["kind"] == "behavior":
-            assert set(case.check) - {"kind"} <= set(BEHAVIORS), case.case_id
+        if case.check and case.check["kind"] in ("behavior", "recommendation"):
+            known = set(BEHAVIORS)
+            if case.check["kind"] == "recommendation":
+                known |= set(RECOMMENDATION_CHECKS)
+            assert set(case.check) - {"kind"} <= known, case.case_id

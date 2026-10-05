@@ -30,6 +30,12 @@ PROMPT_FINGERPRINTS = {
     11: "f82785e02aa14a7d40a3f3adda058cbfd5a3bf4d111a4062bb356f4234a1e721",
     12: "c191f8d1f1de74594214ee75b5e7ea0917e7d008f1ac8dde9b398a4197000f86",
     13: "48d835a5159ba0d34d531ddbf9849f076d86c2d6797a3fc8d14df2701ae9be81",
+    14: "e4b8ff7308ea9c44c058608e2352d32710620d8af95b383fa4f8f2cce5279658",
+    15: "20c702cd0361c1d2b686e029c815ec4093c63acec2b8ac58c22d6f2e64c8230d",
+    16: "fa0cb9f5b2a539c553958e793a910c2dbc4eb39f1f3d8c8733e72c4a732eda6e",
+    17: "b24086a0164a8b0cb4fa2e490bcefa147dac0e1253898ec7aae079b7cdbbd274",
+    18: "550932593ca3fc4c9670ca4cf235ddd924d83557a515c07728ed1735ed093562",
+    19: "9a05383d6ce65d1d73e1bfa04aaf8a4f007852ab5e1bda2cf64ba8499101658e",
 }
 
 
@@ -63,7 +69,12 @@ async def test_a_turn_calls_a_tool_and_answers_from_its_result(knowledge):
     assert json.loads(answer.content)["answer"] == "兩場演講。"
     # The second request carries the tool's content: the model answers from it.
     assert model.requests[1][-1].content == result.content
-    assert model.tool_names == ["search_knowledge", "query_records", "get_product_details"]
+    assert model.tool_names == [
+        "search_knowledge",
+        "query_records",
+        "get_product_details",
+        "update_requirements",
+    ]
 
 
 async def test_small_talk_is_answered_without_tools(knowledge):

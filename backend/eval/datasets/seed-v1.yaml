@@ -167,25 +167,46 @@ cases:
     split: heldout
     user_input: 請依資料比較 iProték 智慧床墊與 WhizPad 安心臥智慧床墊，不要因公司而偏好任一項。
     expected_behavior: Compare both products on the same criteria without favouring either.
-    pending: needs the answer agent (phase B) and a reference answer
+    # Whether the comparison is even-handed needs a judge (B9); code checks it read both.
+    check: {kind: behavior, looks_up: true, grounding: [grounded], cites: true, mentions: [iProték, WhizPad]}
   - case_id: CASE-021
     scenario: insufficient_need
     split: dev
     user_input: 推薦一個智慧照護產品給我。
     expected_behavior: Ask for the conditions that decide the recommendation before recommending.
-    pending: needs the answer agent (phase B) and the expected follow-up questions
+    # With nothing stated there are no needs to record, and so no decision to give.
+    check: {kind: recommendation, action: [clarify, null]}
   - case_id: CASE-022
     scenario: need_fit
     split: dev
     user_input: 家中長者臥床，主要需要離床預警，希望不用配戴裝置；請推薦一項適合居家使用的產品並解釋理由。
     expected_behavior: Recommend one product that fits, with reasons; ask only about decisive gaps.
-    pending: needs the answer agent (phase B) and a reference answer
+    # Fits: a source states bed-exit alerts, home use and nothing worn (WhizPad's home
+    # version is on its official site). Never: worn devices, sleep monitoring without
+    # bed-exit alerts, and products stated for institutions. Others are not stated to fit.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "AI-Care 日夜照護安全系統", "FusionCare 毫米波雷達基站"]
+      never: ["家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "OGA雷達毫米波生理感測裝置", "Agicare 智能均壓床", "Monibed 紅外線離床警示器", "AI照護感知系統"]
+      records: [離床]
   - case_id: CASE-023
     scenario: multi_turn_carry
     split: dev
-    user_input: "第 1 輪：我想找臥床監測產品。第 2 輪：在居家使用，最在意離床提醒，不希望長者配戴裝置。"
+    # The first turn is the history below; this is the second.
+    user_input: 在居家使用，最在意離床提醒，不希望長者配戴裝置。
     expected_behavior: Carry the first turn's need and do not ask again what was answered.
-    pending: needs the answer agent (phase B) and a two-turn fixture
+    history:
+      - user: 我想找臥床監測產品。
+        tools:
+          - {name: update_requirements, args: {goal: 臥床監測, must_have: [臥床監測]}}
+        answer: 好的。請問會在哪裡使用？最在意哪些功能？
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "AI-Care 日夜照護安全系統", "FusionCare 毫米波雷達基站"]
+      never: ["家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "OGA雷達毫米波生理感測裝置", "Agicare 智能均壓床", "Monibed 紅外線離床警示器", "AI照護感知系統"]
+      records: [離床]
   - case_id: CASE-024
     scenario: need_change
     split: heldout
@@ -197,7 +218,13 @@ cases:
     split: dev
     user_input: Recommend one smart-care product for detecting falls at home without a wearable device. Explain your choice using the available catalog.
     expected_behavior: Recommend one fitting product in English, citing the catalog.
-    pending: needs the answer agent (phase B) and a reference answer
+    # Fits: a source states fall detection, home use and nothing worn; AI-Care is installed
+    # in the room. Never: watches, wristbands, pendants and necklaces.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["長者照護智慧觀測服務", "AI智能照護系統", "FusionCare 毫米波雷達基站", "OGA雷達毫米波生理感測裝置", "毫米波跌倒偵測雷達", "AI-Care 日夜照護安全系統"]
+      never: ["DOCTER Watch", "JD‑170G 跌倒偵測腕戴呼叫器", "安全天使通話定位健康手錶900Zs", "安照小護士MAX XC‑8000 居家型", "家用緊急救援通報系統 HO-140", "Care U 雲端居家照護系統"]
   - case_id: CASE-026
     scenario: missing_field
     split: heldout

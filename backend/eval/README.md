@@ -95,6 +95,8 @@ writes `runs/<time>-agent-<model>-<effort>.json` and
   turn would otherwise be scored as the follow-up's.
 - A call the model writes as text instead of making is counted apart: the answer then
   rests on no lookup at all.
+- `tools` scores the lookups a turn made. `update_requirements` records what the user
+  said and looks nothing up, so it is left out of the set compared.
 - Retrieval is scored twice against the same labels as `run`. The first search alone,
   over its k chunks, compares the model's own query with searching the question itself.
   Every chunk the turn's searches returned, deduplicated, is what the model read: more

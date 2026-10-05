@@ -22,6 +22,7 @@ from langchain.tools import ToolRuntime
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 
 from wobot.agent.answers import Answer
 from wobot.agent.guard import NO_ANSWER, this_turn, tool_artifact
@@ -50,8 +51,8 @@ class Retrieved:
 class ToolUse:
     name: str
     args: dict[str, Any]
-    # found, no_match or failed as the tool reported it; error when it refused the
-    # arguments; missing when the call never ran.
+    # found, no_match or failed as the tool reported it; recorded for a tool that keeps
+    # what the user said; error when it refused the arguments; missing when it never ran.
     outcome: str
     retrieved: list[Retrieved] = field(default_factory=list)  # search_knowledge only
 
@@ -80,6 +81,11 @@ class TurnRecord:
     status: str = "answered"
     grounding: str | None = None  # the model's, when its answer was shown
     citations: list[str] = field(default_factory=list)
+    action: str | None = None  # recommend, clarify or explain_limitation
+    # The products' names as the catalog writes them, as labels name them: logical keys
+    # normalize some characters, such as hyphens.
+    recommended: list[str] = field(default_factory=list)
+    requirements: dict[str, Any] | None = None  # the needs recorded after the turn
     # The tries the guard held back and asked again, with why: not in the messages.
     retries: list[dict[str, Any]] = field(default_factory=list)
     lists: list[ShownItems] = field(default_factory=list)
@@ -116,20 +122,25 @@ async def play(
     turns: Sequence[str],
     context: TurnContext,
     history: Sequence[BaseMessage] = (),
+    history_state: Mapping[str, Any] | None = None,
 ) -> list[TurnRecord]:
     """Plays the turns in a new thread, so later turns see the earlier ones.
 
     The agent needs a checkpointer for that; evaluation gives it an in-memory one. The
-    history, if any, enters the thread with the first turn and is not recorded.
+    history, if any, enters the thread with the first turn, with the state it left, and
+    is not recorded.
     """
     config = {"configurable": {"thread_id": f"eval-{uuid.uuid4()}"}}
     records = []
     for number, turn in enumerate(turns):
         started = time.perf_counter()
         before = list(history) if number == 0 else []
+        carried = dict(history_state or {}) if number == 0 else {}
         turn_context = replace(context, artifacts={})  # each turn keeps its own
         state = await agent.ainvoke(
-            {"messages": [*before, HumanMessage(turn)]}, config=config, context=turn_context
+            {"messages": [*before, HumanMessage(turn)], **carried},
+            config=config,
+            context=turn_context,
         )
         seconds = time.perf_counter() - started
         records.append(
@@ -139,6 +150,7 @@ async def play(
                 state.get("structured_response"),
                 state.get("retries", []),
                 turn_context.artifacts,
+                state.get("requirements"),
             )
         )
     return records
@@ -150,9 +162,11 @@ def record_turn(
     answer: Answer | None = None,
     retries: Sequence[dict[str, Any]] = (),
     artifacts: Mapping[str, Any] | None = None,
+    requirements: Mapping[str, Any] | None = None,
 ) -> TurnRecord:
     """What the turn did, from its messages after the question, the guard's held-back
-    tries and the artifacts its context kept, both of which the messages leave out."""
+    tries and the artifacts its context kept, both of which the messages leave out, and
+    the user's needs as the state holds them after it."""
     replies = [m for m in messages if isinstance(m, AIMessage) and m.response_metadata != NO_ANSWER]
     results = {m.tool_call_id: m for m in messages if isinstance(m, ToolMessage)}
     tools = [
@@ -168,7 +182,7 @@ def record_turn(
     usage = [reply.usage_metadata or {} for reply in replies] + list(retries)
     unsent = [text for r in replies if not r.tool_calls for text in commentary(r)]
     unsent += [text for held in retries if held["reason"] == "unparsed" for text in held["detail"]]
-    reply = turn_reply(messages, answer, artifacts)
+    reply = turn_reply(messages, answer, artifacts, requirements)
     return TurnRecord(
         answer=reply.text,
         tools=tools,
@@ -180,6 +194,9 @@ def record_turn(
         status=str(reply.status),
         grounding=reply.grounding,
         citations=reply.citations,
+        action=reply.action,
+        recommended=[product.fields["product_name"] for product in reply.products],
+        requirements=dict(requirements) if requirements else None,
         retries=list(retries),
         lists=[
             ShownItems(
@@ -208,15 +225,18 @@ def _outcome(result: ToolMessage | None, artifacts: Mapping[str, Any] | None) ->
         return "missing"
     if result.status == "error":
         return "error"
-    return str(tool_artifact(result, artifacts).status)
+    found = tool_artifact(result, artifacts)
+    return "recorded" if found is None else str(found.status)
 
 
 async def scripted_history(
     tools: Sequence[BaseTool], history: Sequence[dict[str, Any]], context: TurnContext
-) -> list[BaseMessage]:
-    """Earlier turns as messages: the scripted calls are run, so the results are real."""
+) -> tuple[list[BaseMessage], dict[str, Any]]:
+    """Earlier turns as messages, and the state they leave, such as recorded needs: the
+    scripted calls are run, so the results are real."""
     by_name = {tool.name: tool for tool in tools}
     messages: list[BaseMessage] = []
+    state: dict[str, Any] = {}
     for number, turn in enumerate(history):
         calls = [
             {"name": call["name"], "args": call["args"], "id": f"history-{number}-{index}"}
@@ -225,7 +245,7 @@ async def scripted_history(
         messages += [HumanMessage(turn["user"]), AIMessage("", tool_calls=calls)]
         for call in calls:
             runtime = ToolRuntime(
-                state={},
+                state={"messages": messages, **state},
                 context=context,
                 config={},
                 stream_writer=lambda _: None,
@@ -235,15 +255,24 @@ async def scripted_history(
             args = {**call["args"], "runtime": runtime}
             tool_call = {**call, "args": args, "type": "tool_call"}
             result = await by_name[call["name"]].ainvoke(tool_call)
+            if isinstance(result, Command):  # a tool that writes the state
+                update = dict(result.update)
+                (result,) = update.pop("messages")
+                state |= update
             # Earlier turns' artifacts are never read, and are not kept (TurnArtifacts).
             messages.append(result.model_copy(update={"artifact": None}))
         messages.append(AIMessage(turn["answer"]))
-    return messages
+    return messages, state
+
+
+# Tools that record what the user said rather than look anything up: tool selection is
+# scored on the lookups, and recording is checked by the cases about it.
+RECORDING_TOOLS = frozenset({"update_requirements"})
 
 
 def called_tools(record: TurnRecord) -> list[str]:
-    """Each tool the turn called, once: a refused call and its correction are one choice."""
-    return list(dict.fromkeys(tool.name for tool in record.tools))
+    """Each lookup the turn called, once: a refused call and its correction are one choice."""
+    return list(dict.fromkeys(t.name for t in record.tools if t.name not in RECORDING_TOOLS))
 
 
 def tools_passed(called: Sequence[str], expect: Sequence[Sequence[str]]) -> bool:
@@ -251,9 +280,13 @@ def tools_passed(called: Sequence[str], expect: Sequence[Sequence[str]]) -> bool
 
 
 # The checks this module scores; a case with another check is not played.
-AGENT_KINDS = ("tools", "retrieval", "list", "behavior")
+AGENT_KINDS = ("tools", "retrieval", "list", "behavior", "recommendation")
 # What a behavior check may expect; any other key is a mistake in the dataset.
 BEHAVIORS = ("status", "looks_up", "grounding", "cites", "mentions")
+# What a recommendation check may expect besides: the decisions acceptable, the products
+# that fit (every one recommended must be among them) and those that never do, and words
+# the recorded must-haves hold. Products are named as the catalog names them.
+RECOMMENDATION_CHECKS = ("action", "recommends", "never", "records")
 
 
 async def run_agent_checks(
@@ -307,8 +340,9 @@ async def run_agent_checks(
                 result.passed = tools_passed(result.called, result.expect)
             elif kind == "retrieval":
                 await score_searches(result, relevant)
-            elif kind == "behavior":
+            elif kind in ("behavior", "recommendation"):
                 result.failures = behavior_failures(case.check, result.record)
+                result.failures += recommendation_failures(case.check, result.record)
                 result.passed = not result.failures
             else:
                 shown = {key for s in result.record.lists for key in s.items}
@@ -326,9 +360,12 @@ def _prepare(
             result.detail = case.pending or "not labelled yet"
         result.expect = case.check.get("expect") or []
         return set()
-    if result.kind == "behavior":
+    if result.kind in ("behavior", "recommendation"):
         expected = {key for key in case.check if key != "kind"}
-        if unknown := sorted(expected - set(BEHAVIORS)):
+        known = set(BEHAVIORS) | (
+            set(RECOMMENDATION_CHECKS) if result.kind == "recommendation" else set()
+        )
+        if unknown := sorted(expected - known):
             raise gold.GoldError(f"{case.case_id}: unknown behaviors {unknown}")
         if not expected:
             result.detail = case.pending or "not labelled yet"
@@ -361,6 +398,26 @@ def behavior_failures(check: dict[str, Any], record: TurnRecord) -> list[str]:
     return failures
 
 
+def recommendation_failures(check: dict[str, Any], record: TurnRecord) -> list[str]:
+    """What the turn decided and recommended against what the check expects."""
+    failures = []
+    if "action" in check and record.action not in check["action"]:
+        failures.append(f"action {record.action}, expected {' or '.join(check['action'])}")
+    names = record.recommended
+    if "recommends" in check:
+        fitting = {name.casefold() for name in check["recommends"]}
+        if not names:
+            failures.append("recommended nothing")
+        failures += [
+            f"recommended {n}, not one that fits" for n in names if n.casefold() not in fitting
+        ]
+    never = {name.casefold() for name in check.get("never", [])}
+    failures += [f"recommended {n}, which does not fit" for n in names if n.casefold() in never]
+    needs = " ".join(need["text"] for need in (record.requirements or {}).get("must_have", []))
+    failures += [f"recorded no need with {t!r}" for t in check.get("records", []) if t not in needs]
+    return failures
+
+
 async def score_searches(result: AgentCaseResult, relevant: set[str]) -> None:
     searches = [
         tool.retrieved
@@ -386,6 +443,6 @@ async def _play_case(
     version_id: int,
 ) -> TurnRecord:
     context = TurnContext("eval", query_time, version_id, case.chatbot_name or "Wobot")
-    history = await scripted_history(tools, case.history, context)
-    (record,) = await play(agent, [case.user_input], context, history)
+    history, history_state = await scripted_history(tools, case.history, context)
+    (record,) = await play(agent, [case.user_input], context, history, history_state)
     return record

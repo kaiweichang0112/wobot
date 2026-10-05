@@ -21,6 +21,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool, ToolException
 from sqlalchemy.exc import DBAPIError
 
+from wobot.agent.requirements import build_requirement_tools
 from wobot.knowledge.embeddings import Embedder
 from wobot.knowledge.lists import (
     Listed,
@@ -370,4 +371,4 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
     search_knowledge.handle_tool_error = True
     query_records.handle_tool_error = True
     get_product_details.handle_tool_error = True
-    return [search_knowledge, query_records, get_product_details]
+    return [search_knowledge, query_records, get_product_details, *build_requirement_tools()]

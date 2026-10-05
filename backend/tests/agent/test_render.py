@@ -62,6 +62,7 @@ def answer(*refs, text="以下是清單：", citations=()):
         grounding="grounded",
         citations=list(citations),
         lists=[ListRef(result_id=r, item_ids=ids) for r, ids in refs],
+        recommendation=None,
     )
 
 
@@ -144,7 +145,11 @@ def test_a_source_a_list_names_is_not_cited_again():
 def test_no_information_shows_no_sources():
     evidence = TurnEvidence(sources={"k-1": [PAGE]}, looked_up=True)
     searched = Answer(
-        answer="來源沒有內部會議紀錄。", grounding="no_info", citations=["k-1"], lists=[]
+        answer="來源沒有內部會議紀錄。",
+        grounding="no_info",
+        citations=["k-1"],
+        lists=[],
+        recommendation=None,
     )
 
     reply = render(searched, evidence)
