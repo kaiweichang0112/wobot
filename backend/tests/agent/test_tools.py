@@ -139,7 +139,7 @@ async def test_search_shows_passages_and_the_products_they_are_about(knowledge):
     tools = build_tools(knowledge.db, knowledge.embedder)
     passage = await product_passage(knowledge, "測試地墊 TM-2")
 
-    message = await call(tools, "search_knowledge", {"query": passage}, knowledge.version_id)
+    message = await call(tools, "search_knowledge", {"queries": [passage]}, knowledge.version_id)
 
     content = json.loads(message.content)
     first = content["items"][0]
@@ -151,10 +151,33 @@ async def test_search_shows_passages_and_the_products_they_are_about(knowledge):
     assert knowledge.embedder.calls[-1] == [passage]  # one request, after ingestion's
 
 
+async def test_each_wording_is_searched_and_the_results_fused(knowledge):
+    tools = build_tools(knowledge.db, knowledge.embedder)
+    mat = await product_passage(knowledge, "測試地墊 TM-2")
+    wordings = [mat, "smart floor mat"]
+
+    message = await call(tools, "search_knowledge", {"queries": wordings}, knowledge.version_id)
+
+    assert knowledge.embedder.calls[-1] == wordings  # one request for every wording
+    assert message.artifact.queries == wordings
+    assert len(message.artifact.evidence) == SEARCHED_CHUNKS
+
+
+@pytest.mark.parametrize("queries", [[], ["a", "b", "c", "d"]])
+async def test_too_few_or_too_many_wordings_are_refused(knowledge, queries):
+    tools = build_tools(knowledge.db, knowledge.embedder)
+
+    message = await call(tools, "search_knowledge", {"queries": queries}, knowledge.version_id)
+
+    assert message.status == "error"
+
+
 async def test_passages_about_no_product_list_none(knowledge):
     tools = build_tools(knowledge.db, knowledge.embedder)
 
-    message = await call(tools, "search_knowledge", {"query": "碩士畢業生"}, knowledge.version_id)
+    message = await call(
+        tools, "search_knowledge", {"queries": ["碩士畢業生"]}, knowledge.version_id
+    )
 
     for item, evidence in zip(
         json.loads(message.content)["items"], message.artifact.evidence, strict=True
@@ -166,7 +189,7 @@ async def test_passages_about_no_product_list_none(knowledge):
 async def test_a_version_without_passages_is_no_match(knowledge):
     tools = build_tools(knowledge.db, knowledge.embedder)
 
-    message = await call(tools, "search_knowledge", {"query": "GRC"}, -1)
+    message = await call(tools, "search_knowledge", {"queries": ["GRC"]}, -1)
 
     assert message.artifact.status is ToolStatus.NO_MATCH
     assert json.loads(message.content) == {"status": "no_match", "items": []}
@@ -179,7 +202,7 @@ async def test_an_unreachable_provider_is_failed():
 
     tools = build_tools(Down(), Unreachable())
 
-    message = await call(tools, "search_knowledge", {"query": "GRC"}, 1)
+    message = await call(tools, "search_knowledge", {"queries": ["GRC"]}, 1)
 
     assert message.artifact.status is ToolStatus.FAILED
     assert json.loads(message.content) == {"status": "failed", "retryable": True}
@@ -204,7 +227,7 @@ async def test_details_show_every_field_and_name_what_is_missing(knowledge):
 async def test_a_passage_product_can_be_detailed(knowledge):
     tools = build_tools(knowledge.db, knowledge.embedder)
     passage = await product_passage(knowledge, "測試地墊 TM-2")
-    searched = await call(tools, "search_knowledge", {"query": passage}, knowledge.version_id)
+    searched = await call(tools, "search_knowledge", {"queries": [passage]}, knowledge.version_id)
     named = json.loads(searched.content)["items"][0]["products"]
 
     message = await call(tools, "get_product_details", {"product_ids": named}, knowledge.version_id)
