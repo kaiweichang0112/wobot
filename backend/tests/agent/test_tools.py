@@ -99,6 +99,23 @@ async def test_a_refused_filter_goes_back_to_the_model_as_an_error(knowledge):
     assert "no year" in message.content
 
 
+async def test_the_last_years_come_from_the_turns_date(knowledge):
+    tools = build_tools(knowledge.db, knowledge.embedder)
+
+    message = await call(
+        tools,
+        "query_records",
+        {"record_type": "publication", "last_years": 5},
+        knowledge.version_id,
+    )
+
+    content = json.loads(message.content)
+    # The turn is on 2026-10-03: every publication is of 2026, which runs past that day.
+    assert content["window"] == {"from": "2021-10-03", "to": "2026-10-03"}
+    assert (content["status"], content["count"], content["uncertain_count"]) == ("found", 0, 5)
+    assert len(message.artifact.uncertain) == 5
+
+
 async def test_an_unreachable_database_is_failed_not_no_match():
     tools = build_tools(Down(), FakeEmbedder())
 

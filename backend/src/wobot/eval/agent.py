@@ -2,8 +2,9 @@
 
 Recording is apart from scoring: a record holds the tools called, how each answered, the
 answer and the cost, so one run can be scored by several checks and compared across
-models. Two checks read it: tools, the tools the model chose against a person's sets; and
-retrieval, the records its searches found against the labelled relevant ones.
+models. Three checks read it: tools, the tools the model chose against a person's sets;
+retrieval, the records its searches found against the labelled relevant ones; and list,
+the records the reply showed against the labelled items.
 """
 
 import logging
@@ -20,13 +21,15 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 
-from wobot.agent.messages import commentary, final_text
+from wobot.agent.answers import Answer
+from wobot.agent.messages import commentary
+from wobot.agent.render import turn_reply
 from wobot.agent.tools import SEARCHED_CHUNKS, SearchResult, TurnContext
 from wobot.eval import gold
 from wobot.eval.corpus import Corpus
 from wobot.eval.dataset import Case, Dataset
-from wobot.eval.metrics import RetrievalScore, retrieval_score
-from wobot.eval.runner import retrieval_relevant
+from wobot.eval.metrics import RetrievalScore, SetScore, retrieval_score, set_score
+from wobot.eval.runner import labelled_keys
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +54,17 @@ class ToolUse:
 
 
 @dataclass(frozen=True)
+class ShownItems:
+    """One list the reply showed, by the logical keys of its records."""
+
+    result_id: str
+    items: list[str]
+    uncertain: list[str]
+
+
+@dataclass(frozen=True)
 class TurnRecord:
-    answer: str
+    answer: str  # as the user reads it, lists included
     tools: list[ToolUse]  # in the order the model called them
     # Commentary in a reply that called no tool: the model wrote a call as text instead of
     # making it, so nothing was looked up.
@@ -61,6 +73,8 @@ class TurnRecord:
     input_tokens: int
     output_tokens: int
     seconds: float
+    lists: list[ShownItems] = field(default_factory=list)
+    unknown_ids: list[str] = field(default_factory=list)  # IDs the model gave, unheld
 
 
 @dataclass
@@ -70,7 +84,7 @@ class AgentCaseResult:
     split: str
     scenario: str
     user_input: str
-    kind: str  # the check: tools or retrieval
+    kind: str  # the check: tools, retrieval or list
     status: str  # scored, pending or error
     detail: str | None = None
     expect: list[list[str]] = field(default_factory=list)
@@ -81,6 +95,8 @@ class AgentCaseResult:
     first_search: RetrievalScore | None = None
     turn_searches: RetrievalScore | None = None
     searches: int = 0
+    # The records the reply's lists showed as matches, against the labelled items.
+    set: SetScore | None = None
     record: TurnRecord | None = None
 
 
@@ -104,11 +120,14 @@ async def play(
             {"messages": [*before, HumanMessage(turn)]}, config=config, context=context
         )
         seconds = time.perf_counter() - started
-        records.append(record_turn(_this_turn(state["messages"]), seconds))
+        answer = state.get("structured_response")
+        records.append(record_turn(_this_turn(state["messages"]), seconds, answer))
     return records
 
 
-def record_turn(messages: Sequence[BaseMessage], seconds: float) -> TurnRecord:
+def record_turn(
+    messages: Sequence[BaseMessage], seconds: float, answer: Answer | None = None
+) -> TurnRecord:
     replies = [m for m in messages if isinstance(m, AIMessage)]
     results = {m.tool_call_id: m for m in messages if isinstance(m, ToolMessage)}
     tools = [
@@ -122,14 +141,24 @@ def record_turn(messages: Sequence[BaseMessage], seconds: float) -> TurnRecord:
         for call in reply.tool_calls
     ]
     usage = [reply.usage_metadata or {} for reply in replies]
+    reply = turn_reply(messages, answer)
     return TurnRecord(
-        answer=final_text(replies[-1]),
+        answer=reply.text,
         tools=tools,
         unsent_calls=[text for r in replies if not r.tool_calls for text in commentary(r)],
         model_calls=len(replies),
         input_tokens=sum(u.get("input_tokens", 0) for u in usage),
         output_tokens=sum(u.get("output_tokens", 0) for u in usage),
         seconds=seconds,
+        lists=[
+            ShownItems(
+                shown.result_id,
+                [item.logical_key for item in shown.items],
+                [item.logical_key for item in shown.uncertain],
+            )
+            for shown in reply.lists
+        ],
+        unknown_ids=reply.unknown_ids,
     )
 
 
@@ -194,7 +223,7 @@ def tools_passed(called: Sequence[str], expect: Sequence[Sequence[str]]) -> bool
 
 
 # The checks this module scores; a case with another check is not played.
-AGENT_KINDS = ("tools", "retrieval")
+AGENT_KINDS = ("tools", "retrieval", "list")
 
 
 async def run_agent_checks(
@@ -204,10 +233,11 @@ async def run_agent_checks(
     corpus: Corpus,
     *,
     splits: Sequence[str] = ("dev", "heldout"),
+    kinds: Sequence[str] = AGENT_KINDS,
     gold_dir: Path = gold.GOLD_DIR,
     gold_files: dict[str, str] | None = None,
 ) -> list[AgentCaseResult]:
-    """Plays every tools and retrieval case of the splits once, and scores its last turn.
+    """Plays every tools, retrieval and list case of the splits once; scores its last turn.
 
     `gold_files` collects the hash of each gold file the retrieval cases read.
     """
@@ -217,7 +247,7 @@ async def run_agent_checks(
         query_time = datetime.fromisoformat(dataset.query_time)
         for case in dataset.cases:
             kind = case.check["kind"] if case.check else None
-            if case.split not in splits or kind not in AGENT_KINDS:
+            if case.split not in splits or kind not in kinds:
                 continue
             result = AgentCaseResult(
                 dataset.name,
@@ -245,8 +275,11 @@ async def run_agent_checks(
             result.called = called_tools(result.record)
             if kind == "tools":
                 result.passed = tools_passed(result.called, result.expect)
-            else:
+            elif kind == "retrieval":
                 await score_searches(result, relevant)
+            else:
+                shown = {key for s in result.record.lists for key in s.items}
+                result.set = await set_score(relevant, shown)
             result.status = "scored"
     return results
 
@@ -260,7 +293,7 @@ def _prepare(
             result.detail = case.pending or "not labelled yet"
         result.expect = case.check.get("expect") or []
         return set()
-    relevant, _ = retrieval_relevant(case, corpus, gold_dir, used)
+    relevant, _ = labelled_keys(case, corpus, gold_dir, used)
     if not relevant:
         result.detail = "not labelled yet"
     return relevant

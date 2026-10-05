@@ -1,9 +1,11 @@
 """Complete lists from one index version's typed records: every match, never a top k."""
 
+import calendar
 import re
 import uuid
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Literal
 
 from sqlalchemy import Select, or_, select
@@ -27,12 +29,29 @@ class QueryError(ValueError):
 
 
 @dataclass(frozen=True)
+class Window:
+    """A span of dates, both ends included."""
+
+    start: date
+    end: date
+
+
+def last_years_window(today: date, years: int) -> Window:
+    """The last `years` years up to today, counted back by date: a 29 February with no
+    match that many years earlier starts on the 28th, the month's last day."""
+    year = today.year - years
+    day = min(today.day, calendar.monthrange(year, today.month)[1])
+    return Window(date(year, today.month, day), today)
+
+
+@dataclass(frozen=True)
 class RecordQuery:
     kind: ListKind
     year_from: int | None = None  # inclusive
     year_to: int | None = None  # inclusive
     degree: str | None = None
     category: str | None = None
+    window: Window | None = None  # by date, unlike the years
 
 
 @dataclass(frozen=True)
@@ -45,6 +64,32 @@ class Listed:
 
 
 @dataclass(frozen=True)
+class RecordList:
+    """What a query found. With a window, items are surely in it; uncertain ones may be,
+    since their date is only a year that straddles an end, or unknown (`17`)."""
+
+    items: list[Listed] = field(default_factory=list)
+    uncertain: list[Listed] = field(default_factory=list)
+
+
+# The days a record may fall on, first and last; None when its date is unknown.
+Span = tuple[date, date] | None
+
+
+def _year_span(year: int | None) -> Span:
+    return None if year is None else (date(year, 1, 1), date(year, 12, 31))
+
+
+def _lecture_span(fields: Mapping[str, Any]) -> Span:
+    day = fields["lecture_date"]
+    if fields["date_precision"] == "day":
+        return day, day
+    if fields["date_precision"] == "month":
+        return day.replace(day=1), day.replace(day=calendar.monthrange(day.year, day.month)[1])
+    return _year_span(fields["year"])
+
+
+@dataclass(frozen=True)
 class _Kind:
     table: Any
     year: Any = None  # the column year filters compare
@@ -52,6 +97,7 @@ class _Kind:
     categories: frozenset[str] = frozenset()  # the values category may take
     order: tuple[Any, ...] = ()
     only: tuple[Any, ...] = ()  # conditions every query of the kind adds
+    span: Callable[[Mapping[str, Any]], Span] | None = None  # for windows; None: undated
 
 
 # An allowlist: a filter reaches SQL only through a column named here, and a category only
@@ -63,11 +109,20 @@ KINDS: dict[str, _Kind] = {
         category=LectureRecord.category,
         categories=frozenset({"keynote", "invited"}),
         order=(LectureRecord.lecture_date,),
+        span=_lecture_span,
     ),
     "student": _Kind(
-        StudentRecord, year=StudentRecord.graduation_year, order=(StudentRecord.graduation_year,)
+        StudentRecord,
+        year=StudentRecord.graduation_year,
+        order=(StudentRecord.graduation_year,),
+        span=lambda fields: _year_span(fields["graduation_year"]),
     ),
-    "project": _Kind(ProjectRecord, year=ProjectRecord.year, order=(ProjectRecord.year,)),
+    "project": _Kind(
+        ProjectRecord,
+        year=ProjectRecord.year,
+        order=(ProjectRecord.year,),
+        span=lambda fields: _year_span(fields["year"]),
+    ),
     "publication": _Kind(
         ListItemRecord,
         year=ListItemRecord.year,
@@ -83,6 +138,7 @@ KINDS: dict[str, _Kind] = {
         ),
         order=(ListItemRecord.year,),
         only=(ListItemRecord.list_kind == "publication",),
+        span=lambda fields: _year_span(fields["year"]),
     ),
     "product": _Kind(
         ProductRecord,
@@ -99,10 +155,15 @@ DEGREES = frozenset({"master", "phd"})
 _PREFIX = re.compile(r"[0-9a-f]{8}")
 
 
-async def find_records(conn: AsyncConnection, version_id: int, query: RecordQuery) -> list[Listed]:
+async def find_records(conn: AsyncConnection, version_id: int, query: RecordQuery) -> RecordList:
     """Every record of the version that matches, in a stable order."""
     kind = KINDS[query.kind]
     conditions = [IndexVersionRecord.index_version_id == version_id, *kind.only]
+    if query.window is not None:
+        if kind.span is None:
+            raise QueryError(f"{query.kind} has no date to filter by")
+        if query.year_from is not None or query.year_to is not None:
+            raise QueryError("give either a window or years, not both")
     if query.year_from is not None or query.year_to is not None:
         if kind.year is None:
             raise QueryError(f"{query.kind} has no year to filter by")
@@ -126,7 +187,29 @@ async def find_records(conn: AsyncConnection, version_id: int, query: RecordQuer
     rows = await conn.execute(
         _listed(kind).where(*conditions).order_by(*kind.order, IndexVersionRecord.logical_key)
     )
-    return [_item(kind, row) for row in rows]
+    items = [_item(kind, row) for row in rows]
+    if query.window is None:
+        return RecordList(items)
+    found = RecordList()
+    for item in items:
+        place = _place(kind.span(item.fields), query.window)
+        if place == "within":
+            found.items.append(item)
+        elif place == "uncertain":
+            found.uncertain.append(item)
+    return found
+
+
+def _place(span: Span, window: Window) -> Literal["within", "uncertain", "outside"]:
+    """A record is in a window when every day it may fall on is; out when none is."""
+    if span is None:
+        return "uncertain"
+    first, last = span
+    if last < window.start or first > window.end:
+        return "outside"
+    if window.start <= first and last <= window.end:
+        return "within"
+    return "uncertain"
 
 
 async def records_by_prefix(
