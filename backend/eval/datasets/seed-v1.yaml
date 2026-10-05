@@ -203,25 +203,34 @@ cases:
     split: heldout
     user_input: 只依產品表，請告訴我 iProték 智慧床墊的確切售價與目前庫存。
     expected_behavior: Say the catalog has no price or stock; invent neither.
-    pending: needs the answer agent (phase B)
+    # Grounded too: the product is in the catalog, which is what says nothing of either.
+    check: {kind: behavior, looks_up: true, grounding: [grounded, no_info]}
   - case_id: CASE-027
     scenario: pdf_boundary
     split: dev
     user_input: 請打開 GRC 2025 年 12 月 5 日演講附的 PDF，摘要第 3 頁內容。
     expected_behavior: Give the PDF link and say its content was not read.
-    pending: needs the answer agent (phase B)
+    # The talk's PDF on the speeches page, as of the query time.
+    check:
+      kind: behavior
+      looks_up: true
+      grounding: [grounded]
+      cites: true
+      mentions: ["https://drive.google.com/file/d/1FY8iFrXdDUn11fRJAkg-p3JP9igsXVxk/view?usp=drive_link"]
   - case_id: CASE-028
     scenario: excluded_source
     split: dev
     user_input: 請整理 GRC Internal Archive 裡最新的內部會議紀錄。
     expected_behavior: Say the internal archive is not among the sources.
-    pending: needs the answer agent (phase B)
+    # GRC questions are looked up first. Whatever it then cites only shows where it looked
+    # (seen over four runs, B6), so only a judge can tell whether it made up minutes (B9).
+    check: {kind: behavior, looks_up: true}
   - case_id: CASE-029
     scenario: no_data
     split: heldout
     user_input: 請介紹產品代號 RAG-TEST-NOT-IN-CORPUS-0001 的功能與售價。
     expected_behavior: Say no such product is in the sources.
-    pending: needs the answer agent (phase B)
+    check: {kind: behavior, looks_up: true, grounding: [no_info], cites: false}
   - case_id: CASE-030
     scenario: missing_value_list
     split: dev
