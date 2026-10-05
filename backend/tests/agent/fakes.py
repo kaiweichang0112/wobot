@@ -1,5 +1,6 @@
 """A chat model that plays a script, so agent tests never call a provider."""
 
+import json
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -27,6 +28,12 @@ class ScriptedChatModel(BaseChatModel):
         if not self.script:
             raise AssertionError("the model was called more often than scripted")
         return ChatResult(generations=[ChatGeneration(message=self.script.pop(0))])
+
+
+def answers(text: str, lists: list[dict[str, Any]] = (), **kwargs: Any) -> AIMessage:
+    """A final reply in the agent's answer schema, as the provider returns it: JSON text."""
+    content = json.dumps({"answer": text, "lists": list(lists)}, ensure_ascii=False)
+    return AIMessage(content, **kwargs)
 
 
 def calls(name: str, args: dict[str, Any], call_id: str = "call-1") -> AIMessage:

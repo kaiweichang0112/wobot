@@ -12,7 +12,8 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
 import openai
 from langchain.tools import ToolRuntime, tool
@@ -26,12 +27,16 @@ from wobot.knowledge.lists import (
     QueryError,
     RecordQuery,
     find_records,
+    last_years_window,
     records_by_prefix,
 )
 from wobot.knowledge.repository import Database
 from wobot.knowledge.search import Member, SearchHit, chunk_members, fuse, search_chunks
 
 logger = logging.getLogger(__name__)
+
+# "Today" for every relative date is the query time's date here (`17`).
+TIMEZONE = ZoneInfo("Asia/Taipei")
 
 # The most items one result shows the model; code renders the whole list from the artifact.
 SHOWN_ITEMS = 50
@@ -125,6 +130,9 @@ class RecordsResult:
     result_id: str  # the same query of the same version always gets the same ID
     query: RecordQuery
     items: list[Listed] = field(default_factory=list)
+    # In a window, records whose date cannot place them in it or out: kept apart, not
+    # counted as matches and not dropped.
+    uncertain: list[Listed] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -161,7 +169,7 @@ def chunk_handle(chunk_id: uuid.UUID) -> str:
 
 
 def result_handle(version_id: int, query: RecordQuery) -> str:
-    key = json.dumps([version_id, asdict(query)], sort_keys=True)
+    key = json.dumps([version_id, asdict(query)], sort_keys=True, default=str)
     return f"q-{hashlib.sha256(key.encode()).hexdigest()[:8]}"
 
 
@@ -169,24 +177,27 @@ def records_content(result: RecordsResult) -> str:
     """The result as the model reads it: at most SHOWN_ITEMS items, and the full count."""
     if result.status is ToolStatus.FAILED:
         return FAILED_CONTENT
-    shown = result.items[:SHOWN_ITEMS]
     names = SHOWN_FIELDS[result.query.kind]
-    items = [
-        {"id": record_handle(item.record_id)}
-        | {name: item.fields[name] for name in names if item.fields[name] is not None}
-        for item in shown
-    ]
-    return json.dumps(
-        {
-            "status": result.status,
-            "result_id": result.result_id,
-            "count": len(result.items),
-            "shown": len(shown),
-            "items": items,
-        },
-        ensure_ascii=False,
-        default=str,
-    )
+
+    def shown(items: list[Listed]) -> list[dict[str, Any]]:
+        return [
+            {"id": record_handle(item.record_id)}
+            | {name: item.fields[name] for name in names if item.fields[name] is not None}
+            for item in items[:SHOWN_ITEMS]
+        ]
+
+    content: dict[str, Any] = {
+        "status": result.status,
+        "result_id": result.result_id,
+        "count": len(result.items),
+        "shown": min(len(result.items), SHOWN_ITEMS),
+        "items": shown(result.items),
+    }
+    if window := result.query.window:
+        content["window"] = {"from": window.start, "to": window.end}
+        content["uncertain_count"] = len(result.uncertain)
+        content["uncertain"] = shown(result.uncertain)
+    return json.dumps(content, ensure_ascii=False, default=str)
 
 
 def search_content(result: SearchResult) -> str:
@@ -272,26 +283,36 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
         year_to: Annotated[int | None, "the last year to include"] = None,
         degree: Annotated[Literal["master", "phd"] | None, "students only"] = None,
         category: Annotated[str | None, CATEGORY_HELP] = None,
+        last_years: Annotated[
+            int | None,
+            "for 'the last N years': N, counted back from today by date; not with years",
+        ] = None,
     ) -> tuple[str, RecordsResult]:
         """List every record that matches: Yeh-Liang Hsu's lectures, GRC's graduated students
         with their theses, research projects or publications, or the catalog's smart-care
         products. The list is complete, never a sample: use it for "all", "list", "how many",
         or anything asked by year, degree or category. Students and projects have years,
-        products do not. At most 50 items are shown; the whole list is kept for display."""
-        query = RecordQuery(record_type, year_from, year_to, degree, category)
+        products do not. At most 50 items are shown; the whole list is kept for display.
+        With last_years, records dated only by a year that straddles the window's start or
+        today are listed apart as uncertain."""
+        if last_years is not None and last_years < 1:
+            raise ToolException("last_years counts at least one year")
+        today = runtime.context.query_time.astimezone(TIMEZONE).date()
+        window = None if last_years is None else last_years_window(today, last_years)
+        query = RecordQuery(record_type, year_from, year_to, degree, category, window)
         version_id = runtime.context.index_version
         result_id = result_handle(version_id, query)
         try:
             async with db.begin() as conn:
-                items = await find_records(conn, version_id, query)
+                found = await find_records(conn, version_id, query)
         except QueryError as error:
             raise ToolException(str(error)) from error
         except UNAVAILABLE:
             logger.exception("query_records failed", extra={"index_version": version_id})
             result = RecordsResult(ToolStatus.FAILED, result_id, query)
         else:
-            status = ToolStatus.FOUND if items else ToolStatus.NO_MATCH
-            result = RecordsResult(status, result_id, query, items)
+            status = ToolStatus.FOUND if found.items or found.uncertain else ToolStatus.NO_MATCH
+            result = RecordsResult(status, result_id, query, found.items, found.uncertain)
         return records_content(result), result
 
     @tool(response_format="content_and_artifact")

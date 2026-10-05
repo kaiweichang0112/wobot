@@ -298,12 +298,23 @@ def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
                 "searches": mean([r.searches for r in retrieval]),
                 "no_search": sum(r.searches == 0 for r in retrieval),
             }
+        lists = [r.set for r in scored if r.split == split and r.kind == "list" and r.set]
+        if lists:
+            out[f"list {split}"] = {
+                "cases": len(lists),
+                "precision": mean([s.precision for s in lists]),
+                "recall": mean([s.recall for s in lists]),
+                "f1": mean([s.f1 for s in lists]),
+                "complete": sum(s.f1 == 1 for s in lists),
+            }
     if records:
         out |= {
             # Unsent: the model wrote a call as text and called nothing (see eval.agent).
             "unsent_calls": sum(bool(r.unsent_calls) for r in records),
             "refused_calls": sum(any(t.outcome == "error" for t in r.tools) for r in records),
             "failed_tools": sum(any(t.outcome == "failed" for t in r.tools) for r in records),
+            # IDs the reply named that no result of the turn holds: nothing was shown.
+            "unknown_ids": sum(len(r.unknown_ids) for r in records),
             "mean_seconds": mean([r.seconds for r in records]),
             "max_seconds": max(r.seconds for r in records),
             "model_calls": sum(r.model_calls for r in records),
@@ -326,6 +337,12 @@ def _agent_result(r: AgentCaseResult) -> str:
         expected = " or ".join("{" + ", ".join(e) + "}" for e in r.expect)
         verdict = "pass" if r.passed else "**fail**"
         return f"{verdict}: expected {expected}"
+    if r.kind == "list":
+        s = r.set
+        return (
+            f"F1 {_num(s.f1)}, P {_num(s.precision)} R {_num(s.recall)} "
+            f"({s.hits} of {s.expected} labelled, {s.actual} shown)"
+        )
     first, turn = r.first_search, r.turn_searches
     return (
         f"first search recall@{first.k} {_num(first.recall)}, MRR {_num(first.reciprocal_rank)};"
@@ -369,8 +386,11 @@ def agent_markdown(results: Sequence[AgentCaseResult], meta: Mapping[str, Any]) 
         if r.turn_searches
         for key in r.turn_searches.missing
     ]
+    for r in (r for r in results if r.set):
+        details += [f"- {r.case_id} not shown: {key}" for key in r.set.missing]
+        details += [f"- {r.case_id} shown, not labelled: {key}" for key in r.set.unexpected]
     if details:
-        lines += ["", "## Missed records", "", *details]
+        lines += ["", "## Missed and extra records", "", *details]
     lines += ["", "## Turns", ""]
     for r in results:
         if r.record is None:

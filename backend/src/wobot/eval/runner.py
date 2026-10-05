@@ -141,13 +141,13 @@ def case_refs(case: Case, gold_dir: Path, used: dict[str, str]) -> list[gold.Ref
     raise gold.GoldError(f"{case.case_id}: unknown gold format {spec.get('as')!r}")
 
 
-def retrieval_relevant(
+def labelled_keys(
     case: Case, corpus: Corpus, gold_dir: Path, used: dict[str, str]
 ) -> tuple[set[str], list[str]]:
-    """The record keys a retrieval case counts as relevant, and the labels that match none.
+    """The record keys a case's labels name, and the labels that match no record.
 
-    A label that matches no record stays in the set under a key no chunk holds, so it
-    counts as missed, as in the run's own retrieval check.
+    A label that matches no record stays in the set under a key no record holds, so it
+    counts as missed, as in the run's own checks.
     """
     resolved = gold.resolve(case_refs(case, gold_dir, used), corpus)
     unresolved = [_describe(r) for r in resolved if not r.keys]

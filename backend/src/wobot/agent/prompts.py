@@ -1,16 +1,14 @@
 """The chat agent's system prompt: fixed instructions, and this turn's data as data."""
 
 import json
-from zoneinfo import ZoneInfo
 
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
 
-from wobot.agent.tools import TurnContext
+from wobot.agent.tools import TIMEZONE, TurnContext
 
 # Bump with any change to the instructions or the tools' descriptions, so evaluation runs
 # and traces say which prompt they measured; a test pins each version's fingerprint.
-PROMPT_VERSION = 3
-TIMEZONE = ZoneInfo("Asia/Taipei")
+PROMPT_VERSION = 7
 
 INSTRUCTIONS = """\
 You are the assistant in Wobot, an app of the Gerontechnology Research Center (GRC) at \
@@ -27,9 +25,15 @@ as having no information.
 
 Use query_records when the user wants a complete list or a count, and search_knowledge \
 for facts, explanations or products that fit a need. Ask get_product_details about \
-products whose IDs a tool gave you. A question may need several tools; answer every part \
-of it. For small talk, general knowledge or writing, answer directly without tools. If \
-the request is unclear, ask one short question instead of guessing.
+products whose IDs a tool gave you. When query_records answers the question, attach its \
+result_id in lists and write only a short introduction with the count: code shows every \
+item below it with the link to its source, leaving out fields a source does not give, so \
+never repeat or pick items in your words, nor describe how they are laid out. If the \
+user narrows a list by meaning, such as talks on a topic, give the IDs of the matching \
+items from it as item_ids; if not every item was shown to you, narrow the query instead. \
+A question may need several tools; answer every part of it. For small talk, general \
+knowledge or writing, answer directly without tools. If the request is unclear, ask one \
+short question instead of guessing.
 
 Reply in the user's language; Chinese replies use Traditional Chinese. Write plain text \
 without Markdown, because answers may be read aloud.

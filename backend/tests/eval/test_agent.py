@@ -6,32 +6,36 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import select
 
-from tests.agent.fakes import ScriptedChatModel, calls
+from tests.agent.fakes import ScriptedChatModel, answers, calls
 from wobot.agent.build import build_agent
-from wobot.agent.tools import SEARCHED_CHUNKS, TurnContext, build_tools
+from wobot.agent.tools import SEARCHED_CHUNKS, TurnContext, build_tools, result_handle
 from wobot.eval.agent import (
+    AgentCaseResult,
     ToolUse,
     TurnRecord,
     called_tools,
     play,
+    record_turn,
     run_agent_checks,
     tools_passed,
 )
 from wobot.eval.corpus import load_corpus
 from wobot.eval.dataset import Case, Dataset
 from wobot.eval.report import agent_markdown, agent_summary
+from wobot.knowledge.lists import RecordQuery
 from wobot.knowledge.models import Chunk, IndexVersionChunk
 
 LECTURES = {"record_type": "lecture"}
 
 
-def reply(text, input_tokens=100, output_tokens=10, **kwargs):
-    usage = {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": input_tokens + output_tokens,
-    }
-    return AIMessage(text, usage_metadata=usage, **kwargs)
+def usage(input_tokens=100, output_tokens=10):
+    total = input_tokens + output_tokens
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens, "total_tokens": total}
+
+
+def reply(text, input_tokens=100, output_tokens=10, lists=()):
+    """A final reply in the answer schema, with what it cost."""
+    return answers(text, lists, usage_metadata=usage(input_tokens, output_tokens))
 
 
 def phases(*texts):
@@ -70,15 +74,27 @@ async def test_a_refused_call_and_its_correction_are_both_kept(knowledge):
     assert [tool.outcome for tool in record.tools] == ["error", "found"]
 
 
-async def test_a_call_written_as_text_is_unsent_and_hidden(knowledge):
-    written = '{"query": "GRC 成立"}'
-    script = [reply(phases(("commentary", written), ("final_answer", "來源中沒有查到。")))]
+def test_a_call_written_as_text_is_unsent_and_hidden():
+    written = '{"queries": ["GRC 成立"]}'
+    unsent = AIMessage(phases(("commentary", written), ("final_answer", "來源中沒有查到。")))
 
-    _, (record,) = await run(knowledge, script, "GRC 是哪一年成立的？")
+    record = record_turn([unsent], 1.0)
 
     assert record.tools == []
     assert record.unsent_calls == [written]
     assert record.answer == "來源中沒有查到。"
+
+
+async def test_a_call_written_as_text_breaks_the_structured_reply(knowledge):
+    # The commentary and the answer reach the parser as one text, which is not JSON: the
+    # turn fails rather than claiming a lookup it never made. B6 retries it once.
+    written = '{"queries": ["GRC 成立"]}'
+    answer = json.dumps({"answer": "來源中沒有查到。", "lists": []})
+    script = [AIMessage(phases(("commentary", written), ("final_answer", answer)))]
+
+    _, (result,) = await evaluate(knowledge, script, tools_case("T1", [["search_knowledge"]]))
+
+    assert result.status == "error" and "StructuredOutputValidationError" in result.detail
 
 
 async def test_commentary_before_a_real_call_is_not_unsent(knowledge):
@@ -99,7 +115,7 @@ async def test_each_turn_is_recorded_alone_and_later_turns_see_earlier_ones(know
 
     assert [len(first.tools), len(second.tools)] == [1, 0]
     assert second.answer == "不客氣。"
-    assert "兩場。" in [m.content for m in model.requests[-1]]
+    assert any("兩場。" in m.content for m in model.requests[-1])
 
 
 def tools_case(case_id, expect, user_input="問題", history=(), chatbot_name=None):
@@ -138,8 +154,17 @@ async def passage(knowledge, header_part):
         )
 
 
+def list_case(case_id):
+    gold = {"file": "students.yaml", "as": "student", "degree": "master", "years": [2022]}
+    check = {"kind": "list", "records": "student", "gold": gold}
+    return Case(case_id, "test", "dev", "列出碩士畢業生", "", None, check, None)
+
+
 @pytest.fixture
 def gold_dir(tmp_path):
+    (tmp_path / "students.yaml").write_text(
+        "2022:\n  - name: '王小明'\n  - name: '李大華'\n", encoding="utf-8"
+    )
     (tmp_path / "retrieval.yaml").write_text(
         "R1:\n  relevant:\n    - student: '王小明'\nR2:\n  relevant: []\n", encoding="utf-8"
     )
@@ -228,15 +253,18 @@ async def test_the_name_reaches_the_prompt(knowledge):
     assert '"chatbot_name": "小幫手"' in model.requests[0][0].content
 
 
-async def test_the_report_shows_what_was_called_and_unsent(knowledge):
-    written = '{"query": "GRC"}'
-    script = [reply(phases(("commentary", written), ("final_answer", "沒有。")))]
+def test_the_report_shows_what_was_called_and_unsent():
+    written = '{"queries": ["GRC"]}'
+    record = record_turn(
+        [AIMessage(phases(("commentary", written), ("final_answer", "沒有。")))], 1.0
+    )
+    result = AgentCaseResult("test-v1", "T1", "dev", "test", "問題", "tools", "scored")
+    result.expect, result.passed, result.record = [["search_knowledge"]], False, record
 
-    _, results = await evaluate(knowledge, script, tools_case("T1", [["search_knowledge"]]))
+    markdown = agent_markdown([result], {"model": "scripted"})
 
-    markdown = agent_markdown(results, {"model": "scripted"})
     assert "**fail**" in markdown and written in markdown
-    assert agent_summary(results)["unsent_calls"] == 1
+    assert agent_summary([result])["unsent_calls"] == 1
 
 
 async def test_the_first_search_is_scored_alone_and_the_turn_as_read(knowledge, gold_dir):
@@ -271,3 +299,27 @@ async def test_an_unlabelled_retrieval_case_is_not_played(knowledge, gold_dir):
 
     assert (result.status, result.detail) == ("pending", "not labelled yet")
     assert model.requests == []
+
+
+async def test_a_list_is_scored_by_the_records_the_reply_showed(knowledge, gold_dir):
+    masters = {"record_type": "student", "degree": "master"}
+    result_id = result_handle(knowledge.version_id, RecordQuery("student", degree="master"))
+    script = [
+        calls("query_records", masters),
+        reply("共一位：", lists=[{"result_id": result_id, "item_ids": None}]),
+    ]
+
+    _, (result,) = await evaluate(knowledge, script, list_case("L1"), gold_dir=gold_dir)
+
+    # 王小明 is shown; 李大華 is labelled but the version has no such record.
+    assert (result.set.hits, result.set.expected, result.set.actual) == (1, 2, 1)
+    assert result.set.precision == 1 and result.set.recall == 0.5
+    assert agent_summary([result])["list dev"]["complete"] == 0
+
+
+async def test_a_list_the_reply_did_not_attach_shows_nothing(knowledge, gold_dir):
+    script = [calls("query_records", {"record_type": "student"}), reply("有兩位。")]
+
+    _, (result,) = await evaluate(knowledge, script, list_case("L1"), gold_dir=gold_dir)
+
+    assert (result.set.actual, result.set.recall) == (0, 0)

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from tests.agent.fakes import ScriptedChatModel, calls
+from tests.agent.fakes import ScriptedChatModel, answers, calls
 from wobot.agent.build import build_agent, chat_model
 from wobot.agent.prompts import INSTRUCTIONS, PROMPT_VERSION, system_prompt
 from wobot.agent.tools import TurnContext, build_tools
@@ -18,6 +18,10 @@ PROMPT_FINGERPRINTS = {
     1: "b41bc19774a3a5f1c83a4e7c8a5d721ba60bb381eb2fd67beacb602d6c533a70",
     2: "3a5b5d63e8940c4a797bc44787ac5d2be94582e29701bc79c71b447aac05faff",
     3: "0f87429236672576fb1bd84770bfc126b0e08b1eae68912a4159cca2efdd2215",
+    4: "f8702e1b232102b0271434a38cba028f6b731a3b192aa24f06c6f17abd024db5",
+    5: "64947e45aa412ccc107b5572d0a5585580f5b7574deaff65d125758b11505f4f",
+    6: "1ae0de8bfb915bc45f5443f0e16ea391ddb9eaae61d1542cdb5347210832a5e9",
+    7: "05e54a688bb53b775cb8843091dcc9ec4287cb29e3c7c8d34d49bfe4096aed08",
 }
 
 
@@ -36,21 +40,21 @@ async def ask(knowledge, model, question, name="Wobot"):
 
 async def test_a_turn_calls_a_tool_and_answers_from_its_result(knowledge):
     model = ScriptedChatModel(
-        script=[calls("query_records", {"record_type": "lecture"}), AIMessage("兩場演講。")]
+        script=[calls("query_records", {"record_type": "lecture"}), answers("兩場演講。")]
     )
 
     messages = await ask(knowledge, model, "列出所有演講")
 
     human, call, result, answer = messages
     assert isinstance(result, ToolMessage) and len(result.artifact.items) == 2
-    assert answer.content == "兩場演講。"
+    assert json.loads(answer.content)["answer"] == "兩場演講。"
     # The second request carries the tool's content: the model answers from it.
     assert model.requests[1][-1].content == result.content
     assert model.tool_names == ["search_knowledge", "query_records", "get_product_details"]
 
 
 async def test_small_talk_is_answered_without_tools(knowledge):
-    model = ScriptedChatModel(script=[AIMessage("你好！")])
+    model = ScriptedChatModel(script=[answers("你好！")])
 
     messages = await ask(knowledge, model, "你好")
 
@@ -59,7 +63,7 @@ async def test_small_talk_is_answered_without_tools(knowledge):
 
 async def test_every_model_call_gets_the_turns_prompt(knowledge):
     model = ScriptedChatModel(
-        script=[calls("query_records", {"record_type": "project"}), AIMessage("一個計畫。")]
+        script=[calls("query_records", {"record_type": "project"}), answers("一個計畫。")]
     )
 
     await ask(knowledge, model, "有哪些計畫？", name="小幫手")

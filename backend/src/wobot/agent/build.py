@@ -1,12 +1,14 @@
 """The chat agent: one model that picks tools and writes answers (DEC-054)."""
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ProviderStrategy
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer
 
+from wobot.agent.answers import Answer
 from wobot.agent.prompts import turn_prompt
 from wobot.agent.tools import TurnContext
 from wobot.config import Settings
@@ -37,6 +39,9 @@ def build_agent(
         model,
         tools,
         middleware=[turn_prompt],
+        # The provider's own structured output, strict, so the reply always parses; every
+        # candidate model passed tools and this together in B1.
+        response_format=ProviderStrategy(Answer, strict=True),
         context_schema=TurnContext,
         checkpointer=checkpointer,
         name=AGENT_NAME,
