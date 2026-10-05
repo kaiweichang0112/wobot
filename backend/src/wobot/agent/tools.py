@@ -2,6 +2,7 @@
 
 Each tool answers twice: a compact JSON content for the model, and an artifact with every
 item and full ID for code, which renders lists, checks citations and scores evaluations.
+The artifact lives only for its turn, in the turn's context.
 """
 
 import hashlib
@@ -119,6 +120,9 @@ class TurnContext:
     # Every tool call of a turn reads this version, even if another is published meanwhile.
     index_version: int
     chatbot_name: str = "Wobot"  # what the account calls its assistant
+    # Each tool call's artifact, by its ID: the turn's code reads them, but they never
+    # enter the messages, so a conversation's checkpoints hold none (TurnArtifacts).
+    artifacts: dict[str, Any] = field(default_factory=dict)
 
 
 class ToolStatus(StrEnum):

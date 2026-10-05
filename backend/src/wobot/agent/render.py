@@ -95,9 +95,14 @@ class Reply:
     problems: list[str] = field(default_factory=list)
 
 
-def turn_reply(messages: Sequence[BaseMessage], answer: Answer | None) -> Reply:
-    """The reply to one turn, from its messages after the question and the parsed answer."""
-    evidence = turn_evidence(messages)
+def turn_reply(
+    messages: Sequence[BaseMessage],
+    answer: Answer | None,
+    artifacts: Mapping[str, Any] | None = None,
+) -> Reply:
+    """The reply to one turn, from its messages after the question, the parsed answer and
+    the artifacts its context kept."""
+    evidence = turn_evidence(messages, artifacts)
     if evidence.failed or answer is None:
         return Reply(RETRYABLE_TEXT, ReplyStatus.RETRYABLE)
     if found := problems(answer, evidence):

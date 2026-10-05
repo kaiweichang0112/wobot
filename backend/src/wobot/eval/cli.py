@@ -24,6 +24,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from openai import AsyncOpenAI
 
 from wobot.agent.build import build_agent, chat_model
+from wobot.agent.checkpoints import checkpoint_serde
 from wobot.agent.prompts import PROMPT_VERSION as AGENT_PROMPT_VERSION
 from wobot.agent.tools import FUSION_DEPTH, SEARCH_QUERIES, SEARCHED_CHUNKS, build_tools
 from wobot.config import Settings, get_settings
@@ -211,7 +212,8 @@ async def _agent(args: argparse.Namespace, settings: Settings) -> int:
             corpus = await load_corpus(conn, version_id)
         embedder = _embedder(settings, corpus)
         tools = build_tools(engine, embedder)
-        agent = build_agent(chat_model(settings), tools, InMemorySaver())
+        # In memory, but through the serializer conversations are stored with.
+        agent = build_agent(chat_model(settings), tools, InMemorySaver(serde=checkpoint_serde()))
         started = datetime.now().astimezone()
         gold_files: dict[str, str] = {}
         results = await run_agent_checks(

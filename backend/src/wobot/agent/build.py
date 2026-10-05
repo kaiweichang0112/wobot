@@ -10,7 +10,8 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer
 
 from wobot.agent.answers import Answer
-from wobot.agent.guard import AnswerGuard
+from wobot.agent.guard import AnswerGuard, TurnArtifacts
+from wobot.agent.history import earlier_turns
 from wobot.agent.prompts import turn_prompt
 from wobot.agent.tools import TurnContext
 from wobot.config import Settings
@@ -46,11 +47,13 @@ def build_agent(
         tools,
         middleware=[
             turn_prompt,
+            earlier_turns(),
             # Ends the turn with no answer, which the reply shows as retryable.
             ModelCallLimitMiddleware(run_limit=MODEL_CALLS, exit_behavior="end"),
             # Refuses the calls past the limit, so the model answers from what it has.
             ToolCallLimitMiddleware(run_limit=TOOL_CALLS),
             AnswerGuard(),
+            TurnArtifacts(),
         ],
         # The provider's own structured output, strict, so the reply always parses; every
         # candidate model passed tools and this together in B1.
