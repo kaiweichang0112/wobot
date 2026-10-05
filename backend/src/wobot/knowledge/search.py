@@ -16,6 +16,7 @@ from wobot.knowledge.models import (
     IndexVersionChunk,
     IndexVersionRecord,
     Record,
+    SourceSnapshot,
 )
 
 
@@ -109,6 +110,7 @@ class Member:
     record_id: uuid.UUID
     record_type: str
     logical_key: str
+    source_url: str  # the page or file the record was read from
 
 
 async def chunk_members(
@@ -124,9 +126,11 @@ async def chunk_members(
             IndexVersionRecord.record_id,
             Record.record_type,
             IndexVersionRecord.logical_key,
+            SourceSnapshot.locator.label("source_url"),
         )
         .join(IndexVersionRecord, IndexVersionRecord.record_id == ChunkRecord.record_id)
         .join(Record, Record.record_id == ChunkRecord.record_id)
+        .join(SourceSnapshot, SourceSnapshot.snapshot_id == IndexVersionRecord.snapshot_id)
         .where(
             ChunkRecord.chunk_id.in_(list(chunk_ids)),
             IndexVersionRecord.index_version_id == version_id,
@@ -135,7 +139,9 @@ async def chunk_members(
     )
     members: dict[uuid.UUID, list[Member]] = {chunk_id: [] for chunk_id in chunk_ids}
     for row in rows:
-        members[row.chunk_id].append(Member(row.record_id, row.record_type, row.logical_key))
+        members[row.chunk_id].append(
+            Member(row.record_id, row.record_type, row.logical_key, row.source_url)
+        )
     return members
 
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from tests.agent.fakes import ScriptedChatModel, answers, calls
+from wobot.agent.answers import Answer
 from wobot.agent.build import build_agent, chat_model
 from wobot.agent.prompts import INSTRUCTIONS, PROMPT_VERSION, system_prompt
 from wobot.agent.tools import TurnContext, build_tools
@@ -11,9 +12,10 @@ from wobot.config import Settings
 from wobot.knowledge.hashing import content_hash
 
 # A changed prompt must come with a new PROMPT_VERSION, so runs and traces say which one
-# they measured. The model reads the tools' descriptions and schemas as much as the
-# instructions: after changing either, bump it and record the new fingerprint here.
-# Version 1 pinned the instructions alone.
+# they measured. The model reads the tools' descriptions and schemas and the answer's
+# schema as much as the instructions: after changing any, bump it and record the new
+# fingerprint here. Version 1 pinned the instructions alone; versions before 8 left out
+# the answer's schema.
 PROMPT_FINGERPRINTS = {
     1: "b41bc19774a3a5f1c83a4e7c8a5d721ba60bb381eb2fd67beacb602d6c533a70",
     2: "3a5b5d63e8940c4a797bc44787ac5d2be94582e29701bc79c71b447aac05faff",
@@ -22,6 +24,9 @@ PROMPT_FINGERPRINTS = {
     5: "64947e45aa412ccc107b5572d0a5585580f5b7574deaff65d125758b11505f4f",
     6: "1ae0de8bfb915bc45f5443f0e16ea391ddb9eaae61d1542cdb5347210832a5e9",
     7: "05e54a688bb53b775cb8843091dcc9ec4287cb29e3c7c8d34d49bfe4096aed08",
+    8: "8b3196a8d2f9386a61d9a16cbebf1f90b6725aa5308c10c4923210bde9ed3c88",
+    9: "5ca3a30861b2c5092efe28c7f2aa0d4e91b8989ce7e40c27f7c90bf2999cd5f3",
+    10: "b849a9c005c7a1e8d3b0bdb4158dc4bb5497197d73419c15fb98512b02ef990b",
 }
 
 
@@ -89,7 +94,8 @@ def prompt_fingerprint():
         tool.name: [tool.description, tool.tool_call_schema.model_json_schema()]
         for tool in build_tools(db=None, embedder=None)
     }
-    return content_hash({"instructions": INSTRUCTIONS, "tools": tools})
+    answer = Answer.model_json_schema()
+    return content_hash({"instructions": INSTRUCTIONS, "tools": tools, "answer": answer})
 
 
 def test_a_changed_prompt_comes_with_a_new_version():

@@ -2,9 +2,11 @@
 
 Recording is apart from scoring: a record holds the tools called, how each answered, the
 answer and the cost, so one run can be scored by several checks and compared across
-models. Three checks read it: tools, the tools the model chose against a person's sets;
-retrieval, the records its searches found against the labelled relevant ones; and list,
-the records the reply showed against the labelled items.
+models. Four checks read it: tools, the tools the model chose against a person's sets;
+retrieval, the records its searches found against the labelled relevant ones; list, the
+records the reply showed against the labelled items; and behavior, what the turn did
+against what a person expects of it: whether it looked anything up, its grounding and
+status, whether it cited sources, and what the reply mentions.
 """
 
 import logging
@@ -22,6 +24,7 @@ from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 
 from wobot.agent.answers import Answer
+from wobot.agent.guard import NO_ANSWER, this_turn
 from wobot.agent.messages import commentary
 from wobot.agent.render import turn_reply
 from wobot.agent.tools import SEARCHED_CHUNKS, SearchResult, TurnContext
@@ -73,8 +76,14 @@ class TurnRecord:
     input_tokens: int
     output_tokens: int
     seconds: float
+    # answered, unverified when the guard held the answer back, or retryable.
+    status: str = "answered"
+    grounding: str | None = None  # the model's, when its answer was shown
+    citations: list[str] = field(default_factory=list)
+    # The tries the guard held back and asked again, with why: not in the messages.
+    retries: list[dict[str, Any]] = field(default_factory=list)
     lists: list[ShownItems] = field(default_factory=list)
-    unknown_ids: list[str] = field(default_factory=list)  # IDs the model gave, unheld
+    problems: list[str] = field(default_factory=list)  # why the guard held it back
 
 
 @dataclass
@@ -84,7 +93,7 @@ class AgentCaseResult:
     split: str
     scenario: str
     user_input: str
-    kind: str  # the check: tools, retrieval or list
+    kind: str  # the check: tools, retrieval, list or behavior
     status: str  # scored, pending or error
     detail: str | None = None
     expect: list[list[str]] = field(default_factory=list)
@@ -97,6 +106,8 @@ class AgentCaseResult:
     searches: int = 0
     # The records the reply's lists showed as matches, against the labelled items.
     set: SetScore | None = None
+    # What the turn did that a behavior check did not expect; passed when none.
+    failures: list[str] = field(default_factory=list)
     record: TurnRecord | None = None
 
 
@@ -121,14 +132,20 @@ async def play(
         )
         seconds = time.perf_counter() - started
         answer = state.get("structured_response")
-        records.append(record_turn(_this_turn(state["messages"]), seconds, answer))
+        retries = state.get("retries", [])
+        records.append(record_turn(this_turn(state["messages"]), seconds, answer, retries))
     return records
 
 
 def record_turn(
-    messages: Sequence[BaseMessage], seconds: float, answer: Answer | None = None
+    messages: Sequence[BaseMessage],
+    seconds: float,
+    answer: Answer | None = None,
+    retries: Sequence[dict[str, Any]] = (),
 ) -> TurnRecord:
-    replies = [m for m in messages if isinstance(m, AIMessage)]
+    """What the turn did, from its messages after the question and the guard's held-back
+    tries, which the messages leave out."""
+    replies = [m for m in messages if isinstance(m, AIMessage) and m.response_metadata != NO_ANSWER]
     results = {m.tool_call_id: m for m in messages if isinstance(m, ToolMessage)}
     tools = [
         ToolUse(
@@ -140,16 +157,22 @@ def record_turn(
         for reply in replies
         for call in reply.tool_calls
     ]
-    usage = [reply.usage_metadata or {} for reply in replies]
+    usage = [reply.usage_metadata or {} for reply in replies] + list(retries)
+    unsent = [text for r in replies if not r.tool_calls for text in commentary(r)]
+    unsent += [text for held in retries if held["reason"] == "unparsed" for text in held["detail"]]
     reply = turn_reply(messages, answer)
     return TurnRecord(
         answer=reply.text,
         tools=tools,
-        unsent_calls=[text for r in replies if not r.tool_calls for text in commentary(r)],
-        model_calls=len(replies),
+        unsent_calls=unsent,
+        model_calls=len(replies) + len(retries),
         input_tokens=sum(u.get("input_tokens", 0) for u in usage),
         output_tokens=sum(u.get("output_tokens", 0) for u in usage),
         seconds=seconds,
+        status=str(reply.status),
+        grounding=reply.grounding,
+        citations=reply.citations,
+        retries=list(retries),
         lists=[
             ShownItems(
                 shown.result_id,
@@ -158,14 +181,8 @@ def record_turn(
             )
             for shown in reply.lists
         ],
-        unknown_ids=reply.unknown_ids,
+        problems=reply.problems,
     )
-
-
-def _this_turn(messages: Sequence[BaseMessage]) -> Sequence[BaseMessage]:
-    """The messages after the turn's own question."""
-    last = max(i for i, m in enumerate(messages) if isinstance(m, HumanMessage))
-    return messages[last + 1 :]
 
 
 def _retrieved(result: ToolMessage | None) -> list[Retrieved]:
@@ -223,7 +240,9 @@ def tools_passed(called: Sequence[str], expect: Sequence[Sequence[str]]) -> bool
 
 
 # The checks this module scores; a case with another check is not played.
-AGENT_KINDS = ("tools", "retrieval", "list")
+AGENT_KINDS = ("tools", "retrieval", "list", "behavior")
+# What a behavior check may expect; any other key is a mistake in the dataset.
+BEHAVIORS = ("status", "looks_up", "grounding", "cites", "mentions")
 
 
 async def run_agent_checks(
@@ -237,7 +256,7 @@ async def run_agent_checks(
     gold_dir: Path = gold.GOLD_DIR,
     gold_files: dict[str, str] | None = None,
 ) -> list[AgentCaseResult]:
-    """Plays every tools, retrieval and list case of the splits once; scores its last turn.
+    """Plays every case of the splits and kinds once; scores its last turn.
 
     `gold_files` collects the hash of each gold file the retrieval cases read.
     """
@@ -277,6 +296,9 @@ async def run_agent_checks(
                 result.passed = tools_passed(result.called, result.expect)
             elif kind == "retrieval":
                 await score_searches(result, relevant)
+            elif kind == "behavior":
+                result.failures = behavior_failures(case.check, result.record)
+                result.passed = not result.failures
             else:
                 shown = {key for s in result.record.lists for key in s.items}
                 result.set = await set_score(relevant, shown)
@@ -293,10 +315,39 @@ def _prepare(
             result.detail = case.pending or "not labelled yet"
         result.expect = case.check.get("expect") or []
         return set()
+    if result.kind == "behavior":
+        expected = {key for key in case.check if key != "kind"}
+        if unknown := sorted(expected - set(BEHAVIORS)):
+            raise gold.GoldError(f"{case.case_id}: unknown behaviors {unknown}")
+        if not expected:
+            result.detail = case.pending or "not labelled yet"
+        return set()
     relevant, _ = labelled_keys(case, corpus, gold_dir, used)
     if not relevant:
         result.detail = "not labelled yet"
     return relevant
+
+
+def behavior_failures(check: dict[str, Any], record: TurnRecord) -> list[str]:
+    """What the turn did against what the check expects of it; empty when all holds."""
+    failures = []
+    status = check.get("status", "answered")
+    if record.status != status:
+        failures.append(f"status {record.status}, expected {status}")
+    if "looks_up" in check:
+        looked = any(tool.outcome in ("found", "no_match") for tool in record.tools)
+        if looked != check["looks_up"]:
+            failures.append("looked something up" if looked else "looked nothing up")
+    if "grounding" in check and record.grounding not in check["grounding"]:
+        failures.append(f"grounding {record.grounding}, expected {' or '.join(check['grounding'])}")
+    if "cites" in check:
+        cited = bool(record.citations or record.lists)
+        if cited != check["cites"]:
+            failures.append("cited sources" if cited else "cited nothing")
+    failures += [
+        f"does not mention {t!r}" for t in check.get("mentions", []) if t not in record.answer
+    ]
+    return failures
 
 
 async def score_searches(result: AgentCaseResult, relevant: set[str]) -> None:

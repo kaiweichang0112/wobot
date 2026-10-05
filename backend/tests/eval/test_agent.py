@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from tests.agent.fakes import ScriptedChatModel, answers, calls
 from wobot.agent.build import build_agent
+from wobot.agent.render import RETRYABLE_TEXT
 from wobot.agent.tools import SEARCHED_CHUNKS, TurnContext, build_tools, result_handle
 from wobot.eval.agent import (
     AgentCaseResult,
@@ -74,7 +75,7 @@ async def test_a_refused_call_and_its_correction_are_both_kept(knowledge):
     assert [tool.outcome for tool in record.tools] == ["error", "found"]
 
 
-def test_a_call_written_as_text_is_unsent_and_hidden():
+def test_a_call_written_as_text_is_unsent_and_its_answer_unshown():
     written = '{"queries": ["GRC 成立"]}'
     unsent = AIMessage(phases(("commentary", written), ("final_answer", "來源中沒有查到。")))
 
@@ -82,19 +83,26 @@ def test_a_call_written_as_text_is_unsent_and_hidden():
 
     assert record.tools == []
     assert record.unsent_calls == [written]
-    assert record.answer == "來源中沒有查到。"
+    # No answer parsed: the claim of a lookup never made is not shown.
+    assert (record.answer, record.status) == (RETRYABLE_TEXT, "retryable")
 
 
-async def test_a_call_written_as_text_breaks_the_structured_reply(knowledge):
-    # The commentary and the answer reach the parser as one text, which is not JSON: the
-    # turn fails rather than claiming a lookup it never made. B6 retries it once.
+async def test_a_call_written_as_text_twice_ends_the_turn_unanswered(knowledge):
+    # The commentary and the answer reach the parser as one text, which is not JSON; the
+    # guard asks once more, and a second such reply ends the turn as retryable.
     written = '{"queries": ["GRC 成立"]}'
     answer = json.dumps({"answer": "來源中沒有查到。", "lists": []})
-    script = [AIMessage(phases(("commentary", written), ("final_answer", answer)))]
+    unsent = AIMessage(phases(("commentary", written), ("final_answer", answer)))
 
-    _, (result,) = await evaluate(knowledge, script, tools_case("T1", [["search_knowledge"]]))
+    _, (result,) = await evaluate(
+        knowledge, [unsent, unsent], tools_case("T1", [["search_knowledge"]])
+    )
 
-    assert result.status == "error" and "StructuredOutputValidationError" in result.detail
+    assert (result.status, result.passed) == ("scored", False)
+    assert (result.record.status, result.record.answer) == ("retryable", RETRYABLE_TEXT)
+    # Kept out of the messages, the two tries are still counted, with what they wrote.
+    assert result.record.unsent_calls == [written, written]
+    assert result.record.model_calls == 2
 
 
 async def test_commentary_before_a_real_call_is_not_unsent(knowledge):
@@ -323,3 +331,38 @@ async def test_a_list_the_reply_did_not_attach_shows_nothing(knowledge, gold_dir
     _, (result,) = await evaluate(knowledge, script, list_case("L1"), gold_dir=gold_dir)
 
     assert (result.set.actual, result.set.recall) == (0, 0)
+
+
+def behavior_case(case_id, **expect):
+    check = {"kind": "behavior", **expect}
+    return Case(case_id, "test", "dev", "你好", "", None, check, None)
+
+
+async def test_a_behavior_holds_when_the_turn_does_all_it_expects(knowledge):
+    expect = {"looks_up": False, "grounding": ["general"], "cites": False, "mentions": ["好"]}
+
+    _, (result,) = await evaluate(knowledge, [reply("你好！")], behavior_case("B1", **expect))
+
+    assert (result.status, result.passed, result.failures) == ("scored", True, [])
+
+
+async def test_each_unmet_behavior_is_named(knowledge):
+    expect = {"looks_up": True, "grounding": ["grounded", "no_info"], "cites": True}
+    script = [reply("我記得 GRC 成立於 2003 年。")]
+
+    _, (result,) = await evaluate(knowledge, script, behavior_case("B1", **expect))
+
+    assert result.passed is False
+    assert result.failures == [
+        "looked nothing up",
+        "grounding general, expected grounded or no_info",
+        "cited nothing",
+    ]
+    assert "**fail**: looked nothing up" in agent_markdown([result], {})
+    assert agent_summary([result])["behavior dev"] == {"cases": 1, "passed": 0}
+
+
+async def test_a_behavior_the_check_does_not_know_is_an_error(knowledge):
+    _, (result,) = await evaluate(knowledge, [], behavior_case("B1", cite=True))
+
+    assert result.status == "error" and "['cite']" in result.detail

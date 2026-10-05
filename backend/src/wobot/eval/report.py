@@ -298,6 +298,12 @@ def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
                 "searches": mean([r.searches for r in retrieval]),
                 "no_search": sum(r.searches == 0 for r in retrieval),
             }
+        behavior = [r for r in scored if r.split == split and r.kind == "behavior"]
+        if behavior:
+            out[f"behavior {split}"] = {
+                "cases": len(behavior),
+                "passed": sum(bool(r.passed) for r in behavior),
+            }
         lists = [r.set for r in scored if r.split == split and r.kind == "list" and r.set]
         if lists:
             out[f"list {split}"] = {
@@ -313,8 +319,10 @@ def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
             "unsent_calls": sum(bool(r.unsent_calls) for r in records),
             "refused_calls": sum(any(t.outcome == "error" for t in r.tools) for r in records),
             "failed_tools": sum(any(t.outcome == "failed" for t in r.tools) for r in records),
-            # IDs the reply named that no result of the turn holds: nothing was shown.
-            "unknown_ids": sum(len(r.unknown_ids) for r in records),
+            # Turns whose answer the guard held back, and turns that ended retryable.
+            "retried": sum(bool(r.retries) for r in records),
+            "unverified": sum(r.status == "unverified" for r in records),
+            "retryable": sum(r.status == "retryable" for r in records),
             "mean_seconds": mean([r.seconds for r in records]),
             "max_seconds": max(r.seconds for r in records),
             "model_calls": sum(r.model_calls for r in records),
@@ -337,6 +345,8 @@ def _agent_result(r: AgentCaseResult) -> str:
         expected = " or ".join("{" + ", ".join(e) + "}" for e in r.expect)
         verdict = "pass" if r.passed else "**fail**"
         return f"{verdict}: expected {expected}"
+    if r.kind == "behavior":
+        return "pass" if r.passed else "**fail**: " + "; ".join(r.failures)
     if r.kind == "list":
         s = r.set
         return (
@@ -402,6 +412,10 @@ def agent_markdown(results: Sequence[AgentCaseResult], meta: Mapping[str, Any]) 
             lines.append(f"- {tool.name} {args} → {tool.outcome}")
         for text in r.record.unsent_calls:
             lines.append(f"- unsent call, written as text: `{text}`")
+        for held in r.record.retries:
+            lines.append(f"- asked again, {held['reason']}: {'; '.join(held['detail'])}")
+        for problem in r.record.problems:
+            lines.append(f"- held back: {problem}")
         lines += ["", "> " + r.record.answer.replace("\n", "\n> "), ""]
     return "\n".join(lines) + "\n"
 

@@ -2,17 +2,22 @@
 
 A list never passes through the model's words, so none of its items can be dropped,
 merged or made up (DB6). The model only says which results to show, and which of their
-items when it narrows one by meaning; an ID it did not get this turn shows nothing.
+items when it narrows one by meaning.
+
+Only an answer the guard passes is shown. When a tool failed, or the model gave no answer
+that passes, code says so in its own words: a failure must never read as having no
+information, and an unchecked answer is never shown (DB5).
 """
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import BaseMessage
 
-from wobot.agent.answers import Answer
-from wobot.agent.messages import final_text
+from wobot.agent.answers import Answer, Grounding
+from wobot.agent.guard import TurnEvidence, problems, turn_evidence
 from wobot.agent.tools import RecordsResult, record_handle
 from wobot.knowledge.lists import Listed
 
@@ -23,7 +28,8 @@ def _lecture(f: Mapping[str, Any]) -> str:
     # A field the source does not give is left out, never shown empty (AC-RAG-04); the
     # location is named, so it is not taken for part of the event.
     location = f"地點：{f['location']}" if f["location"] else None
-    parts = [f["title"] or f["entry_text"], f["event"], location]
+    pdf = f"PDF：{f['pdf_url']}" if f["pdf_url"] else None
+    parts = [f["title"] or f["entry_text"], f["event"], location, pdf]
     return f"{f['date_raw'] or f['lecture_date']}　" + "，".join(p for p in parts if p)
 
 
@@ -58,6 +64,19 @@ LINES: dict[str, Callable[[Mapping[str, Any]], str]] = {
 }
 
 
+class ReplyStatus(StrEnum):
+    ANSWERED = "answered"
+    UNVERIFIED = "unverified"  # the answer failed the guard; code says it cannot confirm
+    RETRYABLE = "retryable"  # a tool failed or no answer came; the user may try again
+
+
+# What code says in place of the model; the app is Chinese first.
+UNVERIFIED_TEXT = (
+    "抱歉，我無法用資料來源確認這個回答，為避免提供錯誤資訊，這次先不回覆。可以換個說法再問一次。"
+)
+RETRYABLE_TEXT = "抱歉，這次查詢資料時發生問題，請稍後再試一次。"
+
+
 @dataclass(frozen=True)
 class ShownList:
     result_id: str
@@ -68,47 +87,65 @@ class ShownList:
 @dataclass(frozen=True)
 class Reply:
     text: str
+    status: ReplyStatus
+    grounding: Grounding | None = None  # the model's, when its answer is shown
+    citations: list[str] = field(default_factory=list)
     lists: list[ShownList] = field(default_factory=list)
-    # IDs the model gave that no result of this turn holds: nothing is shown for them,
-    # and the guard of B6 will act on them.
-    unknown_ids: list[str] = field(default_factory=list)
-
-
-def turn_results(messages: Sequence[BaseMessage]) -> dict[str, RecordsResult]:
-    """The query_records results among a turn's messages, by result_id."""
-    return {
-        m.artifact.result_id: m.artifact
-        for m in messages
-        if isinstance(m, ToolMessage) and isinstance(m.artifact, RecordsResult)
-    }
+    # Why the guard held the answer back, in the words the model would be told.
+    problems: list[str] = field(default_factory=list)
 
 
 def turn_reply(messages: Sequence[BaseMessage], answer: Answer | None) -> Reply:
     """The reply to one turn, from its messages after the question and the parsed answer."""
-    if answer is None:  # no structured answer: what the model last wrote
-        replies = [m for m in messages if isinstance(m, AIMessage)]
-        return Reply(final_text(replies[-1]) if replies else "")
-    return render(answer, turn_results(messages))
+    evidence = turn_evidence(messages)
+    if evidence.failed or answer is None:
+        return Reply(RETRYABLE_TEXT, ReplyStatus.RETRYABLE)
+    if found := problems(answer, evidence):
+        return Reply(UNVERIFIED_TEXT, ReplyStatus.UNVERIFIED, problems=found)
+    return render(answer, evidence)
 
 
-def render(answer: Answer, results: Mapping[str, RecordsResult]) -> Reply:
+def render(answer: Answer, evidence: TurnEvidence) -> Reply:
+    """An answer the guard passed, with the sources it cites and its lists in full."""
+    # Nothing answered the question, so nothing is its source: sources under "not found"
+    # would read as where the answer is.
+    citations = [] if answer.grounding == "no_info" else answer.citations
     shown: list[ShownList] = []
-    unknown: list[str] = []
     for ref in answer.lists:
-        result = results.get(ref.result_id)
-        if result is None:
-            unknown.append(ref.result_id)
-            continue
+        result = evidence.results[ref.result_id]
         items, uncertain = result.items, result.uncertain
         if ref.item_ids is not None:
             wanted = set(ref.item_ids)
-            held = {record_handle(i.record_id) for i in [*items, *uncertain]}
-            unknown += [handle for handle in ref.item_ids if handle not in held]
             items = [i for i in items if record_handle(i.record_id) in wanted]
             uncertain = [i for i in uncertain if record_handle(i.record_id) in wanted]
         shown.append(ShownList(ref.result_id, items, uncertain))
-    blocks = [answer.answer.strip(), *(_block(s, results[s.result_id]) for s in shown)]
-    return Reply("\n\n".join(b for b in blocks if b), shown, unknown)
+    # A source a list below already names is not named twice.
+    listed = {i.source_url for s in shown for i in [*s.items, *s.uncertain]}
+    cited = [
+        url
+        for url in dict.fromkeys(u for c in citations for u in evidence.sources[c])
+        if url not in listed
+    ]
+    # A cited lecture's PDF, unless a list below shows the lecture with it.
+    listed_ids = {record_handle(i.record_id) for s in shown for i in [*s.items, *s.uncertain]}
+    pdfs = [
+        evidence.pdfs[c]
+        for c in dict.fromkeys(citations)
+        if c in evidence.pdfs and c not in listed_ids
+    ]
+    text = answer.answer.strip()
+    if cited:
+        text += "\n\n來源：" + "、".join(cited)
+    if pdfs:
+        text += ("\n" if cited else "\n\n") + "PDF：" + "、".join(pdfs)
+    blocks = [text, *(_block(s, evidence.results[s.result_id]) for s in shown)]
+    return Reply(
+        "\n\n".join(b for b in blocks if b),
+        ReplyStatus.ANSWERED,
+        answer.grounding,
+        citations,
+        shown,
+    )
 
 
 def _block(shown: ShownList, result: RecordsResult) -> str:
