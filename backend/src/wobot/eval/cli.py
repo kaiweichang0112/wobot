@@ -25,11 +25,11 @@ from openai import AsyncOpenAI
 
 from wobot.agent.build import build_agent, chat_model
 from wobot.agent.prompts import PROMPT_VERSION as AGENT_PROMPT_VERSION
-from wobot.agent.tools import build_tools
+from wobot.agent.tools import FUSION_DEPTH, SEARCH_QUERIES, SEARCHED_CHUNKS, build_tools
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.eval import gold
-from wobot.eval.agent import run_tool_selection
+from wobot.eval.agent import run_agent_checks
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
 from wobot.eval.report import (
@@ -43,6 +43,7 @@ from wobot.eval.runner import case_refs, run_datasets
 from wobot.eval.vision import compare_models, dev_transcriptions, fetch_pictures
 from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import DbAnswerCache
+from wobot.knowledge.search import RRF_K
 from wobot.knowledge.sources.documents import document_files
 from wobot.knowledge.sources.http import new_client
 from wobot.knowledge.vision import PROMPT_VERSION as VISION_PROMPT_VERSION
@@ -98,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     vision.set_defaults(handler=_vision)
 
     agent = commands.add_parser(
-        "agent", help="play the tools cases through the chat agent (paid calls)"
+        "agent", help="play the tools and retrieval cases through the chat agent (paid calls)"
     )
     agent.add_argument(
         "--dataset",
@@ -206,7 +207,10 @@ async def _agent(args: argparse.Namespace, settings: Settings) -> int:
         tools = build_tools(engine, embedder)
         agent = build_agent(chat_model(settings), tools, InMemorySaver())
         started = datetime.now().astimezone()
-        results = await run_tool_selection(agent, tools, datasets, version_id, splits=splits)
+        gold_files: dict[str, str] = {}
+        results = await run_agent_checks(
+            agent, tools, datasets, corpus, splits=splits, gold_files=gold_files
+        )
     finally:
         await engine.dispose()
         if connector is not None:
@@ -217,9 +221,16 @@ async def _agent(args: argparse.Namespace, settings: Settings) -> int:
         "model": settings.agent_model,
         "reasoning_effort": settings.agent_reasoning_effort,
         "prompt_version": AGENT_PROMPT_VERSION,
+        "search": {
+            "chunks": SEARCHED_CHUNKS,
+            "queries": SEARCH_QUERIES,
+            "fusion_depth": FUSION_DEPTH,
+            "rrf_k": RRF_K,
+        },
         "index_version": version_id,
         "splits": list(splits),
         "datasets": {d.name: d.sha256[:12] for d in datasets},
+        "gold_files": {name: sha[:12] for name, sha in sorted(gold_files.items())},
     }
     stem = f"{started:%Y%m%d-%H%M%S}-agent-{settings.agent_model}-{settings.agent_reasoning_effort}"
     path = write_agent_report(results, meta, args.out, stem)

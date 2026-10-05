@@ -271,7 +271,7 @@ def write_vision_report(
 
 
 def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
-    """Tool-selection accuracy per split and scenario, and what the turns cost."""
+    """Per split: tool-selection accuracy and retrieval; then what the turns cost."""
     scored = [r for r in results if r.status == "scored"]
     records = [r.record for r in scored if r.record]
     out: dict[str, Any] = {
@@ -281,9 +281,23 @@ def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
         "errors": sum(r.status == "error" for r in results),
     }
     for split in ("dev", "heldout"):
-        cases = [r for r in scored if r.split == split]
-        if cases:
-            out[f"accuracy {split}"] = mean([float(bool(r.passed)) for r in cases])
+        tools = [r for r in scored if r.split == split and r.kind == "tools"]
+        if tools:
+            out[f"tools {split}"] = {"accuracy": mean([float(bool(r.passed)) for r in tools])}
+        retrieval = [r for r in scored if r.split == split and r.kind == "retrieval"]
+        if retrieval:
+            first = [r.first_search for r in retrieval if r.first_search]
+            turn = [r.turn_searches for r in retrieval if r.turn_searches]
+            out[f"retrieval {split}"] = {
+                "cases": len(retrieval),
+                "first_recall_at_k": mean([s.recall for s in first]),
+                "first_mrr": mean([s.reciprocal_rank for s in first]),
+                "turn_recall": mean([s.recall for s in turn]),
+                "turn_mrr": mean([s.reciprocal_rank for s in turn]),
+                "turn_context_tokens": mean([s.context_tokens for s in turn]),
+                "searches": mean([r.searches for r in retrieval]),
+                "no_search": sum(r.searches == 0 for r in retrieval),
+            }
     if records:
         out |= {
             # Unsent: the model wrote a call as text and called nothing (see eval.agent).
@@ -302,14 +316,27 @@ def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
 def _scenarios(results: Sequence[AgentCaseResult]) -> dict[str, str]:
     groups: dict[str, list[bool]] = defaultdict(list)
     for r in results:
-        if r.status == "scored":
+        if r.status == "scored" and r.kind == "tools":
             groups[r.scenario].append(bool(r.passed))
     return {name: f"{sum(p)} of {len(p)}" for name, p in sorted(groups.items())}
 
 
+def _agent_result(r: AgentCaseResult) -> str:
+    if r.kind == "tools":
+        expected = " or ".join("{" + ", ".join(e) + "}" for e in r.expect)
+        verdict = "pass" if r.passed else "**fail**"
+        return f"{verdict}: expected {expected}"
+    first, turn = r.first_search, r.turn_searches
+    return (
+        f"first search recall@{first.k} {_num(first.recall)}, MRR {_num(first.reciprocal_rank)};"
+        f" {r.searches} searches, {turn.records} records: recall {_num(turn.recall)},"
+        f" {turn.context_tokens} tokens"
+    )
+
+
 def agent_markdown(results: Sequence[AgentCaseResult], meta: Mapping[str, Any]) -> str:
     lines = [
-        "# Tool selection",
+        "# Agent checks",
         "",
         *(f"- {name}: {_text(value)}" for name, value in meta.items()),
         "",
@@ -317,27 +344,33 @@ def agent_markdown(results: Sequence[AgentCaseResult], meta: Mapping[str, Any]) 
         "",
         *(f"- {name}: {_text(value)}" for name, value in agent_summary(results).items()),
         "",
-        "## By scenario",
+        "## Tool selection by scenario",
         "",
         *(f"- {name}: {value}" for name, value in _scenarios(results).items()),
         "",
         "## Cases",
         "",
-        "| Case | Split | Scenario | Result | Expected | Called | Calls | Seconds |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Case | Split | Check | Result | Called | Calls | Seconds |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in results:
         if r.status != "scored" or r.record is None:
-            cells = f"| {r.case_id} | {r.split} | {r.scenario} | {r.status}: {r.detail} |"
-            lines.append(cells + " |" * 4)
+            cells = f"| {r.case_id} | {r.split} | {r.kind} | {r.status}: {r.detail} |"
+            lines.append(cells + " |" * 3)
             continue
-        result = "pass" if r.passed else "**fail**"
-        expected = " or ".join("{" + ", ".join(e) + "}" for e in r.expect)
         calls = ", ".join(f"{t.name} {t.outcome}" for t in r.record.tools) or "none"
         lines.append(
-            f"| {r.case_id} | {r.split} | {r.scenario} | {result} | {expected} "
+            f"| {r.case_id} | {r.split} | {r.kind} | {_agent_result(r)} "
             f"| {{{', '.join(r.called)}}} | {calls} | {r.record.seconds:.1f} |"
         )
+    details = [
+        f"- {r.case_id} not found by its searches: {key}"
+        for r in results
+        if r.turn_searches
+        for key in r.turn_searches.missing
+    ]
+    if details:
+        lines += ["", "## Missed records", "", *details]
     lines += ["", "## Turns", ""]
     for r in results:
         if r.record is None:

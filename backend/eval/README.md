@@ -79,8 +79,8 @@ uv run wobot-eval run --dataset items-v1 --dataset seed-v1 --split dev --index-v
 ## Agent checks
 
 `wobot-eval agent` builds the chat agent with the configured model, or `--model` and
-`--effort`, against the active version, and plays each `tools` case once, in a new thread
-with an in-memory checkpointer. It writes `runs/<time>-agent-<model>-<effort>.json` and
+`--effort`, against the active version, and plays each `tools` and `retrieval` case once,
+in a new thread with an in-memory checkpointer. It writes `runs/<time>-agent-<model>-<effort>.json` and
 `.md`, recording the model, effort, prompt version, index version and dataset hash.
 
 - It runs dev by default: tune on dev, and play held-out once, when choosing the model.
@@ -91,5 +91,9 @@ with an in-memory checkpointer. It writes `runs/<time>-agent-<model>-<effort>.js
   turn would otherwise be scored as the follow-up's.
 - A call the model writes as text instead of making is counted apart: the answer then
   rests on no lookup at all.
+- Retrieval is scored twice against the same labels as `run`. The first search alone,
+  over its k chunks, compares the model's own query with searching the question itself.
+  Every chunk the turn's searches returned, deduplicated, is what the model read: more
+  searches read more, so its recall comes with the tokens it cost.
 - Each case runs once, so one run shows what a model does, not how often. With
   `--env-file .env` and LangSmith set, every turn is also traced.
