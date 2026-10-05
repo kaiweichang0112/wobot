@@ -9,7 +9,7 @@ from wobot.agent.tools import TurnContext
 
 # Bump with any change to the instructions or the tools' descriptions, so evaluation runs
 # and traces say which prompt they measured; a test pins each version's fingerprint.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 TIMEZONE = ZoneInfo("Asia/Taipei")
 
 INSTRUCTIONS = """\

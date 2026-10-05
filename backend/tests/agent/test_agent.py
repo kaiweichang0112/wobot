@@ -17,6 +17,7 @@ from wobot.knowledge.hashing import content_hash
 PROMPT_FINGERPRINTS = {
     1: "b41bc19774a3a5f1c83a4e7c8a5d721ba60bb381eb2fd67beacb602d6c533a70",
     2: "3a5b5d63e8940c4a797bc44787ac5d2be94582e29701bc79c71b447aac05faff",
+    3: "0f87429236672576fb1bd84770bfc126b0e08b1eae68912a4159cca2efdd2215",
 }
 
 

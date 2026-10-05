@@ -2,7 +2,8 @@
 
 Recording is apart from scoring: a record holds the tools called, how each answered, the
 answer and the cost, so one run can be scored by several checks and compared across
-models. The tools check is the first: the tools the model chose against a person's sets.
+models. Two checks read it: tools, the tools the model chose against a person's sets; and
+retrieval, the records its searches found against the labelled relevant ones.
 """
 
 import logging
@@ -11,6 +12,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from langchain.tools import ToolRuntime
@@ -19,10 +21,23 @@ from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 
 from wobot.agent.messages import commentary, final_text
-from wobot.agent.tools import TurnContext
+from wobot.agent.tools import SEARCHED_CHUNKS, SearchResult, TurnContext
+from wobot.eval import gold
+from wobot.eval.corpus import Corpus
 from wobot.eval.dataset import Case, Dataset
+from wobot.eval.metrics import RetrievalScore, retrieval_score
+from wobot.eval.runner import retrieval_relevant
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Retrieved:
+    """One chunk a search returned, in its rank."""
+
+    chunk_id: str
+    keys: list[str]  # the logical keys of the records it is built from
+    tokens: int
 
 
 @dataclass(frozen=True)
@@ -32,6 +47,7 @@ class ToolUse:
     # found, no_match or failed as the tool reported it; error when it refused the
     # arguments; missing when the call never ran.
     outcome: str
+    retrieved: list[Retrieved] = field(default_factory=list)  # search_knowledge only
 
 
 @dataclass(frozen=True)
@@ -54,11 +70,17 @@ class AgentCaseResult:
     split: str
     scenario: str
     user_input: str
+    kind: str  # the check: tools or retrieval
     status: str  # scored, pending or error
     detail: str | None = None
     expect: list[list[str]] = field(default_factory=list)
     called: list[str] = field(default_factory=list)  # each tool once, in first-call order
     passed: bool | None = None
+    # Retrieval twice: the first search alone, comparable with searching the question
+    # itself; and every chunk the turn's searches returned, what the model read.
+    first_search: RetrievalScore | None = None
+    turn_searches: RetrievalScore | None = None
+    searches: int = 0
     record: TurnRecord | None = None
 
 
@@ -90,7 +112,12 @@ def record_turn(messages: Sequence[BaseMessage], seconds: float) -> TurnRecord:
     replies = [m for m in messages if isinstance(m, AIMessage)]
     results = {m.tool_call_id: m for m in messages if isinstance(m, ToolMessage)}
     tools = [
-        ToolUse(call["name"], call["args"], _outcome(results.get(call["id"])))
+        ToolUse(
+            call["name"],
+            call["args"],
+            _outcome(results.get(call["id"])),
+            _retrieved(results.get(call["id"])),
+        )
         for reply in replies
         for call in reply.tool_calls
     ]
@@ -110,6 +137,15 @@ def _this_turn(messages: Sequence[BaseMessage]) -> Sequence[BaseMessage]:
     """The messages after the turn's own question."""
     last = max(i for i, m in enumerate(messages) if isinstance(m, HumanMessage))
     return messages[last + 1 :]
+
+
+def _retrieved(result: ToolMessage | None) -> list[Retrieved]:
+    if result is None or not isinstance(result.artifact, SearchResult):
+        return []
+    return [
+        Retrieved(str(e.hit.chunk_id), [m.logical_key for m in e.members], e.hit.token_count)
+        for e in result.artifact.evidence
+    ]
 
 
 def _outcome(result: ToolMessage | None) -> str:
@@ -157,39 +193,94 @@ def tools_passed(called: Sequence[str], expect: Sequence[Sequence[str]]) -> bool
     return frozenset(called) in {frozenset(acceptable) for acceptable in expect}
 
 
-async def run_tool_selection(
+# The checks this module scores; a case with another check is not played.
+AGENT_KINDS = ("tools", "retrieval")
+
+
+async def run_agent_checks(
     agent: CompiledStateGraph,
     tools: Sequence[BaseTool],
     datasets: Sequence[Dataset],
-    version_id: int,
+    corpus: Corpus,
     *,
     splits: Sequence[str] = ("dev", "heldout"),
+    gold_dir: Path = gold.GOLD_DIR,
+    gold_files: dict[str, str] | None = None,
 ) -> list[AgentCaseResult]:
-    """Plays every tools case of the splits once, and scores the tools of its last turn."""
+    """Plays every tools and retrieval case of the splits once, and scores its last turn.
+
+    `gold_files` collects the hash of each gold file the retrieval cases read.
+    """
+    used = gold_files if gold_files is not None else {}
     results = []
     for dataset in datasets:
         query_time = datetime.fromisoformat(dataset.query_time)
         for case in dataset.cases:
-            if case.split not in splits or not case.check or case.check["kind"] != "tools":
+            kind = case.check["kind"] if case.check else None
+            if case.split not in splits or kind not in AGENT_KINDS:
                 continue
             result = AgentCaseResult(
-                dataset.name, case.case_id, case.split, case.scenario, case.user_input, "pending"
+                dataset.name,
+                case.case_id,
+                case.split,
+                case.scenario,
+                case.user_input,
+                kind,
+                "pending",
             )
             results.append(result)
-            if not case.check.get("expect"):
-                result.detail = case.pending or "not labelled yet"
-                continue
-            result.expect = case.check["expect"]
             try:
-                result.record = await _play_case(agent, tools, case, query_time, version_id)
+                relevant = _prepare(result, case, corpus, gold_dir, used)
+            except gold.GoldError as error:
+                result.status, result.detail = "error", str(error)
+                continue
+            if result.detail:
+                continue
+            try:
+                result.record = await _play_case(agent, tools, case, query_time, corpus.version_id)
             except Exception as error:  # one case's failure must not end the run
                 logger.exception("case %s failed", case.case_id)
                 result.status, result.detail = "error", f"{type(error).__name__}: {error}"
                 continue
             result.called = called_tools(result.record)
-            result.passed = tools_passed(result.called, result.expect)
+            if kind == "tools":
+                result.passed = tools_passed(result.called, result.expect)
+            else:
+                await score_searches(result, relevant)
             result.status = "scored"
     return results
+
+
+def _prepare(
+    result: AgentCaseResult, case: Case, corpus: Corpus, gold_dir: Path, used: dict[str, str]
+) -> set[str]:
+    """What the case is scored against; sets `detail` when it cannot be scored yet."""
+    if result.kind == "tools":
+        if not case.check.get("expect"):
+            result.detail = case.pending or "not labelled yet"
+        result.expect = case.check.get("expect") or []
+        return set()
+    relevant, _ = retrieval_relevant(case, corpus, gold_dir, used)
+    if not relevant:
+        result.detail = "not labelled yet"
+    return relevant
+
+
+async def score_searches(result: AgentCaseResult, relevant: set[str]) -> None:
+    searches = [
+        tool.retrieved
+        for tool in result.record.tools
+        if tool.name == "search_knowledge" and tool.outcome == "found"
+    ]
+    first = searches[0] if searches else []
+    read = list({chunk.chunk_id: chunk for search in searches for chunk in search}.values())
+    result.searches = len(searches)
+    result.first_search = await retrieval_score(
+        relevant, [(c.keys, c.tokens) for c in first], SEARCHED_CHUNKS
+    )
+    result.turn_searches = await retrieval_score(
+        relevant, [(c.keys, c.tokens) for c in read], max(len(read), 1)
+    )
 
 
 async def _play_case(

@@ -4,20 +4,23 @@ from datetime import UTC, datetime
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from sqlalchemy import select
 
 from tests.agent.fakes import ScriptedChatModel, calls
 from wobot.agent.build import build_agent
-from wobot.agent.tools import TurnContext, build_tools
+from wobot.agent.tools import SEARCHED_CHUNKS, TurnContext, build_tools
 from wobot.eval.agent import (
     ToolUse,
     TurnRecord,
     called_tools,
     play,
-    run_tool_selection,
+    run_agent_checks,
     tools_passed,
 )
+from wobot.eval.corpus import load_corpus
 from wobot.eval.dataset import Case, Dataset
 from wobot.eval.report import agent_markdown, agent_summary
+from wobot.knowledge.models import Chunk, IndexVersionChunk
 
 LECTURES = {"record_type": "lecture"}
 
@@ -106,12 +109,41 @@ def tools_case(case_id, expect, user_input="問題", history=(), chatbot_name=No
     )
 
 
-async def select(knowledge, script, *cases):
+def retrieval_case(case_id):
+    check = {"kind": "retrieval", "gold": {"file": "retrieval.yaml"}}
+    return Case(case_id, "test", "dev", "誰是碩士畢業生？", "", None, check, None)
+
+
+async def evaluate(knowledge, script, *cases, gold_dir=None):
     model = ScriptedChatModel(script=script)
     tools = build_tools(knowledge.db, knowledge.embedder)
     agent = build_agent(model, tools, InMemorySaver())
     dataset = Dataset("test-v1", "2026-10-04T10:00:00+08:00", "Asia/Taipei", list(cases), "x")
-    return model, await run_tool_selection(agent, tools, [dataset], knowledge.version_id)
+    async with knowledge.db.begin() as conn:
+        corpus = await load_corpus(conn, knowledge.version_id)
+    options = {"gold_dir": gold_dir} if gold_dir else {}
+    return model, await run_agent_checks(agent, tools, [dataset], corpus, **options)
+
+
+async def passage(knowledge, header_part):
+    """A chunk's own text: searching for it ranks that chunk first."""
+    async with knowledge.db.begin() as conn:
+        return await conn.scalar(
+            select(Chunk.embedding_input)
+            .join(IndexVersionChunk, IndexVersionChunk.chunk_id == Chunk.chunk_id)
+            .where(
+                IndexVersionChunk.index_version_id == knowledge.version_id,
+                Chunk.context_header.contains(header_part),
+            )
+        )
+
+
+@pytest.fixture
+def gold_dir(tmp_path):
+    (tmp_path / "retrieval.yaml").write_text(
+        "R1:\n  relevant:\n    - student: '王小明'\nR2:\n  relevant: []\n", encoding="utf-8"
+    )
+    return tmp_path
 
 
 @pytest.mark.parametrize(
@@ -145,7 +177,7 @@ def test_a_refused_call_and_its_correction_are_one_choice():
 async def test_cases_are_scored_and_unlabelled_ones_stay_pending(knowledge):
     script = [calls("query_records", LECTURES), reply("兩場。"), reply("你好！")]
 
-    _, results = await select(
+    _, results = await evaluate(
         knowledge,
         script,
         tools_case("T1", [["query_records"]]),
@@ -158,7 +190,7 @@ async def test_cases_are_scored_and_unlabelled_ones_stay_pending(knowledge):
         ("T2", "scored", False),
         ("T3", "pending", None),
     ]
-    assert agent_summary(results)["accuracy dev"] == 0.5
+    assert agent_summary(results)["tools dev"]["accuracy"] == 0.5
 
 
 async def test_history_tools_run_for_real_before_the_turn(knowledge):
@@ -170,7 +202,7 @@ async def test_history_tools_run_for_real_before_the_turn(knowledge):
         }
     ]
 
-    model, (result,) = await select(
+    model, (result,) = await evaluate(
         knowledge, [reply("第一場。")], tools_case("T1", [[]], "第一場是哪場？", history)
     )
 
@@ -180,7 +212,7 @@ async def test_history_tools_run_for_real_before_the_turn(knowledge):
 
 
 async def test_a_case_that_breaks_is_an_error_and_the_run_goes_on(knowledge):
-    _, results = await select(
+    _, results = await evaluate(
         knowledge, [reply("好。")], tools_case("T1", [[]]), tools_case("T2", [[]])
     )
 
@@ -189,7 +221,7 @@ async def test_a_case_that_breaks_is_an_error_and_the_run_goes_on(knowledge):
 
 
 async def test_the_name_reaches_the_prompt(knowledge):
-    model, _ = await select(
+    model, _ = await evaluate(
         knowledge, [reply("好。")], tools_case("T1", [[]], chatbot_name="小幫手")
     )
 
@@ -200,8 +232,42 @@ async def test_the_report_shows_what_was_called_and_unsent(knowledge):
     written = '{"query": "GRC"}'
     script = [reply(phases(("commentary", written), ("final_answer", "沒有。")))]
 
-    _, results = await select(knowledge, script, tools_case("T1", [["search_knowledge"]]))
+    _, results = await evaluate(knowledge, script, tools_case("T1", [["search_knowledge"]]))
 
     markdown = agent_markdown(results, {"model": "scripted"})
     assert "**fail**" in markdown and written in markdown
     assert agent_summary(results)["unsent_calls"] == 1
+
+
+async def test_the_first_search_is_scored_alone_and_the_turn_as_read(knowledge, gold_dir):
+    masters = await passage(knowledge, "碩士畢業生")
+    products = await passage(knowledge, "產品目錄")
+    script = [
+        calls("search_knowledge", {"queries": [products]}, "call-1"),
+        calls("search_knowledge", {"queries": [masters]}, "call-2"),
+        reply("王小明。"),
+    ]
+
+    _, (result,) = await evaluate(knowledge, script, retrieval_case("R1"), gold_dir=gold_dir)
+
+    assert (result.status, result.searches) == ("scored", 2)
+    assert result.first_search.recall == 0
+    assert result.turn_searches.recall == 1
+    assert SEARCHED_CHUNKS < result.turn_searches.k <= 2 * SEARCHED_CHUNKS  # what was read
+
+
+async def test_a_turn_without_a_search_finds_nothing(knowledge, gold_dir):
+    _, (result,) = await evaluate(
+        knowledge, [reply("不知道。")], retrieval_case("R1"), gold_dir=gold_dir
+    )
+
+    assert result.searches == 0
+    assert (result.first_search.recall, result.turn_searches.recall) == (0, 0)
+    assert agent_summary([result])["retrieval dev"]["no_search"] == 1
+
+
+async def test_an_unlabelled_retrieval_case_is_not_played(knowledge, gold_dir):
+    model, (result,) = await evaluate(knowledge, [], retrieval_case("R2"), gold_dir=gold_dir)
+
+    assert (result.status, result.detail) == ("pending", "not labelled yet")
+    assert model.requests == []

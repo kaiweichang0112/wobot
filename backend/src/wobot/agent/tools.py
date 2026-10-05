@@ -29,7 +29,7 @@ from wobot.knowledge.lists import (
     records_by_prefix,
 )
 from wobot.knowledge.repository import Database
-from wobot.knowledge.search import Member, SearchHit, chunk_members, search_chunks
+from wobot.knowledge.search import Member, SearchHit, chunk_members, fuse, search_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,13 @@ logger = logging.getLogger(__name__)
 SHOWN_ITEMS = 50
 # Chunks one search returns: the k the phase A baseline was measured at.
 SEARCHED_CHUNKS = 5
+# Wordings one search may fuse: the user's language and English, and one more at most.
+SEARCH_QUERIES = 3
+# How deep each wording's ranking goes before fusion. Deeper lets a chunk every wording
+# ranks in the middle win, but also lets wordings that agree on the wrong chunks bury a
+# passage only one language finds; on two samples of the agent's queries (B4), 10 lost
+# 0.10 recall@5 on average to 5.
+FUSION_DEPTH = SEARCHED_CHUNKS
 # Products one details call may name: enough to compare, small enough to read in full.
 DETAILED_PRODUCTS = 5
 # The database or the provider failed, not the code: worth trying again later. Anything
@@ -129,7 +136,7 @@ class Evidence:
 @dataclass(frozen=True)
 class SearchResult:
     status: ToolStatus
-    query: str
+    queries: list[str]
     evidence: list[Evidence] = field(default_factory=list)
 
 
@@ -221,33 +228,40 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
 
     @tool(response_format="content_and_artifact")
     async def search_knowledge(
-        query: Annotated[str, "what to look for, in the words the sources would use"],
+        queries: Annotated[
+            list[str],
+            "1 to 3 wordings of what to look for: the user's own words, and the same in "
+            "English, since many sources are written in English",
+        ],
         runtime: ToolRuntime[TurnContext],
     ) -> tuple[str, SearchResult]:
         """Search the GRC and G-Tech websites, G-Tech's WhizToys documentation and PDFs, and
-        the catalog's smart-care products for the passages closest in meaning to the query.
-        Use it for facts, explanations, or products that fit a need. It returns the closest
-        few passages, not every match: for complete lists use query_records."""
+        the catalog's smart-care products for the passages closest in meaning to the queries,
+        merging what each wording finds. Use it for facts, explanations, or products that fit
+        a need. It returns the closest few passages, not every match: for complete lists use
+        query_records."""
+        if not 0 < len(queries) <= SEARCH_QUERIES:
+            raise ToolException(f"give 1 to {SEARCH_QUERIES} queries")
         version_id = runtime.context.index_version
         try:
-            embedded = await embedder.embed([query])
+            embedded = await embedder.embed(queries)
             async with db.begin() as conn:
-                hits = await search_chunks(
-                    conn,
-                    embedded.vectors[0],
-                    embedder.config_id,
-                    SEARCHED_CHUNKS,
-                    version_id=version_id,
-                )
+                rankings = [
+                    await search_chunks(
+                        conn, vector, embedder.config_id, FUSION_DEPTH, version_id=version_id
+                    )
+                    for vector in embedded.vectors
+                ]
+                hits = fuse(rankings, SEARCHED_CHUNKS)
                 members = await chunk_members(conn, [hit.chunk_id for hit in hits], version_id)
         except UNAVAILABLE:
             logger.exception("search_knowledge failed", extra={"index_version": version_id})
-            result = SearchResult(ToolStatus.FAILED, query)
+            result = SearchResult(ToolStatus.FAILED, queries)
         else:
             # Nearest neighbours always exist: no_match means the version holds no passages.
             status = ToolStatus.FOUND if hits else ToolStatus.NO_MATCH
             evidence = [Evidence(hit, members[hit.chunk_id]) for hit in hits]
-            result = SearchResult(status, query, evidence)
+            result = SearchResult(status, queries, evidence)
         return search_content(result), result
 
     @tool(response_format="content_and_artifact")
@@ -311,6 +325,7 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
         return details_content(result), result
 
     # A refused argument goes back to the model as an error it can read and correct.
+    search_knowledge.handle_tool_error = True
     query_records.handle_tool_error = True
     get_product_details.handle_tool_error = True
     return [search_knowledge, query_records, get_product_details]
