@@ -7,9 +7,16 @@ from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import select
 
 from tests.agent.fakes import ScriptedChatModel, answers, calls
+from tests.agent.test_tools import call
 from wobot.agent.build import build_agent
 from wobot.agent.render import RETRYABLE_TEXT
-from wobot.agent.tools import SEARCHED_CHUNKS, TurnContext, build_tools, result_handle
+from wobot.agent.tools import (
+    SEARCHED_CHUNKS,
+    TurnContext,
+    build_tools,
+    record_handle,
+    result_handle,
+)
 from wobot.eval.agent import (
     AgentCaseResult,
     ToolUse,
@@ -34,9 +41,9 @@ def usage(input_tokens=100, output_tokens=10):
     return {"input_tokens": input_tokens, "output_tokens": output_tokens, "total_tokens": total}
 
 
-def reply(text, input_tokens=100, output_tokens=10, lists=()):
+def reply(text, input_tokens=100, output_tokens=10, lists=(), **kwargs):
     """A final reply in the answer schema, with what it cost."""
-    return answers(text, lists, usage_metadata=usage(input_tokens, output_tokens))
+    return answers(text, lists, usage_metadata=usage(input_tokens, output_tokens), **kwargs)
 
 
 def phases(*texts):
@@ -366,3 +373,68 @@ async def test_a_behavior_the_check_does_not_know_is_an_error(knowledge):
     _, (result,) = await evaluate(knowledge, [], behavior_case("B1", cite=True))
 
     assert result.status == "error" and "['cite']" in result.detail
+
+
+def recommendation_case(case_id, history=(), **expect):
+    check = {"kind": "recommendation", **expect}
+    return Case(case_id, "test", "dev", "推薦離床預警的床墊", "", None, check, None, list(history))
+
+
+NEEDS = {"goal": "照顧臥床長者", "must_have": ["離床預警"]}
+
+
+async def bed_handle(knowledge):
+    tools = build_tools(knowledge.db, knowledge.embedder)
+    found = await call(tools, "query_records", {"record_type": "product"}, knowledge.version_id)
+    bed = next(i for i in found.artifact.items if i.fields["product_name"] == "測試床墊 TM-1")
+    return record_handle(bed.record_id)
+
+
+def recommending(handle, version=1):
+    check = {"requirement_id": "n1", "status": "supported", "evidence_ids": [handle]}
+    decision = {
+        "action": "recommend",
+        "requirements_version": version,
+        "products": [{"product_id": handle, "checks": [check]}],
+    }
+    return reply("這項符合。", recommendation=decision)
+
+
+async def test_a_recommendation_is_scored_by_the_products_it_names(knowledge):
+    handle = await bed_handle(knowledge)
+    script = [
+        calls("update_requirements", NEEDS, "call-1"),
+        calls("get_product_details", {"product_ids": [handle]}, "call-2"),
+        recommending(handle),
+    ] * 2
+    fits = {"action": ["recommend"], "recommends": ["測試床墊 TM-1"], "records": ["離床"]}
+    wrong = {"never": ["測試床墊 TM-1"], "records": ["跌倒"]}
+
+    _, (good, bad) = await evaluate(
+        knowledge, script, recommendation_case("R1", **fits), recommendation_case("R2", **wrong)
+    )
+
+    assert (good.passed, good.failures) == (True, [])
+    assert bad.failures == [
+        "recommended 測試床墊 TM-1, which does not fit",
+        "recorded no need with '跌倒'",
+    ]
+
+
+async def test_needs_recorded_in_the_history_reach_the_turn(knowledge):
+    handle = await bed_handle(knowledge)
+    history = [
+        {
+            "user": "想找離床預警的產品",
+            "tools": [{"name": "update_requirements", "args": NEEDS}],
+            "answer": "好的。",
+        }
+    ]
+    script = [calls("get_product_details", {"product_ids": [handle]}), recommending(handle)]
+
+    _, (result,) = await evaluate(
+        knowledge, script, recommendation_case("R1", history, recommends=["測試床墊 TM-1"])
+    )
+
+    # The decision names version 1, which only the history recorded.
+    assert (result.passed, result.record.requirements["version"]) == (True, 1)

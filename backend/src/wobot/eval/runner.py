@@ -111,7 +111,7 @@ async def run_datasets(
 
 # Checks scored from what the chat agent did, by `wobot-eval agent`: they need paid model
 # calls, which `run` never makes.
-AGENT_CHECKS = frozenset({"tools", "behavior"})
+AGENT_CHECKS = frozenset({"tools", "behavior", "recommendation"})
 
 
 def _kind(case: Case) -> str | None:

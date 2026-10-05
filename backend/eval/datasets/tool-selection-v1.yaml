@@ -4,7 +4,7 @@
 # called with the expected sets.
 #
 # Questions were drafted with AI. The expected tools are a person's labels: AI proposed
-# them with reasons and a person confirmed each on 2026-10-04 (TS-031 on 2026-10-05). Choices of policy behind
+# them with reasons and a person confirmed each on 2026-10-04 (TS-031 and TS-012's third set on 2026-10-05). Choices of policy behind
 # them: general knowledge may be answered without tools (TS-004); a need for a product
 # needs a semantic search, since a category is not a feature (TS-011 to TS-013); and a
 # user asking not to look things up does not exempt domain facts (TS-029).
@@ -88,7 +88,7 @@ cases:
     scenario: recommendation
     split: dev
     user_input: 我爸爸晚上常起床上廁所，我怕他跌倒，有什麼產品可以幫忙？
-    check: {kind: tools, expect: [[search_knowledge], [search_knowledge, get_product_details], [search_knowledge, query_records]]}
+    check: {kind: tools, expect: [[search_knowledge], [search_knowledge, get_product_details], [search_knowledge, query_records], [search_knowledge, query_records, get_product_details]]}
   - case_id: TS-013
     scenario: recommendation
     split: heldout

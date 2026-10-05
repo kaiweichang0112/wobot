@@ -298,12 +298,13 @@ def agent_summary(results: Sequence[AgentCaseResult]) -> dict[str, Any]:
                 "searches": mean([r.searches for r in retrieval]),
                 "no_search": sum(r.searches == 0 for r in retrieval),
             }
-        behavior = [r for r in scored if r.split == split and r.kind == "behavior"]
-        if behavior:
-            out[f"behavior {split}"] = {
-                "cases": len(behavior),
-                "passed": sum(bool(r.passed) for r in behavior),
-            }
+        for kind in ("behavior", "recommendation"):
+            played = [r for r in scored if r.split == split and r.kind == kind]
+            if played:
+                out[f"{kind} {split}"] = {
+                    "cases": len(played),
+                    "passed": sum(bool(r.passed) for r in played),
+                }
         lists = [r.set for r in scored if r.split == split and r.kind == "list" and r.set]
         if lists:
             out[f"list {split}"] = {
@@ -345,7 +346,7 @@ def _agent_result(r: AgentCaseResult) -> str:
         expected = " or ".join("{" + ", ".join(e) + "}" for e in r.expect)
         verdict = "pass" if r.passed else "**fail**"
         return f"{verdict}: expected {expected}"
-    if r.kind == "behavior":
+    if r.kind in ("behavior", "recommendation"):
         return "pass" if r.passed else "**fail**: " + "; ".join(r.failures)
     if r.kind == "list":
         s = r.set
