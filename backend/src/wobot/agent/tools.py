@@ -296,6 +296,15 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
             int | None,
             "for 'the last N years': N, counted back from today by date; not with years",
         ] = None,
+        contains: Annotated[
+            str | None,
+            "a name or words the record holds, as written, such as a person's name or "
+            "part of a title: students by name or thesis, lectures by their entry, "
+            "projects by title or funder, publications by text, products by name or company. "
+            "Never a date: filter by its year and read the dates listed. It matches only "
+            "the exact writing, so finding nothing may mean another spelling: list without "
+            "it before saying a record is absent",
+        ] = None,
     ) -> tuple[str, RecordsResult]:
         """List every record that matches: Yeh-Liang Hsu's lectures, GRC's graduated students
         with their theses, research projects or publications, or the catalog's smart-care
@@ -304,12 +313,14 @@ def build_tools(db: Database, embedder: Embedder) -> list[BaseTool]:
         products do not. At most 50 items are shown; the whole list is kept for display.
         A lecture's pdf_url is a link to its PDF, which code shows; no tool reads PDFs.
         With last_years, records dated only by a year that straddles the window's start or
-        today are listed apart as uncertain."""
+        today are listed apart as uncertain. To find a named student, talk, project or
+        publication, give the name in contains: these are listed many to a passage, so
+        semantic search does not single one out by its name."""
         if last_years is not None and last_years < 1:
             raise ToolException("last_years counts at least one year")
         today = runtime.context.query_time.astimezone(TIMEZONE).date()
         window = None if last_years is None else last_years_window(today, last_years)
-        query = RecordQuery(record_type, year_from, year_to, degree, category, window)
+        query = RecordQuery(record_type, year_from, year_to, degree, category, window, contains)
         version_id = runtime.context.index_version
         result_id = result_handle(version_id, query)
         try:

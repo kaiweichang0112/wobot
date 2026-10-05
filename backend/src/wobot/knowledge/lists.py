@@ -52,6 +52,7 @@ class RecordQuery:
     degree: str | None = None
     category: str | None = None
     window: Window | None = None  # by date, unlike the years
+    contains: str | None = None  # text the record's names or titles hold, as written
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,7 @@ class _Kind:
     categories: frozenset[str] = frozenset()  # the values category may take
     order: tuple[Any, ...] = ()
     only: tuple[Any, ...] = ()  # conditions every query of the kind adds
+    text: tuple[Any, ...] = ()  # the columns `contains` looks in
     span: Callable[[Mapping[str, Any]], Span] | None = None  # for windows; None: undated
 
 
@@ -110,18 +112,22 @@ KINDS: dict[str, _Kind] = {
         categories=frozenset({"keynote", "invited"}),
         order=(LectureRecord.lecture_date,),
         span=_lecture_span,
+        # The entry as listed holds the title, event and place.
+        text=(LectureRecord.entry_text,),
     ),
     "student": _Kind(
         StudentRecord,
         year=StudentRecord.graduation_year,
         order=(StudentRecord.graduation_year,),
         span=lambda fields: _year_span(fields["graduation_year"]),
+        text=(StudentRecord.name, StudentRecord.thesis_title_zh, StudentRecord.thesis_title_en),
     ),
     "project": _Kind(
         ProjectRecord,
         year=ProjectRecord.year,
         order=(ProjectRecord.year,),
         span=lambda fields: _year_span(fields["year"]),
+        text=(ProjectRecord.title_zh, ProjectRecord.title_en, ProjectRecord.funder_raw),
     ),
     "publication": _Kind(
         ListItemRecord,
@@ -139,6 +145,7 @@ KINDS: dict[str, _Kind] = {
         order=(ListItemRecord.year,),
         only=(ListItemRecord.list_kind == "publication",),
         span=lambda fields: _year_span(fields["year"]),
+        text=(ListItemRecord.item_text,),
     ),
     "product": _Kind(
         ProductRecord,
@@ -148,9 +155,12 @@ KINDS: dict[str, _Kind] = {
             | {"3-1", "3-2", "4-1", "4-2", "4-3", "4-4", "5-1", "5-2"}
         ),
         order=(ProductRecord.category_l2_code, ProductRecord.product_name),
+        text=(ProductRecord.product_name, ProductRecord.company_name),
     ),
 }
 DEGREES = frozenset({"master", "phd"})
+# Long enough for a title, short enough that it is not a question pasted in.
+CONTAINS_CHARS = 100
 # The start of a record ID, as the agent shows one: 8 of its 32 hex digits.
 _PREFIX = re.compile(r"[0-9a-f]{8}")
 
@@ -183,6 +193,8 @@ async def find_records(conn: AsyncConnection, version_id: int, query: RecordQuer
         if query.category not in kind.categories:
             raise QueryError(f"a {query.kind} category is one of {sorted(kind.categories)}")
         conditions.append(kind.category == query.category)
+    if query.contains is not None:
+        conditions.append(_contains(kind, query.contains))
 
     rows = await conn.execute(
         _listed(kind).where(*conditions).order_by(*kind.order, IndexVersionRecord.logical_key)
@@ -198,6 +210,17 @@ async def find_records(conn: AsyncConnection, version_id: int, query: RecordQuer
         elif place == "uncertain":
             found.uncertain.append(item)
     return found
+
+
+def _contains(kind: _Kind, text: str) -> Any:
+    """The text inside any of the kind's names or titles, ignoring case: an exact lookup
+    where semantic search ranks a name no higher than any other in its list."""
+    text = text.strip()
+    if not text or len(text) > CONTAINS_CHARS:
+        raise QueryError(f"contains takes 1 to {CONTAINS_CHARS} characters")
+    # Taken as written: a % or _ in it is not a wildcard.
+    pattern = "%" + re.sub(r"([\\%_])", r"\\\1", text) + "%"
+    return or_(*(column.ilike(pattern, escape="\\") for column in kind.text))
 
 
 def _place(span: Span, window: Window) -> Literal["within", "uncertain", "outside"]:

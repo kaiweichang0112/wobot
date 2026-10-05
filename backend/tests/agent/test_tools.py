@@ -287,3 +287,17 @@ async def test_details_from_an_unreachable_database_are_failed():
 
     assert message.artifact.status is ToolStatus.FAILED
     assert json.loads(message.content) == {"status": "failed", "retryable": True}
+
+
+async def test_a_name_finds_its_record_and_names_its_own_result(knowledge):
+    tools = build_tools(knowledge.db, knowledge.embedder)
+    everyone = {"record_type": "student"}
+
+    named = await call(
+        tools, "query_records", {**everyone, "contains": "王小明"}, knowledge.version_id
+    )
+    whole = await call(tools, "query_records", everyone, knowledge.version_id)
+
+    content = json.loads(named.content)
+    assert (content["count"], content["items"][0]["name"]) == (1, "王小明")
+    assert content["result_id"] != json.loads(whole.content)["result_id"]

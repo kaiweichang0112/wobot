@@ -35,6 +35,23 @@ async def test_filters_narrow_by_category_and_degree(knowledge):
     assert len(beds) == 2
 
 
+@pytest.mark.parametrize(
+    ("query", "found"),
+    [
+        (RecordQuery("student", contains="王小明"), ["student:master:王小明"]),
+        # Thesis titles too, and English whatever its case.
+        (RecordQuery("student", contains="bed-CENTERED"), ["student:phd:劉大同"]),
+        (RecordQuery("student", contains=" 智慧床墊 "), ["student:master:王小明"]),
+        (RecordQuery("student", contains="王小明", year_from=2023), []),
+        # Taken as written: % and _ are not wildcards.
+        (RecordQuery("student", contains="%"), []),
+        (RecordQuery("student", contains="_"), []),
+    ],
+)
+async def test_contains_finds_records_by_name_or_title(knowledge, query, found):
+    assert await keys(knowledge, query) == found
+
+
 async def test_students_come_in_graduation_order(knowledge):
     assert await keys(knowledge, RecordQuery("student")) == [
         "student:phd:劉大同",
@@ -64,6 +81,8 @@ async def test_a_version_that_holds_nothing_lists_nothing(knowledge):
         RecordQuery("product", category="9-9"),
         RecordQuery("product", window=Window(date(2021, 1, 1), date(2026, 1, 1))),
         RecordQuery("student", year_from=2020, window=Window(date(2021, 1, 1), date(2026, 1, 1))),
+        RecordQuery("student", contains="  "),
+        RecordQuery("student", contains="長" * 101),
     ],
 )
 async def test_a_filter_the_kind_lacks_is_refused(knowledge, query):
