@@ -80,6 +80,28 @@ async def search_chunks(
     return [SearchHit(**row._mapping) for row in rows]
 
 
+# Reciprocal rank fusion's constant: rank r scores 1 / (RRF_K + r). The usual 60 keeps the
+# first few ranks of one list from outweighing agreement between lists.
+RRF_K = 60
+
+
+def fuse(rankings: Sequence[Sequence[SearchHit]], k: int) -> list[SearchHit]:
+    """The top k chunks of several searches by reciprocal rank fusion.
+
+    Ranks, not distances: searches in different languages sit at different distances from
+    the same text, so their distances do not compare. A chunk scores the sum over the
+    searches that returned it; ties keep the order in which chunks first appear.
+    """
+    scores: dict[uuid.UUID, float] = {}
+    hits: dict[uuid.UUID, SearchHit] = {}
+    for ranking in rankings:
+        for rank, hit in enumerate(ranking, start=1):
+            scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + 1 / (RRF_K + rank)
+            hits.setdefault(hit.chunk_id, hit)
+    order = sorted(scores, key=lambda chunk_id: -scores[chunk_id])  # stable on ties
+    return [hits[chunk_id] for chunk_id in order[:k]]
+
+
 @dataclass(frozen=True)
 class Member:
     """A record a chunk is built from."""
