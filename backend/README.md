@@ -229,7 +229,7 @@ docker build -t wobot-api:local .
 | `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
 | `VISION_MODEL` | `gpt-6.1-sol` | Reads images and PDF pages; chosen with `wobot-eval vision`; answers are cached per model |
 | `AGENT_MODEL` | `gpt-5.6-luna` | The chat agent's model, until the phase B evaluation chooses one |
-| `AGENT_REASONING_EFFORT` | `low` | Its reasoning effort; `default` sends none |
+| `AGENT_REASONING_EFFORT` | `medium` | Its reasoning effort; `default` sends none |
 | `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |
