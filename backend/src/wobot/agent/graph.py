@@ -6,19 +6,22 @@ between `list_agent` and `list_tools` before `write_list`; recommendations recor
 user's needs, loop between `rec_agent` and `rec_tools`, then `decide` and `check`. A
 database or provider failure on any path ends at `report_failure`.
 
-The nodes are stubs until each path is built; the edges are final, and a test holds
-the drawing to `tests/agent/expected_graph.mmd`.
+Nodes that call a model are made inside `build_graph`, so they hold the model they were
+given; the rest are stubs until their path is built. The edges are final, and a test
+holds the drawing to `tests/agent/expected_graph.mmd`.
 """
 
 from datetime import datetime
 from typing import Annotated, Any, Literal, TypedDict
 
-from langchain_core.messages import BaseMessage
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
-Route = Literal["chat", "knowledge", "list", "recommend"]
+from wobot.agent.chat import chat_prompt
+from wobot.agent.route import Route, Router
 
 # Tool rounds one turn's loop may take before it answers from what it has.
 MAX_LIST_ROUNDS = 3
@@ -39,6 +42,7 @@ class ChatState(TypedDict):
 
     # This turn's work, cleared by classify.
     route: Route
+    route_confidence: float | None  # Jev's, when Jev routes
     question: str  # the question, standalone
     queries: list[str]  # what to search for, in the user's language and English
     name: str | None  # a person, talk or project asked about by name
@@ -54,17 +58,27 @@ class ChatState(TypedDict):
     reply: dict[str, Any]  # what the user is shown or told
 
 
-# --- Nodes: stubs that change nothing --------------------------------------------------
+def fresh_turn() -> dict[str, Any]:
+    """What classify sets before any path runs: a turn starts from none of the last
+    one's work. New lists each time, so no two turns share one."""
+    return {
+        "question": "",
+        "queries": [],
+        "name": None,
+        "evidence": {},
+        "list_messages": [],
+        "list_results": {},
+        "rec_messages": [],
+        "tool_rounds": 0,
+        "decision": None,
+        "problems": [],
+        "retries": 0,
+        "status": "ok",
+        "reply": {},
+    }
 
 
-def classify(state: ChatState) -> dict[str, Any]:
-    """Names the kind of question: chat, knowledge, list or recommend."""
-    return {}
-
-
-def chat_reply(state: ChatState) -> dict[str, Any]:
-    """Small talk, general knowledge and writing, with no lookup."""
-    return {}
+# --- Nodes not built yet: stubs that change nothing -----------------------------------
 
 
 def rewrite_query(state: ChatState) -> dict[str, Any]:
@@ -170,7 +184,21 @@ def pass_or_retry(state: ChatState) -> Literal["pass", "retry"]:
 # --- The graph -------------------------------------------------------------------------
 
 
-def build_graph() -> CompiledStateGraph:
+def build_graph(router: Router, chat_model: BaseChatModel) -> CompiledStateGraph:
+    """The graph, its model nodes holding the router and chat model given."""
+
+    async def classify(state: ChatState) -> dict[str, Any]:
+        """Names the kind of question: chat, knowledge, list or recommend."""
+        routed = await router(state["messages"], state.get("pending_question"))
+        return {"route": routed.route, "route_confidence": routed.confidence, **fresh_turn()}
+
+    async def chat_reply(state: ChatState) -> dict[str, Any]:
+        """Small talk, general knowledge and writing, with no lookup."""
+        response = await chat_model.ainvoke(chat_prompt(state["chatbot_name"], state["messages"]))
+        # Only the words are kept: the conversation holds text, not the provider's blocks.
+        text = response.text
+        return {"messages": [AIMessage(text)], "reply": {"text": text}}
+
     graph = StateGraph(ChatState)
 
     # The order nodes are added in is the order they are drawn in.
