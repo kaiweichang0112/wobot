@@ -49,8 +49,9 @@ class Settings(BaseSettings):
     classify_effort: str = "none"
     # A route that takes longer has stalled: give up soon, and try once more at most.
     classify_timeout_seconds: float = 15
+    # Chosen for speed (DEC-060): first words at 0.78s p50 against 0.91s for gpt-6-luna.
     chat_model: str = "gpt-5.6-luna"
-    chat_effort: str = "low"
+    chat_effort: str = "none"
     # For Jev; in the cloud it comes from Secret Manager.
     typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.
