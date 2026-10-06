@@ -80,6 +80,9 @@ async def run_datasets(
             if case.check is None:
                 result.detail = case.pending or "no check defined"
                 continue
+            if result.kind in GRAPH_CHECKS:
+                result.detail = "scored by playing the chat graph"
+                continue
             try:
                 refs = case_refs(case, gold_dir, run.gold_files)
             except gold.GoldError as error:
@@ -104,6 +107,11 @@ async def run_datasets(
         if result.retrieval is None:
             result.detail = "needs an embedder"
     return run
+
+
+# Checks scored from what the chat graph did: they need paid model calls, which `run`
+# never makes.
+GRAPH_CHECKS = frozenset({"route"})
 
 
 def _kind(case: Case) -> str | None:
