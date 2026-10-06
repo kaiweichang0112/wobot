@@ -15,6 +15,8 @@ from wobot.knowledge.models import (
     Embedding,
     IndexVersionChunk,
     IndexVersionRecord,
+    Record,
+    SourceSnapshot,
 )
 
 
@@ -79,23 +81,73 @@ async def search_chunks(
     return [SearchHit(**row._mapping) for row in rows]
 
 
-async def chunk_record_keys(
+# Reciprocal rank fusion's constant: rank r scores 1 / (RRF_K + r). The usual 60 keeps the
+# first few ranks of one list from outweighing agreement between lists.
+RRF_K = 60
+
+
+def fuse(rankings: Sequence[Sequence[SearchHit]], k: int) -> list[SearchHit]:
+    """The top k chunks of several searches by reciprocal rank fusion.
+
+    Ranks, not distances: searches in different languages sit at different distances from
+    the same text, so their distances do not compare. A chunk scores the sum over the
+    searches that returned it; ties keep the order in which chunks first appear.
+    """
+    scores: dict[uuid.UUID, float] = {}
+    hits: dict[uuid.UUID, SearchHit] = {}
+    for ranking in rankings:
+        for rank, hit in enumerate(ranking, start=1):
+            scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + 1 / (RRF_K + rank)
+            hits.setdefault(hit.chunk_id, hit)
+    order = sorted(scores, key=lambda chunk_id: -scores[chunk_id])  # stable on ties
+    return [hits[chunk_id] for chunk_id in order[:k]]
+
+
+@dataclass(frozen=True)
+class Member:
+    """A record a chunk is built from."""
+
+    record_id: uuid.UUID
+    record_type: str
+    logical_key: str
+    source_url: str  # the page or file the record was read from
+
+
+async def chunk_members(
     conn: AsyncConnection, chunk_ids: Sequence[uuid.UUID], version_id: int
-) -> dict[uuid.UUID, list[str]]:
-    """The logical keys of the records each chunk is built from, as this version lists them.
+) -> dict[uuid.UUID, list[Member]]:
+    """The records each chunk is built from, as this version lists them.
 
     A reused chunk keeps links to older revisions too; only the version's own count.
     """
     rows = await conn.execute(
-        select(ChunkRecord.chunk_id, IndexVersionRecord.logical_key)
+        select(
+            ChunkRecord.chunk_id,
+            IndexVersionRecord.record_id,
+            Record.record_type,
+            IndexVersionRecord.logical_key,
+            SourceSnapshot.locator.label("source_url"),
+        )
         .join(IndexVersionRecord, IndexVersionRecord.record_id == ChunkRecord.record_id)
+        .join(Record, Record.record_id == ChunkRecord.record_id)
+        .join(SourceSnapshot, SourceSnapshot.snapshot_id == IndexVersionRecord.snapshot_id)
         .where(
             ChunkRecord.chunk_id.in_(list(chunk_ids)),
             IndexVersionRecord.index_version_id == version_id,
         )
         .order_by(ChunkRecord.chunk_id, ChunkRecord.position)
     )
-    keys: dict[uuid.UUID, list[str]] = {chunk_id: [] for chunk_id in chunk_ids}
+    members: dict[uuid.UUID, list[Member]] = {chunk_id: [] for chunk_id in chunk_ids}
     for row in rows:
-        keys[row.chunk_id].append(row.logical_key)
-    return keys
+        members[row.chunk_id].append(
+            Member(row.record_id, row.record_type, row.logical_key, row.source_url)
+        )
+    return members
+
+
+async def chunk_record_keys(
+    conn: AsyncConnection, chunk_ids: Sequence[uuid.UUID], version_id: int
+) -> dict[uuid.UUID, list[str]]:
+    """The logical keys of the records each chunk is built from, as this version lists them."""
+    members = await chunk_members(conn, chunk_ids, version_id)
+    return {chunk_id: [m.logical_key for m in found] for chunk_id, found in members.items()}
