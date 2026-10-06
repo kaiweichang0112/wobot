@@ -15,6 +15,9 @@ os.environ["GOOGLE_CLOUD_PROJECT"] = "wobot-test"
 os.environ["DB_MODE"] = "local"
 os.environ["DB_USER"] = API_USER
 os.environ["DB_PASSWORD"] = "wobot"
+# LangSmith sends traces off the machine; tests never do (DEC-057). TRACING_V2 is read
+# before TRACING, so this wins over a LANGCHAIN_TRACING_V2=true left in the shell.
+os.environ["LANGSMITH_TRACING_V2"] = "false"
 
 from wobot.api.auth import get_token_claims  # noqa: E402
 from wobot.api.main import app  # noqa: E402
