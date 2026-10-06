@@ -80,6 +80,10 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **RAGAS scores evaluation and is a dev dependency**, kept installable by two pins in
   `[tool.uv]` of `backend/pyproject.toml`; lifting either breaks it. Its usage reporting
   stays off: `wobot/eval/__init__.py` sets `RAGAS_DO_NOT_TRACK`.
+- **Tests never send LangSmith traces.** `tests/conftest.py` sets
+  `LANGSMITH_TRACING_V2=false`, which the SDK reads before `LANGSMITH_TRACING`, so a
+  `LANGCHAIN_TRACING_V2=true` left in the shell cannot turn tracing back on; a test
+  checks it. Settings ignores `LANGSMITH_*`: trace locally with `uv run --env-file .env`.
 - **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
   pgvector asyncpg codec: it rejects the text the type sends.
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the
