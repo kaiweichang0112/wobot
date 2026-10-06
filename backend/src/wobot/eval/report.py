@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
+from wobot.eval.route import CandidateResult, rule_pick
 from wobot.eval.runner import CaseResult, RunResult
 from wobot.eval.vision import ModelResult
 
@@ -263,4 +264,95 @@ def write_vision_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(vision_markdown(results, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Router comparison -----------------------------------------------------------------
+
+
+def route_markdown(results: Sequence[CandidateResult], meta: Mapping[str, Any]) -> str:
+    pick = rule_pick(results)
+    lines = [
+        "# Routers on the route dataset",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        "Correct is per run, as the mean and the range over runs. Latency counts calls that "
+        "returned; a failed call counts as a miss and as an error.",
+        "",
+        "| Candidate | Correct | Accuracy | p50 s | p95 s | Tokens in / out "
+        "| $ per 1,000 | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        per_run = r.correct_per_run()
+        tokens_in, tokens_out = r.mean_tokens
+        cost = r.cost_per_thousand
+        lines.append(
+            f"| {r.candidate.label} | {r.mean_correct:.1f} / {r.cases} "
+            f"({min(per_run)}–{max(per_run)}) | {r.accuracy:.3f} | {r.latency(0.5):.2f} "
+            f"| {r.latency(0.95):.2f} | {tokens_in:.0f} / {tokens_out:.0f} "
+            f"| {'?' if cost is None else f'{cost:.4f}'} | {r.errors} |"
+        )
+    lines += [
+        "",
+        f"DV11's rule picks **{pick.candidate.label}**: within one case of the best, the "
+        "lowest p95, then the cheapest among those close to it. The choice is a person's.",
+        "",
+        "## Misses",
+        "",
+        "Each miss as the route chosen, with Jev's confidence when it gave one.",
+        "",
+        "| Case | Expected | " + " | ".join(r.candidate.label for r in results) + " |",
+        "| --- | --- |" + " --- |" * len(results),
+    ]
+    missed = {case: plays for r in results for case, plays in r.misses().items()}
+    for case in sorted(missed):
+        expected = " or ".join(missed[case][0].expected)
+        cells = [_missed_cell(r.misses().get(case, [])) for r in results]
+        lines.append(f"| {case} | {expected} | " + " | ".join(cells) + " |")
+    errors = [(r, p) for r in results for p in r.plays if p.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {r.candidate.label} {p.case_id} run {p.run}: {p.error}" for r, p in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _missed_cell(plays: Sequence[Any]) -> str:
+    if not plays:
+        return ""
+    shown = []
+    for play in plays:
+        got = play.got or "error"
+        shown.append(got if play.confidence is None else f"{got} ({play.confidence:.2f})")
+    return ", ".join(shown)
+
+
+def write_route_report(
+    results: Sequence[CandidateResult], meta: Mapping[str, Any], directory: Path, stem: str
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "pick": rule_pick(results).candidate.label,
+        "candidates": [
+            {
+                "candidate": r.candidate.label,
+                "correct_per_run": r.correct_per_run(),
+                "accuracy": r.accuracy,
+                "p50_seconds": r.latency(0.5),
+                "p95_seconds": r.latency(0.95),
+                "cost_per_thousand": r.cost_per_thousand,
+                "plays": [asdict(p) for p in r.plays],
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(route_markdown(results, meta), encoding="utf-8")
     return markdown
