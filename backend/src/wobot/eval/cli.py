@@ -5,8 +5,9 @@ once with the version's embedding model; every other check is computed from reco
 Scores come from RAGAS, a dev dependency: this runs from a checkout, not in the API image.
 
 `vision` is the exception: it asks vision models to read the dev pictures and keeps their
-answers where ingestion does, so it runs as the ingestion role. `route` compares the chat
-graph's routers on the route dataset; it calls the models alone and reads no database.
+answers where ingestion does, so it runs as the ingestion role. `route` and `chat` compare
+models for the chat graph's nodes on the route dataset; they call the models alone and
+read no database.
 """
 
 import argparse
@@ -20,15 +21,26 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from wobot.agent import chat as chatting
 from wobot.agent import route as routing
+from wobot.agent.models import openai_model
 from wobot.agent.route import router_for
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.eval import gold
+from wobot.eval.candidates import parse_candidate
+from wobot.eval.chat import chat_cases
+from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
-from wobot.eval.report import summary, write_report, write_route_report, write_vision_report
-from wobot.eval.route import compare, parse_candidate, route_cases
+from wobot.eval.report import (
+    summary,
+    write_chat_report,
+    write_report,
+    write_route_report,
+    write_vision_report,
+)
+from wobot.eval.route import compare, route_cases
 from wobot.eval.runner import case_refs, run_datasets
 from wobot.eval.vision import compare_models, dev_transcriptions, fetch_pictures
 from wobot.knowledge.embeddings import OpenAIEmbedder
@@ -103,6 +115,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     route.add_argument("--dataset", default="route-v1", choices=dataset_names())
     route.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     route.set_defaults(handler=_route)
+
+    chat = commands.add_parser(
+        "chat", help="compare models for the chat path on the route dataset (paid calls)"
+    )
+    chat.add_argument(
+        "--model",
+        action="append",
+        required=True,
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="a candidate, such as gpt-6-luna:none; repeat for more",
+    )
+    chat.add_argument("--runs", type=int, default=5, help="times each case is played")
+    chat.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    chat.add_argument("--dataset", default="route-v1", choices=dataset_names())
+    chat.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    chat.set_defaults(handler=_chat)
 
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
@@ -205,6 +234,40 @@ async def _route(args: argparse.Namespace, settings: Settings) -> int:
         print(
             f"{r.candidate.label}: {r.accuracy:.3f}, p50 {r.latency(0.5):.2f}s, "
             f"p95 {r.latency(0.95):.2f}s, {r.errors} errors"
+        )
+    print(f"report: {path}")
+    return 0
+
+
+async def _chat(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    if jev := [c.label for c in args.model if c.effort == "-"]:
+        print(f"{jev}: Jev classifies and writes no replies")
+        return 1
+    dataset = load_dataset(args.dataset)
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    cases = chat_cases([dataset], splits)
+    models = [(c, openai_model(settings, c.model, c.effort)) for c in args.model]
+    started = datetime.now().astimezone()
+    results = await compare_chat(models, cases, args.runs, progress=print)
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "prompt_version": chatting.PROMPT_VERSION,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]}",
+        "splits": list(splits),
+        "cases": len(cases),
+        "runs": args.runs,
+        "prices": "spec 07, checked 2026-10-01",
+    }
+    stem = f"{started:%Y%m%d-%H%M%S}-chat"
+    path = write_chat_report(results, cases, meta, args.out, stem)
+    for r in results:
+        print(
+            f"{r.candidate.label}: first words p50 {r.first_token(0.5):.2f}s, "
+            f"total p50 {r.total(0.5):.2f}s p95 {r.total(0.95):.2f}s, {r.errors} errors"
         )
     print(f"report: {path}")
     return 0

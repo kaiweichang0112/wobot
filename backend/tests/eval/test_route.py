@@ -3,19 +3,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from tests.agent.fakes import FakeRouter
 from wobot.agent.route import Routed
+from wobot.eval.candidates import Candidate, case_messages, parse_candidate, percentile
 from wobot.eval.dataset import Case, load_dataset
 from wobot.eval.report import route_markdown
-from wobot.eval.route import (
-    Candidate,
-    CandidateResult,
-    Played,
-    case_messages,
-    compare,
-    parse_candidate,
-    percentile,
-    route_cases,
-    rule_pick,
-)
+from wobot.eval.route import CandidateResult, Played, compare, route_cases, rule_pick
 
 
 def case(case_id: str, expect: list[str], **extra) -> Case:

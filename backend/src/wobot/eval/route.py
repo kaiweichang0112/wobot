@@ -6,53 +6,25 @@ so that a slow minute of the network falls on all of them alike. Latency is the 
 own call: the classify node does nothing else.
 """
 
-import math
 import statistics
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-
 from wobot.agent.route import Router
+from wobot.eval.candidates import (
+    Candidate,
+    case_messages,
+    cases_of,
+    cost_per_thousand,
+    percentile,
+)
 from wobot.eval.dataset import Case, Dataset
-
-# US dollars per million tokens, input and output, from spec 07's check of 2026-10-01.
-# Re-check the pricing pages before a comparison that decides on cost. Cached input is
-# left out: a router's prompt is too short for the provider to cache.
-PRICES: dict[str, tuple[float, float]] = {
-    "gpt-5.5": (5.00, 30.00),
-    "gpt-6.1-sol": (2.00, 10.00),
-    "gpt-5.6-terra": (2.00, 12.00),
-    "gpt-5.6-luna": (0.20, 1.20),
-    "gpt-6-luna": (0.10, 0.50),
-    "jev-latest": (0.042, 0.0),  # output is not charged
-}
 
 # DV11's rule: keep the candidates within one case of the best, take the fastest at p95,
 # and among those within a tenth of its p95 the cheapest.
 CASES_BEHIND_BEST = 1
 CLOSE_LATENCY = 0.10
-
-
-@dataclass(frozen=True)
-class Candidate:
-    model: str
-    effort: str  # "-" for Jev, which has none
-
-    @property
-    def label(self) -> str:
-        return self.model if self.effort == "-" else f"{self.model}:{self.effort}"
-
-
-def parse_candidate(spec: str) -> Candidate:
-    """`model:effort`, or a Jev model alone."""
-    model, _, effort = spec.partition(":")
-    if model.startswith("jev-"):
-        return Candidate(model, "-")
-    if not effort:
-        raise ValueError(f"{spec}: give the effort, as in gpt-6-luna:none")
-    return Candidate(model, effort)
 
 
 @dataclass(frozen=True)
@@ -113,11 +85,7 @@ class CandidateResult:
     @property
     def cost_per_thousand(self) -> float | None:
         """Dollars for a thousand messages; None for a model without a known price."""
-        if self.candidate.model not in PRICES:
-            return None
-        price_in, price_out = PRICES[self.candidate.model]
-        tokens_in, tokens_out = self.mean_tokens
-        return 1000 * (tokens_in * price_in + tokens_out * price_out) / 1_000_000
+        return cost_per_thousand(self.candidate.model, *self.mean_tokens)
 
     def misses(self) -> dict[str, list[Played]]:
         """The plays that missed, by case."""
@@ -128,29 +96,8 @@ class CandidateResult:
         return missed
 
 
-def percentile(values: Sequence[float], share: float) -> float:
-    """The nearest-rank percentile: the value that `share` of them do not exceed."""
-    if not values:
-        return math.nan
-    ordered = sorted(values)
-    return ordered[max(math.ceil(share * len(ordered)) - 1, 0)]
-
-
 def route_cases(datasets: Sequence[Dataset], splits: Sequence[str]) -> list[Case]:
-    return [
-        case
-        for dataset in datasets
-        for case in dataset.cases
-        if case.split in splits and case.check and case.check["kind"] == "route"
-    ]
-
-
-def case_messages(case: Case) -> list[BaseMessage]:
-    """The scripted conversation, then the case's own message."""
-    messages: list[BaseMessage] = []
-    for turn in case.history:
-        messages += [HumanMessage(turn["user"]), AIMessage(turn["answer"])]
-    return [*messages, HumanMessage(case.user_input)]
+    return cases_of(datasets, splits, "route")
 
 
 async def play(router: Router, case: Case, run: int) -> Played:
