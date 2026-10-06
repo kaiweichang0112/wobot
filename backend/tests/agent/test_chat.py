@@ -10,7 +10,7 @@ from wobot.agent.chat import RECENT_MESSAGES, chat_prompt
 def test_the_prompt_version_moves_with_the_prompt():
     fingerprint = hashlib.sha256(chat.INSTRUCTIONS.encode()).hexdigest()[:12]
 
-    assert (chat.PROMPT_VERSION, fingerprint) == (1, "03b4b00d9173")
+    assert (chat.PROMPT_VERSION, fingerprint) == (2, "f429731d4d24")
 
 
 def test_the_name_is_given_as_data_after_the_rules():
