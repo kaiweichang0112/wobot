@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnableLambda
 from wobot.agent.graph import Models
 from wobot.agent.rewrite import SearchPlan
 from wobot.agent.route import Route, Routed
+from wobot.agent.write_list import ListIntro
 
 
 class FakeRouter:
@@ -37,15 +38,46 @@ def fake_models(
     chat: Sequence[str] = ("你好！",),
     plan: SearchPlan | None = None,
     answers: Sequence[str] = ("答案。",),
+    list_calls: Sequence[AIMessage] = (AIMessage("done"),),
+    intro: ListIntro | None = None,
 ) -> Models:
-    """Models that route, plan and answer as given."""
+    """Models that route, plan, answer, call list tools and introduce lists as given."""
     plan = plan or SearchPlan(question_zh="問題", question_en="question", name=None)
     return Models(
         router=FakeRouter(route),
         chat=fake_chat(*chat),
         rewrite=FakeStructuredModel(plan),
         answer=fake_chat(*answers),
+        list_agent=FakeToolModel(*list_calls),
+        write_list=FakeStructuredModel(intro or ListIntro(intro="沒有找到。", lists=[])),
     )
+
+
+def calls(*tools: tuple[str, dict[str, Any]]) -> AIMessage:
+    """A model's message calling each tool with its arguments."""
+    return AIMessage(
+        "",
+        tool_calls=[
+            {"name": name, "args": args, "id": f"call-{n}"}
+            for n, (name, args) in enumerate(tools, start=1)
+        ],
+    )
+
+
+class FakeToolModel:
+    """A model bound to tools that replies with the messages given, in order; records
+    each prompt and the tool choice it was bound with."""
+
+    def __init__(self, *replies: AIMessage):
+        self.replies = iter(replies)
+        self.prompts: list[tuple[str | None, list[BaseMessage]]] = []
+
+    def bind_tools(self, tools: Any, tool_choice: str | None = None, **kwargs: Any):
+        def reply(messages: list[BaseMessage]) -> AIMessage:
+            self.prompts.append((tool_choice, messages))
+            return next(self.replies)
+
+        return RunnableLambda(reply)
 
 
 class FakeStructuredModel:

@@ -111,7 +111,7 @@ async def run_datasets(
 
 # Checks scored from what the chat graph did: they need paid model calls, which `run`
 # never makes.
-GRAPH_CHECKS = frozenset({"route", "knowledge"})
+GRAPH_CHECKS = frozenset({"route", "knowledge", "list_path"})
 
 
 def _kind(case: Case) -> str | None:

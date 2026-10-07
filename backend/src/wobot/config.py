@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     # Chosen for speed and cost (DEC-062): as correct as gpt-4o, at 2.61s p95 and 1/25 the cost.
     answer_model: str = "gpt-6-luna"
     answer_effort: str = "none"
+    # Chosen for accuracy and cost (DEC-063): 16 of 16 cases every run, at 1/24 gpt-4o's
+    # cost; gpt-4o's lower p95 came from one run in which gpt-6-luna was slow throughout.
+    list_agent_model: str = "gpt-6-luna"
+    list_agent_effort: str = "none"
+    # Chosen by its replies (DEC-063): 16 of 16 at 2.97s p95, and alone in never answering
+    # a mixed request's other part from memory.
+    write_list_model: str = "gpt-6-luna"
+    write_list_effort: str = "none"
     # For Jev; in the cloud it comes from Secret Manager.
     typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.

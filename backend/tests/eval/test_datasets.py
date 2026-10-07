@@ -3,6 +3,7 @@ needs a database, so `wobot-eval check-gold` does that part."""
 
 import pytest
 
+from wobot.agent.list_agent import TOOLS_BY_NAME
 from wobot.eval import gold
 from wobot.eval.dataset import dataset_names, load_dataset
 from wobot.eval.runner import case_refs
@@ -26,3 +27,17 @@ def test_every_gold_file_belongs_to_a_case():
     files = {path.name for path in gold.GOLD_DIR.iterdir() if path.name != "README.md"}
 
     assert files == used
+
+
+def test_every_expected_list_call_is_one_the_tools_take():
+    cases = [c for c in load_dataset("lists-v1").cases if c.check["kind"] == "list_path"]
+
+    assert cases
+    for case in cases:
+        for accepted in case.check["calls"]:
+            for call in accepted:
+                filters = {name: value for name, value in call.items() if name != "tool"}
+                spellings = filters.pop("contains", [None])
+                for contains in spellings:
+                    given = filters | ({} if contains is None else {"contains": contains})
+                    TOOLS_BY_NAME[call["tool"]].model_validate(given)  # raises if refused
