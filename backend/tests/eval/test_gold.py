@@ -174,6 +174,59 @@ def test_a_section_is_named_by_its_heading_by_the_one_above_or_by_its_text():
     assert resolved[1].problem == "heading of 2 sections; add the one above"
 
 
+def test_any_of_names_items_that_each_answer_alone(tmp_path):
+    path = write(
+        tmp_path,
+        "k.yaml",
+        "KN-1:\n  relevant:\n    - any_of:\n        - section: 'Since 2003'\n"
+        "        - profile: 'Biography'\n        - student: ''\n"
+        "    - section: '聯絡我們'\n",
+    )
+
+    group, alone = gold.named_refs(path, "KN-1", "relevant")
+
+    assert (group.kind, group.where) == (gold.ANY_OF, "k.yaml:KN-1#1")
+    # The blank template entry is left out, as anywhere else.
+    assert [(m.kind, m.value, m.where) for m in group.value] == [
+        ("section", "Since 2003", "k.yaml:KN-1#1.1"),
+        ("profile", "Biography", "k.yaml:KN-1#1.2"),
+    ]
+    assert gold.label_value(group) == "section Since 2003 | profile Biography"
+    assert (alone.kind, alone.value) == ("section", "聯絡我們")
+
+
+def test_any_of_names_two_items_or_more(tmp_path):
+    path = write(tmp_path, "k.yaml", "KN-1:\n  relevant:\n    - any_of:\n        - section: x\n")
+
+    with pytest.raises(gold.GoldError, match="two items or more"):
+        gold.named_refs(path, "KN-1", "relevant")
+
+
+def test_an_any_of_counts_as_one_item_and_reports_a_member_that_matches_nothing():
+    items = corpus(
+        section("s:home", "中心", "Since 2003", text=["Tel: 03"]),
+        section("s:bio", "徐業良", "Biography", text=["founded in 2003"]),
+    )
+    found = gold.Ref(
+        gold.ANY_OF,
+        (gold.Ref("section", "Since 2003", "a.1"), gold.Ref("section", "Biography", "a.2")),
+        "a",
+    )
+    typo = gold.Ref(
+        gold.ANY_OF,
+        (gold.Ref("section", "Since 2003", "b.1"), gold.Ref("section", "Biografy", "b.2")),
+        "b",
+    )
+
+    resolved = gold.resolve([found, typo, gold.Ref("section", "Since 2003", "c")], items)
+
+    assert resolved[0].keys == ["s:home", "s:bio"]
+    assert (resolved[1].keys, resolved[1].problem) == ([], "b.2 match no record")
+    # Either key found stands for the group; a key labelled alone stands for itself.
+    assert gold.item_keys([resolved[0]]) == {"s:home": "any of a", "s:bio": "any of a"}
+    assert gold.item_keys([resolved[2]]) == {"s:home": "s:home"}
+
+
 # --- Transcriptions ---------------------------------------------------------------------
 
 MEDIA = "https://static.wixstatic.com/media"

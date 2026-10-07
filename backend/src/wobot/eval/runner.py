@@ -111,7 +111,7 @@ async def run_datasets(
 
 # Checks scored from what the chat graph did: they need paid model calls, which `run`
 # never makes.
-GRAPH_CHECKS = frozenset({"route"})
+GRAPH_CHECKS = frozenset({"route", "knowledge"})
 
 
 def _kind(case: Case) -> str | None:
@@ -143,9 +143,8 @@ def case_refs(case: Case, gold_dir: Path, used: dict[str, str]) -> list[gold.Ref
 
 def _describe(resolved: gold.Resolved) -> str:
     ref = resolved.ref
-    value = ref.value if isinstance(ref.value, str) else ", ".join(map(str, ref.value.values()))
     problem = f" ({resolved.problem})" if resolved.problem else ""
-    return f"{ref.where}: {ref.kind} {value[:120]!r}{problem}"
+    return f"{ref.where}: {ref.kind} {gold.label_value(ref)[:120]!r}{problem}"
 
 
 async def _score_records(
@@ -219,8 +218,9 @@ async def _score_retrieval(
     for (result, _, resolved), vector in zip(cases, embedded.vectors, strict=True):
         hits = await search_chunks(conn, vector, embedder.config_id, k, version_id=version_id)
         keys = await chunk_record_keys(conn, [hit.chunk_id for hit in hits], version_id)
-        relevant = {key for r in resolved for key in r.keys}
+        items = gold.item_keys(resolved)
+        relevant = set(items.values())
         relevant |= {f"unresolved {where}" for where in result.unresolved}
-        ranked = [(keys[hit.chunk_id], hit.token_count) for hit in hits]
+        ranked = [([items.get(k, k) for k in keys[hit.chunk_id]], hit.token_count) for hit in hits]
         result.retrieval = await retrieval_score(relevant, ranked, k)
         result.status = "scored"

@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from wobot.agent.route import Router
+from wobot.eval import candidates
 from wobot.eval.candidates import (
     Candidate,
     case_messages,
@@ -20,11 +21,6 @@ from wobot.eval.candidates import (
     percentile,
 )
 from wobot.eval.dataset import Case, Dataset
-
-# DV11's rule: keep the candidates within one case of the best, take the fastest at p95,
-# and among those within a tenth of its p95 the cheapest.
-CASES_BEHIND_BEST = 1
-CLOSE_LATENCY = 0.10
 
 
 @dataclass(frozen=True)
@@ -146,8 +142,4 @@ async def compare(
 
 def rule_pick(results: Sequence[CandidateResult]) -> CandidateResult:
     """The candidate DV11's rule chooses; the person decides, with the numbers."""
-    best = max(r.mean_correct for r in results)
-    accurate = [r for r in results if r.mean_correct >= best - CASES_BEHIND_BEST]
-    fastest = min(r.latency(0.95) for r in accurate)
-    close = [r for r in accurate if r.latency(0.95) <= fastest * (1 + CLOSE_LATENCY)]
-    return min(close, key=lambda r: (r.cost_per_thousand is None, r.cost_per_thousand or 0))
+    return candidates.rule_pick(results, lambda r: r.mean_correct)

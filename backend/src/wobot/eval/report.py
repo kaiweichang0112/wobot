@@ -7,10 +7,15 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from wobot.eval.answer import AnswerCase, AnswerResult
+from wobot.eval.answer import Reply as AnswerReply
+from wobot.eval.answer import rule_pick as answer_rule_pick
 from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
 from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
+from wobot.eval.rewrite import RewriteCase, RewriteResult, Searched
+from wobot.eval.rewrite import rule_pick as rewrite_rule_pick
 from wobot.eval.route import CandidateResult, rule_pick
 from wobot.eval.runner import CaseResult, RunResult
 from wobot.eval.vision import ModelResult
@@ -443,4 +448,287 @@ def write_chat_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(chat_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Rewrite model comparison ----------------------------------------------------------
+
+
+def rewrite_markdown(
+    results: Sequence[RewriteResult], cases: Sequence[RewriteCase], meta: Mapping[str, Any]
+) -> str:
+    pick = rewrite_rule_pick(results)
+    lines = [
+        "# Models for rewrite_query",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        "A case passes when the search finds every labelled item and the plan's question "
+        "and name are as the case asks. Passed is per run, as the mean and the range. "
+        "Recall is over every run; question is the plays whose question and name are "
+        "right, of those whose case asks. Latency is the rewrite alone.",
+        "",
+        "| Candidate | Passed | Recall seed + items | Recall knowledge | Question "
+        "| p50 s | p95 s | Tokens in / out | $ per 1,000 | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        per_run = r.passed_per_run()
+        right, asked = r.question_checks
+        tokens_in, tokens_out = r.mean_tokens
+        cost = r.cost_per_thousand
+        latency = "— | —" if r.baseline else f"{r.latency(0.5):.2f} | {r.latency(0.95):.2f}"
+        lines.append(
+            f"| {r.candidate.label} | {r.mean_passed:.1f} / {r.cases} "
+            f"({min(per_run)}–{max(per_run)}) | {_score(r.recall(('seed-v1', 'items-v1')))} "
+            f"| {_score(r.recall(('knowledge-v1',)))} | {right} / {asked} | {latency} "
+            f"| {tokens_in:.0f} / {tokens_out:.0f} "
+            f"| {'?' if cost is None else f'{cost:.4f}'} | {r.errors} |"
+        )
+    lines += [
+        "",
+        f"DV11's rule picks **{pick.candidate.label}** among the models: within one case of "
+        "the best, the lowest p95, then the cheapest among those close to it. "
+        f"{BASELINE_NOTE} The choice is a person's.",
+        "",
+        "## Failures",
+        "",
+        "Each case some candidate failed, with what went wrong in each failed run: items "
+        "the search missed, texts the question lacks, or the name it gave.",
+        "",
+        "| Case | " + " | ".join(r.candidate.label for r in results) + " |",
+        "| --- |" + " --- |" * len(results),
+    ]
+    failed = sorted({case for r in results for case in r.failures()})
+    for case in failed:
+        cells = [_failure_cell(r.failures().get(case, [])) for r in results]
+        lines.append(f"| {case} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## Plans",
+        "",
+        "The first run's plan for each failed case and each case with earlier turns.",
+    ]
+    shown = [c for c in cases if c.case.case_id in failed or c.case.history]
+    for item in shown:
+        case = item.case
+        lines += ["", f"### {case.case_id}", ""]
+        lines += [f"> {turn['user']}\n>\n> — {turn['answer']}\n" for turn in case.history]
+        lines += [f"**User:** {case.user_input}", ""]
+        for r in results:
+            first = next((p for p in r.plays if p.case_id == case.case_id), None)
+            lines.append(f"- **{r.candidate.label}**: {_plan(first)}")
+    errors = [(r, p) for r in results for p in r.plays if p.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {r.candidate.label} {p.case_id} run {p.run}: {p.error}" for r, p in errors]
+    return "\n".join(lines) + "\n"
+
+
+BASELINE_NOTE = "as-is searches the message itself, as phase A did, and looks up no name."
+
+
+def _score(value: float | None) -> str:
+    return "—" if value is None else f"{value:.3f}"
+
+
+def _failure_cell(plays: Sequence[Searched]) -> str:
+    shown = []
+    for p in plays:
+        if p.error:
+            shown.append("error")
+            continue
+        parts = []
+        if p.missing:
+            parts.append(f"missed {len(p.missing)}/{p.relevant}")
+        if p.lacking:
+            parts.append("lacks " + ", ".join(p.lacking))
+        if p.name_ok is False:
+            parts.append(f"name {p.name!r}")
+        shown.append("; ".join(parts))
+    return "<br>".join(f"{n}× {text}" for text, n in _counted(shown))
+
+
+def _counted(texts: Sequence[str]) -> list[tuple[str, int]]:
+    counts: dict[str, int] = {}
+    for text in texts:
+        counts[text] = counts.get(text, 0) + 1
+    return list(counts.items())
+
+
+def _plan(play: Searched | None) -> str:
+    if play is None:
+        return "(not played)"
+    if play.error:
+        return play.error
+    missing = f"; missed {', '.join(play.missing)}" if play.missing else ""
+    return f"{play.question} · queries {list(play.queries)} · name {play.name!r}{missing}"
+
+
+def write_rewrite_report(
+    results: Sequence[RewriteResult],
+    cases: Sequence[RewriteCase],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "pick": rewrite_rule_pick(results).candidate.label,
+        "candidates": [
+            {
+                "candidate": r.candidate.label,
+                "passed_per_run": r.passed_per_run(),
+                "recall_seed_items": r.recall(("seed-v1", "items-v1")),
+                "recall_knowledge": r.recall(("knowledge-v1",)),
+                "question_checks": r.question_checks,
+                "p50_seconds": r.latency(0.5),
+                "p95_seconds": r.latency(0.95),
+                "cost_per_thousand": r.cost_per_thousand,
+                "plays": [asdict(p) for p in r.plays],
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(rewrite_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Answer model comparison -----------------------------------------------------------
+
+
+def answer_markdown(
+    results: Sequence[AnswerResult], cases: Sequence[AnswerCase], meta: Mapping[str, Any]
+) -> str:
+    pick = answer_rule_pick(results)
+    scored = sum(c.scored for c in cases)
+    lines = [
+        "# Models for answer",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        f"Correct counts the {scored} replies checked by their texts, per run, as the mean "
+        "and the range; the replies to questions the sources do not answer are read below. "
+        "First words is when the first text arrived, as a stream shows it; total is the "
+        "whole reply. An error is wrong and left out of latency.",
+        "",
+        "| Candidate | Correct | First words p50 s | First words p95 s | Total p50 s "
+        "| Total p95 s | Tokens in / out | $ per 1,000 | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        per_run = r.correct_per_run()
+        tokens_in, tokens_out = r.mean_tokens
+        cost = r.cost_per_thousand
+        lines.append(
+            f"| {r.candidate.label} | {r.mean_correct:.1f} / {scored} "
+            f"({min(per_run)}–{max(per_run)}) | {r.first_token(0.5):.2f} "
+            f"| {r.first_token(0.95):.2f} | {r.total(0.5):.2f} | {r.total(0.95):.2f} "
+            f"| {tokens_in:.0f} / {tokens_out:.0f} "
+            f"| {'?' if cost is None else f'{cost:.4f}'} | {r.errors} |"
+        )
+    lines += [
+        "",
+        f"DV11's rule picks **{pick.candidate.label}**: within one reply of the best, the "
+        "lowest total p95, then the cheapest among those close to it. Read the replies "
+        "before choosing.",
+        "",
+        "## Failures",
+        "",
+        "Each checked case some candidate missed, with the texts its reply lacked.",
+        "",
+        "| Case | " + " | ".join(r.candidate.label for r in results) + " |",
+        "| --- |" + " --- |" * len(results),
+    ]
+    failed = sorted({case for r in results for case in r.failures()})
+    for case in failed:
+        cells = [_answer_failure_cell(r.failures().get(case, [])) for r in results]
+        lines.append(f"| {case} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## Replies",
+        "",
+        "Each case's reply in the first run; the JSON keeps every run and the evidence.",
+    ]
+    for item in cases:
+        case = item.case
+        expected = "the sources do not say" if item.no_info else _mentions(item.mentions)
+        lines += ["", f"### {case.case_id}", ""]
+        lines += [f"> {turn['user']}\n>\n> — {turn['answer']}\n" for turn in case.history]
+        lines += [
+            f"**User:** {case.user_input}",
+            "",
+            f"Read as: {item.question} · {len(item.evidence['passages'])} passages, "
+            f"{len(item.evidence['records'])} records · expected: {expected}",
+            "",
+        ]
+        for r in results:
+            first = next((x for x in r.replies if x.case_id == case.case_id), None)
+            text = "(no reply)" if first is None else first.error or first.text
+            lines.append(f"- **{r.candidate.label}**: {' '.join(text.split())}")
+    errors = [(r, x) for r in results for x in r.replies if x.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {r.candidate.label} {x.case_id} run {x.run}: {x.error}" for r, x in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _mentions(mentions: Sequence[Any]) -> str:
+    return ", ".join(m if isinstance(m, str) else " / ".join(m) for m in mentions)
+
+
+def _answer_failure_cell(replies: Sequence[AnswerReply]) -> str:
+    shown = ["error" if x.error else "lacks " + ", ".join(x.lacking) for x in replies]
+    return "<br>".join(f"{n}× {text}" for text, n in _counted(shown))
+
+
+def write_answer_report(
+    results: Sequence[AnswerResult],
+    cases: Sequence[AnswerCase],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "pick": answer_rule_pick(results).candidate.label,
+        "cases": [
+            {
+                "case_id": c.case.case_id,
+                "question": c.question,
+                "mentions": list(c.mentions),
+                "no_info": c.no_info,
+                "evidence": c.evidence,
+            }
+            for c in cases
+        ],
+        "candidates": [
+            {
+                "candidate": r.candidate.label,
+                "correct_per_run": r.correct_per_run(),
+                "first_token_p50": r.first_token(0.5),
+                "first_token_p95": r.first_token(0.95),
+                "total_p50": r.total(0.5),
+                "total_p95": r.total(0.95),
+                "cost_per_thousand": r.cost_per_thousand,
+                "replies": [asdict(x) for x in r.replies],
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(answer_markdown(results, cases, meta), encoding="utf-8")
     return markdown

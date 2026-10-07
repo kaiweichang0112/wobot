@@ -46,12 +46,16 @@ class GoldError(Exception):
     """A gold file that cannot be read as labels."""
 
 
+# A label whose value lists items, any one of which counts as the labelled item.
+ANY_OF = "any_of"
+
+
 @dataclass(frozen=True)
 class Ref:
     """One labelled item: how a person named it, and where the label is written."""
 
     kind: str
-    value: Any  # text, or a mapping such as {"name": ..., "company": ...}
+    value: Any  # text, a mapping such as {"name": ..., "company": ...}, or ANY_OF's refs
     where: str  # file:line or file:key, for messages
     expected: Mapping[str, Any] = field(default_factory=dict)  # fields to compare, if any
 
@@ -170,24 +174,47 @@ def speech_field_refs(path: Path) -> list[Ref]:
 
 
 def named_refs(path: Path, case_id: str, key: str) -> list[Ref]:
-    """Refs listed under a case in retrieval.yaml or single-item-questions.yaml."""
+    """Refs listed under a case in retrieval.yaml, single-item-questions.yaml or
+    knowledge.yaml. An `any_of` entry lists items that each answer the question alone."""
     data = read_yaml(path) or {}
     if case_id not in data:
         raise GoldError(f"{path.name}: no entry for {case_id}")
     refs = []
     for position, entry in enumerate(data[case_id].get(key) or [], start=1):
         where = f"{path.name}:{case_id}#{position}"
-        if not isinstance(entry, dict) or len(entry) != 1:
-            raise GoldError(f"{where}: name one item as `kind: value`, got {entry!r}")
-        ((kind, value),) = entry.items()
-        if kind not in KINDS:
-            raise GoldError(f"{where}: unknown kind {kind!r}, expected one of {KINDS}")
-        if isinstance(value, dict) and all(map(blank, value.values())) or blank(value):
-            continue
-        if isinstance(value, dict) and any(map(blank, value.values())):
-            raise GoldError(f"{where}: {kind} is partly empty: {value!r}")
-        refs.append(Ref(kind, value, where))
+        if isinstance(entry, dict) and list(entry) == [ANY_OF]:
+            members = [
+                _named_ref(member, f"{where}.{number}")
+                for number, member in enumerate(entry[ANY_OF] or [], start=1)
+            ]
+            members = [member for member in members if member]
+            if len(members) < 2:
+                raise GoldError(f"{where}: any_of names two items or more")
+            refs.append(Ref(ANY_OF, tuple(members), where))
+        elif ref := _named_ref(entry, where):
+            refs.append(ref)
     return refs
+
+
+def _named_ref(entry: Any, where: str) -> Ref | None:
+    """One `kind: value` entry; None for a blank template entry."""
+    if not isinstance(entry, dict) or len(entry) != 1:
+        raise GoldError(f"{where}: name one item as `kind: value`, got {entry!r}")
+    ((kind, value),) = entry.items()
+    if kind not in KINDS:
+        raise GoldError(f"{where}: unknown kind {kind!r}, expected one of {KINDS}")
+    if isinstance(value, dict) and all(map(blank, value.values())) or blank(value):
+        return None
+    if isinstance(value, dict) and any(map(blank, value.values())):
+        raise GoldError(f"{where}: {kind} is partly empty: {value!r}")
+    return Ref(kind, value, where)
+
+
+def label_value(ref: Ref) -> str:
+    """What a label names, as a person wrote it, for messages."""
+    if ref.kind == ANY_OF:
+        return " | ".join(f"{member.kind} {label_value(member)}" for member in ref.value)
+    return ref.value if isinstance(ref.value, str) else ", ".join(map(str, ref.value.values()))
 
 
 def transcription_refs(path: Path, case_id: str) -> list[Ref]:
@@ -256,6 +283,16 @@ def resolve(refs: Iterable[Ref], corpus: Corpus) -> list[Resolved]:
     return [index.resolve(ref) for ref in refs]
 
 
+def item_keys(resolved: Iterable[Resolved]) -> dict[str, str]:
+    """Each record key the labels name, mapped to the item it counts as: itself, or, in
+    an any_of, the one item all its keys stand for."""
+    items: dict[str, str] = {}
+    for label in resolved:
+        for key in label.keys:
+            items[key] = f"any of {label.ref.where}" if label.ref.kind == ANY_OF else key
+    return items
+
+
 class _Index:
     def __init__(self, corpus: Corpus) -> None:
         self._corpus = corpus
@@ -276,6 +313,12 @@ class _Index:
 
     def resolve(self, ref: Ref) -> Resolved:
         match ref.kind:
+            case "any_of":
+                # A typo in any of them is reported, not hidden by the others matching.
+                members = [self.resolve(member) for member in ref.value]
+                if unmatched := [m.ref.where for m in members if not m.keys]:
+                    return Resolved(ref, [], f"{', '.join(unmatched)} match no record")
+                return Resolved(ref, list(dict.fromkeys(k for m in members for k in m.keys)))
             case "speech" | "publication":
                 return self._by_text(ref)
             case "product":
