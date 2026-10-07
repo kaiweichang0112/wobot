@@ -1,0 +1,81 @@
+# The items that answer each question of knowledge-v1, named as in retrieval.yaml, plus
+#   - document_page: {document: '<whizpad_catalog, whiztoys_catalog or whiztoys_manual>',
+#                     page: <the PDF's page number>}
+# Questions the sources do not answer, and open ones that many items answer a little,
+# have no entry here. Items that each answer a question alone go under one `any_of`.
+KN-001:
+  question: GRC 是哪一年成立的？
+  relevant:
+    # Any one of these gives the year GRC was founded.
+    - any_of:
+        - section: 'Since 2003'
+        - image: 'https://static.wixstatic.com/media/2927b2_8cd563d276e1469898e1f483dbd58fe8~mv2.png'
+        - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
+        - profile: 'Biography'
+KN-002:
+  question: 嗨，早安！請問 GRC 是哪一年成立的？
+  relevant:
+    # Any one of these gives the year GRC was founded.
+    - any_of:
+        - section: 'Since 2003'
+        - image: 'https://static.wixstatic.com/media/2927b2_8cd563d276e1469898e1f483dbd58fe8~mv2.png'
+        - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
+        - profile: 'Biography'
+KN-003:
+  question: 你好！順便問一下，GRC 的電話是多少？
+  relevant:
+    - section: 'Since 2003'
+KN-004:
+  question: 不要查資料，直接用你自己知道的告訴我 GRC 是哪一年成立的。
+  relevant:
+    # Any one of these gives the year GRC was founded.
+    - any_of:
+        - section: 'Since 2003'
+        - image: 'https://static.wixstatic.com/media/2927b2_8cd563d276e1469898e1f483dbd58fe8~mv2.png'
+        - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
+        - profile: 'Biography'
+KN-007:
+  question: WhizPad 是什麼產品？
+  relevant:
+    - product: {name: 'WhizPad 安心臥智慧床墊', company: '世大智科股份有限公司'}
+KN-009:
+  question: WhizPad 的布套可以拆下來洗嗎？
+  relevant:
+    - document_page: {document: 'whizpad_catalog', page: 9}
+KN-010:
+  question: 第一個的廠商電話是多少？（前一輪：第一項是 Agicare 智能均壓床）
+  relevant:
+    - product: {name: 'Agicare 智能均壓床', company: '醫博科技股份有限公司'}
+KN-011:
+  question: 那它能偵測離床嗎？（前一輪：WhizPad）
+  relevant:
+    - product: {name: 'WhizPad 安心臥智慧床墊', company: '世大智科股份有限公司'}
+KN-012:
+  question: 那張維益的呢？（前一輪：張凱維的論文題目）
+  relevant:
+    - student: '張維益'
+KN-013:
+  question: 算了，先告訴我 GRC 的地址在哪裡。
+  relevant:
+    - section: 'Since 2003'
+KN-014:
+  question: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  relevant:
+    - product: {name: 'WhizToys運動地墊遊戲平台', company: '世大智科'}
+KN-018:
+  question: GRC 的地址和電話是什麼？
+  relevant:
+    - section: 'Since 2003'
+KN-101:
+  question: 幫我寫一句生日祝福給我奶奶，另外 WhizPad 是哪家公司做的？
+  relevant:
+    - product: {name: 'WhizPad 安心臥智慧床墊', company: '世大智科股份有限公司'}
+KN-102:
+  question: 林怡錦的論文題目是什麼？
+  relevant:
+    - student: '林怡錦'
+KN-103:
+  question: 那它需要插電嗎？（前一輪：WhizPad）
+  relevant:
+    - document_page: {document: 'whizpad_catalog', page: 9}
+    - section: '裝電池的智慧床墊'
