@@ -21,6 +21,11 @@ system extracted; a label copied from parser or model output measures nothing.
 - A section of the GRC home page, the G-Tech pages or the WhizToys docs is named by its
   whole heading, by `page › heading` when another page has the same heading, or by a piece
   of one paragraph under it. A heading is not text: `2003` does not name `Since 2003`.
+- When several items each answer a question alone, such as every page that gives the
+  year GRC was founded, list them under one `any_of`: finding one of them finds the item.
+  Items that answer different parts, such as each of G-Tech's products, stay separate,
+  and every one must be found. Since 2026-10-07 retrieval scores count an `any_of` as one
+  item; earlier reports counted each of its items and do not compare.
 
 Check the files with:
 
