@@ -25,10 +25,18 @@ from langgraph.graph.state import CompiledStateGraph
 
 from wobot.agent.answer import answer_prompt
 from wobot.agent.chat import chat_prompt
+from wobot.agent.list_agent import (
+    LIST_TOOLS,
+    list_agent_prompt,
+    lists_will_do,
+    run_list_call,
+    turn_date,
+)
 from wobot.agent.models import openai_model
 from wobot.agent.retrieval import UNAVAILABLE, LookupFailed, records_named, search_knowledge
 from wobot.agent.rewrite import SearchPlan, read_plan, rewrite_prompt, writes_chinese
 from wobot.agent.route import Route, Router, router_for
+from wobot.agent.write_list import ListIntro, list_reply, lists_that_count, write_list_prompt
 from wobot.config import Settings
 from wobot.knowledge.embeddings import Embedder
 from wobot.knowledge.repository import Database
@@ -91,21 +99,6 @@ def fresh_turn() -> dict[str, Any]:
 
 
 # --- Nodes not built yet: stubs that change nothing -----------------------------------
-
-
-def list_agent(state: ChatState) -> dict[str, Any]:
-    """Picks the list tool and filters, or decides the lists found will do."""
-    return {}
-
-
-def list_tools(state: ChatState) -> dict[str, Any]:
-    """Runs the list tools the agent called and keeps every list in full."""
-    return {}
-
-
-def write_list(state: ChatState) -> dict[str, Any]:
-    """Introduces the lists to show; code renders their items."""
-    return {}
 
 
 def update_needs(state: ChatState) -> dict[str, Any]:
@@ -206,6 +199,8 @@ class Models:
     chat: BaseChatModel
     rewrite: BaseChatModel
     answer: BaseChatModel
+    list_agent: BaseChatModel
+    write_list: BaseChatModel
 
 
 def models_for(settings: Settings) -> Models:
@@ -214,12 +209,19 @@ def models_for(settings: Settings) -> Models:
         chat=openai_model(settings, settings.chat_model, settings.chat_effort),
         rewrite=openai_model(settings, settings.rewrite_model, settings.rewrite_effort),
         answer=openai_model(settings, settings.answer_model, settings.answer_effort),
+        list_agent=openai_model(settings, settings.list_agent_model, settings.list_agent_effort),
+        write_list=openai_model(settings, settings.write_list_model, settings.write_list_effort),
     )
 
 
 def build_graph(models: Models, db: Database, embedder: Embedder) -> CompiledStateGraph:
     """The graph, its nodes holding the models, database and embedder given."""
     planner = models.rewrite.with_structured_output(SearchPlan, method="json_schema")
+    # The first round must call a tool: a list question is always looked up (DV3). Later
+    # rounds may stop once the lists found will do.
+    list_first = models.list_agent.bind_tools(LIST_TOOLS, tool_choice="required")
+    list_next = models.list_agent.bind_tools(LIST_TOOLS)
+    list_writer = models.write_list.with_structured_output(ListIntro, method="json_schema")
 
     async def classify(state: ChatState) -> dict[str, Any]:
         """Names the kind of question: chat, knowledge, list or recommend."""
@@ -274,6 +276,57 @@ def build_graph(models: Models, db: Database, embedder: Embedder) -> CompiledSta
             return failure_reply(state["messages"])
         text = response.text
         return {"messages": [AIMessage(text)], "reply": {"text": text}}
+
+    async def list_agent(state: ChatState) -> dict[str, Any]:
+        """Picks the list tool and filters, or decides the lists found will do."""
+        scratch = state["list_messages"]
+        # Neither asks the model: no round is left, or every list was found. Either way
+        # the loop ends on the tools' answers, and write_list answers from the lists.
+        if state["tool_rounds"] >= MAX_LIST_ROUNDS or lists_will_do(scratch):
+            return {}
+        model = list_next if scratch else list_first
+        prompt = list_agent_prompt(state["messages"], turn_date(state["query_time"]))
+        try:
+            response = await model.ainvoke([*prompt, *scratch])
+        except UNAVAILABLE:
+            logger.exception("list agent failed")
+            return {"status": "failed"}
+        return {"list_messages": [*scratch, response]}
+
+    async def list_tools(state: ChatState) -> dict[str, Any]:
+        """Runs the list tools the agent called and keeps every list in full."""
+        scratch = state["list_messages"]
+        today = turn_date(state["query_time"])
+        results = dict(state["list_results"])
+        answers = []
+        try:
+            for call in scratch[-1].tool_calls:
+                answer, found = await run_list_call(db, state["index_version"], today, call)
+                answers.append(answer)
+                if found is not None:
+                    results[found["result_id"]] = found
+        except LookupFailed:
+            return {"status": "failed"}
+        return {
+            "list_messages": [*scratch, *answers],
+            "list_results": results,
+            "tool_rounds": state["tool_rounds"] + 1,
+            "status": "ok",
+        }
+
+    async def write_list(state: ChatState) -> dict[str, Any]:
+        """Introduces the lists to show; code renders their items."""
+        if state["status"] == "failed":  # the agent's model could not be reached
+            return failure_reply(state["messages"])
+        latest = latest_user_text(state["messages"])
+        results = lists_that_count(state["list_results"])
+        try:
+            intro = await list_writer.ainvoke(write_list_prompt(latest, results))
+        except UNAVAILABLE:
+            logger.exception("writing the list failed")
+            return failure_reply(state["messages"])
+        reply, remembered = list_reply(intro, results, writes_chinese(latest))
+        return {"messages": [AIMessage(remembered)], "reply": reply}
 
     graph = StateGraph(ChatState)
 

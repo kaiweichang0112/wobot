@@ -1,3 +1,4 @@
+import json
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +8,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableLambda
 
-from tests.agent.fakes import fake_models
+from tests.agent.fakes import calls, fake_models
+from tests.agent.test_list_agent import Unreachable
 from wobot.agent.graph import (
     FAILURE_TEXT,
     MAX_LIST_ROUNDS,
@@ -20,7 +22,10 @@ from wobot.agent.graph import (
     route_by_intent,
     search_or_ask,
 )
+from wobot.agent.list_agent import result_handle
 from wobot.agent.rewrite import SearchPlan
+from wobot.agent.write_list import ListIntro, ShownList
+from wobot.knowledge.lists import RecordQuery
 
 EXPECTED_GRAPH = Path(__file__).with_name("expected_graph.mmd")
 
@@ -170,6 +175,9 @@ class Broken:
     def with_structured_output(self, schema, **kwargs):
         return RunnableLambda(self._fail)
 
+    def bind_tools(self, tools, **kwargs):
+        return RunnableLambda(self._fail)
+
     async def _fail(self, *args):
         raise TimeoutError("no answer")
 
@@ -209,5 +217,92 @@ async def test_a_failed_answer_is_reported_as_retryable(knowledge):
     app = build_graph(models, knowledge.db, knowledge.embedder)
 
     state = await app.ainvoke(turn("What is WhizPad?", knowledge.version_id))
+
+    assert state["reply"] == {"text": FAILURE_TEXT["en"], "retryable": True}
+
+
+# --- The list path ----------------------------------------------------------------------
+
+
+async def test_a_list_is_found_by_the_tools_and_shown_in_full_by_code(knowledge):
+    masters = result_handle(knowledge.version_id, RecordQuery("student", degree="master"))
+    models = fake_models(
+        "list",
+        list_calls=[calls(("list_students", {"degree": "master"}))],
+        intro=ListIntro(
+            intro="共 1 位碩士畢業生。", lists=[ShownList(result_id=masters, item_ids=None)]
+        ),
+    )
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+
+    state = await app.ainvoke(turn("列出所有碩士畢業生", knowledge.version_id))
+
+    # The first round must call a tool; with every list found, no second is asked for.
+    assert [choice for choice, _ in models.list_agent.prompts] == ["required"]
+    assert state["tool_rounds"] == 1 and list(state["list_results"]) == [masters]
+    assert state["reply"]["lists"][0]["keys"] == ["student:master:王小明"]
+    assert state["reply"]["text"].startswith("共 1 位碩士畢業生。\n\n1. 2022　碩士　王小明")
+    assert state["messages"][-1].text == state["reply"]["text"]
+
+
+async def test_an_empty_list_lets_the_agent_try_other_filters(knowledge):
+    models = fake_models(
+        "list",
+        list_calls=[
+            calls(("list_students", {"contains": "王曉明"})),  # spelled another way
+            calls(("list_students", {"contains": "王小明"})),
+        ],
+    )
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+
+    state = await app.ainvoke(turn("王曉明是哪一年畢業的碩士？", knowledge.version_id))
+
+    assert [choice for choice, _ in models.list_agent.prompts] == ["required", None]
+    assert state["tool_rounds"] == 2
+    assert [len(r["items"]) for r in state["list_results"].values()] == [0, 1]
+    # The list found empty before the change is not the writer's to read.
+    _, human = models.write_list.prompts[-1]
+    assert [r["count"] for r in json.loads(human.content)["lists"]] == [1]
+
+
+async def test_a_list_loop_stops_when_its_rounds_run_out(knowledge):
+    nothing = ("list_students", {"year_from": 1999, "year_to": 1999})
+    asking = [calls(nothing) for _ in range(MAX_LIST_ROUNDS)]
+    models = fake_models("list", list_calls=asking)
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+
+    path = await nodes_run(app, turn("列出所有產品", knowledge.version_id))
+
+    assert path == [
+        "classify",
+        *["list_agent", "list_tools"] * MAX_LIST_ROUNDS,
+        "list_agent",
+        "write_list",
+    ]
+    assert len(models.list_agent.prompts) == MAX_LIST_ROUNDS  # the last turn asks no model
+
+
+async def test_a_failed_list_query_is_reported_as_retryable():
+    # Two turns are played: each calls a tool once.
+    models = fake_models("list", list_calls=[calls(("list_products", {}))] * 2)
+    app = build_graph(models, Unreachable(), embedder=None)
+
+    state = await app.ainvoke(turn("列出所有產品"))
+
+    assert await nodes_run(app, turn("列出所有產品")) == [
+        "classify",
+        "list_agent",
+        "list_tools",
+        "report_failure",
+    ]
+    assert state["reply"] == {"text": FAILURE_TEXT["zh"], "retryable": True}
+
+
+@pytest.mark.parametrize("broken", ["list_agent", "write_list"])
+async def test_a_failed_list_model_is_reported_as_retryable(broken):
+    models = replace(fake_models("list"), **{broken: Broken()})
+    app = build_graph(models, db=None, embedder=None)
+
+    state = await app.ainvoke(turn("List every product."))
 
     assert state["reply"] == {"text": FAILURE_TEXT["en"], "retryable": True}
