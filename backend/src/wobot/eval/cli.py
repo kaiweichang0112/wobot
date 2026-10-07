@@ -9,7 +9,8 @@ answers where ingestion does, so it runs as the ingestion role. `route` and `cha
 models for the chat graph's nodes on the route dataset; they call the models alone and
 read no database. `rewrite` compares models for rewrite_query by what the retrieve node
 then finds, so it reads the index as `run` does; `answer` compares models for the answer on
-what the knowledge path finds.
+what the knowledge path finds. `list-agent` and `write-list` compare models for the list
+path's two model nodes on lists-v1, querying the records as the path does.
 """
 
 import argparse
@@ -25,9 +26,11 @@ from openai import AsyncOpenAI
 
 from wobot.agent import answer as answering
 from wobot.agent import chat as chatting
+from wobot.agent import list_agent as listing
 from wobot.agent import retrieval
 from wobot.agent import rewrite as rewriting
 from wobot.agent import route as routing
+from wobot.agent import write_list as writing
 from wobot.agent.models import openai_model
 from wobot.agent.route import router_for
 from wobot.config import Settings, get_settings
@@ -41,14 +44,25 @@ from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
+from wobot.eval.lists import DATASET as LIST_DATASET
+from wobot.eval.lists import (
+    ModelWriter,
+    compare_agents,
+    compare_writers,
+    list_cases,
+    list_path,
+    write_cases,
+)
 from wobot.eval.report import (
     summary,
     write_answer_report,
     write_chat_report,
+    write_list_agent_report,
     write_report,
     write_rewrite_report,
     write_route_report,
     write_vision_report,
+    write_write_list_report,
 )
 from wobot.eval.rewrite import (
     BASELINE,
@@ -185,6 +199,52 @@ def main(argv: Sequence[str] | None = None) -> int:
     answer.add_argument("--index-version", type=int, help="a version other than the active one")
     answer.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     answer.set_defaults(handler=_answer)
+
+    agent = commands.add_parser(
+        "list-agent", help="compare models for list_agent by the calls they make (paid calls)"
+    )
+    agent.add_argument(
+        "--model",
+        action="append",
+        required=True,
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="a candidate, such as gpt-6-luna:none or gpt-4o:default; repeat for more",
+    )
+    agent.add_argument(
+        "--writer",
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="the model every candidate's lists are written with (default: write_list's)",
+    )
+    agent.add_argument("--runs", type=int, default=3, help="times each case is played")
+    agent.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    agent.add_argument("--index-version", type=int, help="a version other than the active one")
+    agent.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    agent.set_defaults(handler=_list_agent)
+
+    writer = commands.add_parser(
+        "write-list", help="compare models for write_list on the same lists (paid calls)"
+    )
+    writer.add_argument(
+        "--model",
+        action="append",
+        required=True,
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="a candidate, such as gpt-6-luna:none or gpt-4o:default; repeat for more",
+    )
+    writer.add_argument(
+        "--agent",
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="the model that finds each case's lists once (default: list_agent's)",
+    )
+    writer.add_argument("--runs", type=int, default=3, help="times each case is written")
+    writer.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    writer.add_argument("--index-version", type=int, help="a version other than the active one")
+    writer.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    writer.set_defaults(handler=_write_list)
 
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
@@ -426,6 +486,126 @@ async def _answer(args: argparse.Namespace, settings: Settings) -> int:
             f"{r.candidate.label}: correct {r.mean_correct:.1f}, first words p50 "
             f"{r.first_token(0.5):.2f}s, total p50 {r.total(0.5):.2f}s p95 "
             f"{r.total(0.95):.2f}s, {r.errors} errors"
+        )
+    print(f"report: {path}")
+    return 0
+
+
+def _list_meta(
+    started: datetime,
+    dataset: Any,
+    version_id: int,
+    gold_files: dict[str, str],
+    splits: Sequence[str],
+    cases: int,
+    runs: int,
+) -> dict[str, Any]:
+    return {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "prompt_versions": (
+            f"list_agent {listing.PROMPT_VERSION}, write_list {writing.PROMPT_VERSION}"
+        ),
+        "index_version": version_id,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]}",
+        "gold_files": {name: sha[:12] for name, sha in sorted(gold_files.items())},
+        "splits": list(splits),
+        "cases": cases,
+        "runs": runs,
+        "prices": "spec 07, checked 2026-10-01; gpt-4o's model page, 2026-10-06",
+    }
+
+
+async def _list_agent(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    if jev := [c.label for c in args.model if c.effort == "-"]:
+        print(f"{jev}: Jev classifies and calls no tools")
+        return 1
+    dataset = load_dataset(LIST_DATASET)
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    writer = args.writer or Candidate(settings.write_list_model, settings.write_list_effort)
+    agents = [(c, openai_model(settings, c.model, c.effort)) for c in args.model]
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+        cases, gold_files = list_cases([dataset], splits, corpus, gold.GOLD_DIR)
+        started = datetime.now().astimezone()
+        results = await compare_agents(
+            agents,
+            openai_model(settings, writer.model, writer.effort),
+            cases,
+            engine,
+            version_id,
+            args.runs,
+            progress=print,
+        )
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    meta = _list_meta(started, dataset, version_id, gold_files, splits, len(cases), args.runs)
+    meta["writer"] = writer.label
+    path = write_list_agent_report(
+        results, cases, meta, args.out, f"{started:%Y%m%d-%H%M%S}-list-agent"
+    )
+    for r in results:
+        print(
+            f"{r.candidate.label}: calls right {r.mean_correct:.1f} / {len(cases)}, "
+            f"agent p50 {r.latency(0.5):.2f}s p95 {r.latency(0.95):.2f}s, "
+            f"path p95 {r.total(0.95):.2f}s, {r.errors} errors"
+        )
+    print(f"report: {path}")
+    return 0
+
+
+async def _write_list(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    if jev := [c.label for c in args.model if c.effort == "-"]:
+        print(f"{jev}: Jev classifies and writes no replies")
+        return 1
+    dataset = load_dataset(LIST_DATASET)
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    agent = args.agent or Candidate(settings.list_agent_model, settings.list_agent_effort)
+    default_writer = openai_model(settings, settings.write_list_model, settings.write_list_effort)
+    writers = [(c, ModelWriter(openai_model(settings, c.model, c.effort))) for c in args.model]
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+        cases, gold_files = list_cases([dataset], splits, corpus, gold.GOLD_DIR)
+        finder = list_path(
+            openai_model(settings, agent.model, agent.effort), default_writer, engine
+        )
+        started = datetime.now().astimezone()
+        prepared = await write_cases(cases, finder, version_id, print)
+        results = await compare_writers(writers, prepared, args.runs, progress=print)
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    meta = _list_meta(started, dataset, version_id, gold_files, splits, len(cases), args.runs)
+    meta["lists found by"] = agent.label
+    path = write_write_list_report(
+        results, prepared, meta, args.out, f"{started:%Y%m%d-%H%M%S}-write-list"
+    )
+    scored = sum(c.expected is not None for c in prepared)
+    for r in results:
+        print(
+            f"{r.candidate.label}: correct {r.mean_correct:.1f} / {scored}, "
+            f"p50 {r.latency(0.5):.2f}s p95 {r.latency(0.95):.2f}s, {r.errors} errors"
         )
     print(f"report: {path}")
     return 0

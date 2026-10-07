@@ -13,6 +13,18 @@ from wobot.eval.answer import rule_pick as answer_rule_pick
 from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
+from wobot.eval.lists import (
+    AgentResult,
+    Call,
+    ListCase,
+    ListPlay,
+    WriteCase,
+    WriteResult,
+    Written,
+    agent_rule_pick,
+    list_f1,
+    writer_rule_pick,
+)
 from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
 from wobot.eval.rewrite import RewriteCase, RewriteResult, Searched
 from wobot.eval.rewrite import rule_pick as rewrite_rule_pick
@@ -731,4 +743,317 @@ def write_answer_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(answer_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- List path model comparisons --------------------------------------------------------
+
+
+def _call(call: Call) -> str:
+    filters = ", ".join(f"{k}: {v}" for k, v in call.items() if k != "tool")
+    return f"{call['tool']} {{{filters}}}"
+
+
+def _calls(calls: Sequence[Call]) -> str:
+    return " + ".join(_call(c) for c in calls) or "no call"
+
+
+def _intro(text: str) -> str:
+    """The model's words: the reply up to the first list."""
+    return " ".join(text.split("\n\n")[0].split())
+
+
+def _history(case: Case) -> list[str]:
+    return [f"> {turn['user']}\n>\n> — {turn['answer']}\n" for turn in case.history]
+
+
+def list_agent_markdown(
+    results: Sequence[AgentResult], cases: Sequence[ListCase], meta: Mapping[str, Any]
+) -> str:
+    pick = agent_rule_pick(results)
+    lines = [
+        "# Models for list_agent",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        f"Calls right counts the {len(cases)} cases whose calls that found something, or "
+        "all calls when none did, are a set the case accepts: per run, as the mean and the "
+        "range. First round counts the first calls alone. List F1 compares the items shown "
+        "with the labelled ones, where a case is labelled. Asked again is how many plays "
+        "asked the agent a second time, and how many of those ended right. Agent is the "
+        "agent's own time, every round; path runs from list_agent to the end of write_list. "
+        "Cost is the agent's, every round. An error is wrong and left out of latency.",
+        "",
+        "| Candidate | Calls right | First round | List F1 | Model calls | Asked again (right) "
+        "| Agent p50 s | Agent p95 s | Path p50 s | Path p95 s | Tokens in / out "
+        "| $ per 1,000 | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        per_run = r.correct_per_run()
+        tokens_in, tokens_out = r.mean_tokens
+        cost = r.cost_per_thousand
+        again, again_right = r.second_rounds()
+        lines.append(
+            f"| {r.candidate.label} | {r.mean_correct:.1f} / {len(cases)} "
+            f"({min(per_run)}–{max(per_run)}) | {r.mean_first_right:.1f} "
+            f"| {_num(r.mean_f1)} | {r.mean_model_calls:.2f} | {again} ({again_right}) "
+            f"| {r.latency(0.5):.2f} | {r.latency(0.95):.2f} "
+            f"| {r.total(0.5):.2f} | {r.total(0.95):.2f} | {tokens_in:.0f} / {tokens_out:.0f} "
+            f"| {'?' if cost is None else f'{cost:.4f}'} | {r.errors} |"
+        )
+    lines += [
+        "",
+        f"DV11's rule picks **{pick.candidate.label}**: within one case of the best, the "
+        "lowest agent p95, then the cheapest among those close to it. Read the failures "
+        "before choosing.",
+        "",
+        "## Failures",
+        "",
+        "Each case some candidate got wrong, with the calls that counted.",
+        "",
+        "| Case | Accepted | " + " | ".join(r.candidate.label for r in results) + " |",
+        "| --- | --- |" + " --- |" * len(results),
+    ]
+    by_id = {c.case.case_id: c for c in cases}
+    for case_id in sorted({case for r in results for case in r.failures()}):
+        accepted = "<br>".join(_calls(a) for a in by_id[case_id].accepted)
+        cells = [_list_failure_cell(r.failures().get(case_id, [])) for r in results]
+        lines.append(f"| {case_id} | {accepted} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## Plays",
+        "",
+        "Each case in the first run: every round's calls, how many items were shown, and "
+        "the words before the lists. The JSON keeps every run.",
+    ]
+    for item in cases:
+        case = item.case
+        lines += [
+            "",
+            f"### {case.case_id}",
+            "",
+            *_history(case),
+            f"**User:** {case.user_input}",
+            "",
+        ]
+        expected = " or ".join(_calls(a) for a in item.accepted)
+        if item.gold is not None:
+            expected += f" · {len(item.gold)} labelled items"
+        if item.mentions:
+            expected += f" · mentions {_mentions(item.mentions)}"
+        if item.no_lists:
+            expected += " · no list"
+        lines += [f"Expected: {expected}", ""]
+        for r in results:
+            first = next((p for p in r.plays if p.case_id == case.case_id), None)
+            if first is None:
+                continue
+            if first.error:
+                lines.append(f"- **{r.candidate.label}**: {first.error}")
+                continue
+            rounds = " → ".join(_calls(calls) for calls in first.rounds) or "no call"
+            if first.lists is not None:
+                shown = f"F1 {_num(list_f1(first.lists))}"
+            else:
+                shown = "lists shown" if first.shows_lists else "no list"
+            lines.append(
+                f"- **{r.candidate.label}** ({'right' if first.right else 'wrong'}, "
+                f"{first.model_calls} model calls, {shown}): {rounds}; "
+                f"“{_intro(first.text)}”"
+            )
+    errors = [(r, p) for r in results for p in r.plays if p.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {r.candidate.label} {p.case_id} run {p.run}: {p.error}" for r, p in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _list_failure_cell(plays: Sequence[ListPlay]) -> str:
+    shown = ["error" if p.error else _calls(p.counted) for p in plays]
+    return "<br>".join(f"{n}× {text}" for text, n in _counted(shown))
+
+
+def write_list_agent_report(
+    results: Sequence[AgentResult],
+    cases: Sequence[ListCase],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "pick": agent_rule_pick(results).candidate.label,
+        "cases": [
+            {
+                "case_id": c.case.case_id,
+                "accepted": [list(a) for a in c.accepted],
+                "gold": None if c.gold is None else sorted(c.gold),
+                "mentions": list(c.mentions),
+                "no_lists": c.no_lists,
+            }
+            for c in cases
+        ],
+        "candidates": [
+            {
+                "candidate": r.candidate.label,
+                "correct_per_run": r.correct_per_run(),
+                "first_right_per_run": r.first_right_per_run(),
+                "mean_f1": r.mean_f1,
+                "agent_p50": r.latency(0.5),
+                "agent_p95": r.latency(0.95),
+                "path_p50": r.total(0.5),
+                "path_p95": r.total(0.95),
+                "cost_per_thousand": r.cost_per_thousand,
+                "plays": [asdict(p) for p in r.plays],
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(list_agent_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+def write_list_markdown(
+    results: Sequence[WriteResult], cases: Sequence[WriteCase], meta: Mapping[str, Any]
+) -> str:
+    pick = writer_rule_pick(results)
+    scored = sum(c.expected is not None for c in cases)
+    lines = [
+        "# Models for write_list",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        f"Correct counts the {scored} cases whose lists tell what to show: the reply shows "
+        "exactly the items it should and holds every text it should, per run, as the mean "
+        "and the range. Every writer reads the same lists, found once per case. An error "
+        "is wrong and left out of latency.",
+        "",
+        "| Candidate | Correct | p50 s | p95 s | Tokens in / out | $ per 1,000 | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        per_run = r.correct_per_run()
+        tokens_in, tokens_out = r.mean_tokens
+        cost = r.cost_per_thousand
+        lines.append(
+            f"| {r.candidate.label} | {r.mean_correct:.1f} / {scored} "
+            f"({min(per_run)}–{max(per_run)}) | {r.latency(0.5):.2f} | {r.latency(0.95):.2f} "
+            f"| {tokens_in:.0f} / {tokens_out:.0f} "
+            f"| {'?' if cost is None else f'{cost:.4f}'} | {r.errors} |"
+        )
+    lines += [
+        "",
+        f"DV11's rule picks **{pick.candidate.label}**: within one case of the best, the "
+        "lowest p95, then the cheapest among those close to it. Read the words before "
+        "choosing.",
+        "",
+        "## Failures",
+        "",
+        "| Case | " + " | ".join(r.candidate.label for r in results) + " |",
+        "| --- |" + " --- |" * len(results),
+    ]
+    for case_id in sorted({case for r in results for case in r.failures()}):
+        cells = [_written_failure_cell(r.failures().get(case_id, [])) for r in results]
+        lines.append(f"| {case_id} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## Words",
+        "",
+        "Each case's words before the lists in the first run; the JSON keeps every run.",
+    ]
+    for item in cases:
+        case = item.item.case
+        found = ", ".join(
+            f"{_call({'tool': r['tool'], **r['filters']})} {len(r['items'])}"
+            for r in item.results.values()
+        )
+        expected = (
+            "not scored: the lists cannot tell"
+            if item.expected is None
+            else f"{len(item.expected)} items"
+        )
+        lines += [
+            "",
+            f"### {case.case_id}",
+            "",
+            *_history(case),
+            f"**User:** {case.user_input}",
+            "",
+            f"Lists found: {found or 'none'} · expected: {expected}",
+            "",
+        ]
+        for r in results:
+            first = next((x for x in r.replies if x.case_id == case.case_id), None)
+            text = "(no reply)" if first is None else first.error or _intro(first.text)
+            lines.append(f"- **{r.candidate.label}**: {text}")
+    errors = [(r, x) for r in results for x in r.replies if x.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {r.candidate.label} {x.case_id} run {x.run}: {x.error}" for r, x in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _written_failure_cell(replies: Sequence[Written]) -> str:
+    def problem(x: Written) -> str:
+        if x.error:
+            return "error"
+        parts = []
+        if x.missing:
+            parts.append(f"misses {len(x.missing)}")
+        if x.unexpected:
+            parts.append(f"adds {len(x.unexpected)}")
+        if x.lacking:
+            parts.append("lacks " + ", ".join(x.lacking))
+        return ", ".join(parts)
+
+    return "<br>".join(f"{n}× {text}" for text, n in _counted([problem(x) for x in replies]))
+
+
+def write_write_list_report(
+    results: Sequence[WriteResult],
+    cases: Sequence[WriteCase],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "pick": writer_rule_pick(results).candidate.label,
+        "cases": [
+            {
+                "case_id": c.item.case.case_id,
+                "calls": list(c.calls),
+                "expected": None if c.expected is None else sorted(c.expected),
+                "results": c.results,
+            }
+            for c in cases
+        ],
+        "candidates": [
+            {
+                "candidate": r.candidate.label,
+                "correct_per_run": r.correct_per_run(),
+                "p50": r.latency(0.5),
+                "p95": r.latency(0.95),
+                "cost_per_thousand": r.cost_per_thousand,
+                "replies": [asdict(x) for x in r.replies],
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(write_list_markdown(results, cases, meta), encoding="utf-8")
     return markdown
