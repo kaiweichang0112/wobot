@@ -42,7 +42,7 @@ from wobot.knowledge.repository import Database
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 
 # The earlier messages read: enough for "and 2022?".
 RECENT_MESSAGES = 6
@@ -83,9 +83,9 @@ the tool for the list it asks for, with the filters it states, such as years, a 
 a category or a name. "The last N years" is last_years; a year or a span of years is \
 year_from and year_to, counted from today's date when the message says "this year" or \
 "last year". Leave out a filter the message does not state. contains is for words the \
-items themselves hold, never whose list it is, such as Yeh-Liang Hsu for talks or GRC for \
-its projects or students. For lists asked apart, such as two years each with its count, \
-call the tool once for each.
+items themselves hold, never whose list it is, such as Yeh-Liang Hsu for talks or \
+publications, or GRC for its projects or students. For lists asked apart, such as two \
+years each with its count, call the tool once for each.
 
 A call returns the list's result_id, its count and up to 50 of its items. Code shows \
 the user every item, so you never repeat them. If a list is empty or plainly not what \
@@ -151,8 +151,10 @@ class ListProjects(BaseModel):
 
 
 class ListPublications(BaseModel):
-    """Every GRC publication that matches, with its year and the entry as listed.
-    contains looks in the entry: authors, title and venue."""
+    """Every GRC publication that matches, with its year and the entry as listed. Every
+    one is from Yeh-Liang Hsu's group, and most write him as Hsu, Y. L.: never give his
+    name in contains, which looks in the entry: authors, title and venue. Papers are
+    journal and conference papers, one call for each; books and patents are not papers."""
 
     model_config = ConfigDict(title="list_publications")
     kind: ClassVar[ListKind] = "publication"

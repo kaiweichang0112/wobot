@@ -33,7 +33,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([list_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (list_agent.PROMPT_VERSION, fingerprint) == (2, "45afef8fd925")
+    assert (list_agent.PROMPT_VERSION, fingerprint) == (3, "52a9026aa86f")
 
 
 def test_each_kind_of_list_has_a_tool_with_only_its_own_filters():
