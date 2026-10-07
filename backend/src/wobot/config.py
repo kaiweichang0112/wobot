@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # Chosen for speed (DEC-060): first words at 0.78s p50 against 0.91s for gpt-6-luna.
     chat_model: str = "gpt-5.6-luna"
     chat_effort: str = "none"
+    # Chosen by what its searches find (DEC-061): 25.0 of 27 cases at 2.69s p95.
+    rewrite_model: str = "gpt-6-luna"
+    rewrite_effort: str = "none"
+    # Chosen for speed and cost (DEC-062): as correct as gpt-4o, at 2.61s p95 and 1/25 the cost.
+    answer_model: str = "gpt-6-luna"
+    answer_effort: str = "none"
     # For Jev; in the cloud it comes from Secret Manager.
     typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.

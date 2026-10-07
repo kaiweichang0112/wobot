@@ -11,17 +11,29 @@ given; the rest are stubs until their path is built. The edges are final, and a 
 holds the drawing to `tests/agent/expected_graph.mmd`.
 """
 
+import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
+from wobot.agent.answer import answer_prompt
 from wobot.agent.chat import chat_prompt
-from wobot.agent.route import Route, Router
+from wobot.agent.models import openai_model
+from wobot.agent.retrieval import UNAVAILABLE, LookupFailed, records_named, search_knowledge
+from wobot.agent.rewrite import SearchPlan, read_plan, rewrite_prompt, writes_chinese
+from wobot.agent.route import Route, Router, router_for
+from wobot.config import Settings
+from wobot.knowledge.embeddings import Embedder
+from wobot.knowledge.repository import Database
+
+logger = logging.getLogger(__name__)
 
 # Tool rounds one turn's loop may take before it answers from what it has.
 MAX_LIST_ROUNDS = 3
@@ -43,8 +55,8 @@ class ChatState(TypedDict):
     # This turn's work, cleared by classify.
     route: Route
     route_confidence: float | None  # Jev's, when Jev routes
-    question: str  # the question, standalone
-    queries: list[str]  # what to search for, in the user's language and English
+    question: str  # the question, standalone, in the user's language
+    queries: list[str]  # the question in Chinese and in English, as searched
     name: str | None  # a person, talk or project asked about by name
     evidence: dict[str, Any]  # what the tools found, by handle
     list_messages: list[BaseMessage]  # the list loop's scratch: replaced, never added to
@@ -79,21 +91,6 @@ def fresh_turn() -> dict[str, Any]:
 
 
 # --- Nodes not built yet: stubs that change nothing -----------------------------------
-
-
-def rewrite_query(state: ChatState) -> dict[str, Any]:
-    """The question as it stands alone, and the queries to search for it."""
-    return {}
-
-
-def retrieve(state: ChatState) -> dict[str, Any]:
-    """The passages closest to the queries, and the records holding the name asked."""
-    return {}
-
-
-def answer(state: ChatState) -> dict[str, Any]:
-    """The answer, from this turn's evidence only."""
-    return {}
 
 
 def list_agent(state: ChatState) -> dict[str, Any]:
@@ -136,9 +133,26 @@ def check(state: ChatState) -> dict[str, Any]:
     return {}
 
 
+def latest_user_text(messages: Sequence[BaseMessage]) -> str:
+    return next(m.text for m in reversed(messages) if isinstance(m, HumanMessage))
+
+
+FAILURE_TEXT = {
+    "zh": "抱歉，資料暫時查不到，請稍後再試一次。",
+    "en": "Sorry, I could not look that up just now. Please try again in a moment.",
+}
+
+
+def failure_reply(messages: Sequence[BaseMessage]) -> dict[str, Any]:
+    """A reply that the lookup or the model failed and may be tried again, in the user's
+    language as far as code can tell: Chinese if the message has a Chinese character."""
+    text = FAILURE_TEXT["zh" if writes_chinese(latest_user_text(messages)) else "en"]
+    return {"messages": [AIMessage(text)], "reply": {"text": text, "retryable": True}}
+
+
 def report_failure(state: ChatState) -> dict[str, Any]:
     """Says the lookup failed and can be tried again; never that nothing was found."""
-    return {}
+    return failure_reply(state["messages"])
 
 
 # --- Routing: each returns a label that the edges map to the next node ---------------
@@ -184,18 +198,80 @@ def pass_or_retry(state: ChatState) -> Literal["pass", "retry"]:
 # --- The graph -------------------------------------------------------------------------
 
 
-def build_graph(router: Router, chat_model: BaseChatModel) -> CompiledStateGraph:
-    """The graph, its model nodes holding the router and chat model given."""
+@dataclass(frozen=True)
+class Models:
+    """The model each model node calls (DV11)."""
+
+    router: Router
+    chat: BaseChatModel
+    rewrite: BaseChatModel
+    answer: BaseChatModel
+
+
+def models_for(settings: Settings) -> Models:
+    return Models(
+        router=router_for(settings, settings.classify_model, settings.classify_effort),
+        chat=openai_model(settings, settings.chat_model, settings.chat_effort),
+        rewrite=openai_model(settings, settings.rewrite_model, settings.rewrite_effort),
+        answer=openai_model(settings, settings.answer_model, settings.answer_effort),
+    )
+
+
+def build_graph(models: Models, db: Database, embedder: Embedder) -> CompiledStateGraph:
+    """The graph, its nodes holding the models, database and embedder given."""
+    planner = models.rewrite.with_structured_output(SearchPlan, method="json_schema")
 
     async def classify(state: ChatState) -> dict[str, Any]:
         """Names the kind of question: chat, knowledge, list or recommend."""
-        routed = await router(state["messages"], state.get("pending_question"))
+        routed = await models.router(state["messages"], state.get("pending_question"))
         return {"route": routed.route, "route_confidence": routed.confidence, **fresh_turn()}
 
     async def chat_reply(state: ChatState) -> dict[str, Any]:
         """Small talk, general knowledge and writing, with no lookup."""
-        response = await chat_model.ainvoke(chat_prompt(state["chatbot_name"], state["messages"]))
+        prompt = chat_prompt(state["chatbot_name"], state["messages"])
+        try:
+            response = await models.chat.ainvoke(prompt)
+        except UNAVAILABLE:
+            logger.exception("chat reply failed")
+            return failure_reply(state["messages"])
         # Only the words are kept: the conversation holds text, not the provider's blocks.
+        text = response.text
+        return {"messages": [AIMessage(text)], "reply": {"text": text}}
+
+    async def rewrite_query(state: ChatState) -> dict[str, Any]:
+        """The question as it stands alone, and the queries to search for it."""
+        latest = latest_user_text(state["messages"])
+        try:
+            plan = await planner.ainvoke(rewrite_prompt(state["messages"]))
+        except UNAVAILABLE:
+            # Searching the user's own words still finds something: phase A's baseline.
+            logger.exception("rewriting the question failed; searching the message as it is")
+            return {"question": latest, "queries": [latest], "name": None}
+        return read_plan(plan, latest)
+
+    async def retrieve(state: ChatState) -> dict[str, Any]:
+        """The passages closest to the queries, and the records holding the name asked."""
+        version = state["index_version"]
+        try:
+            passages = await search_knowledge(db, embedder, version, state["queries"])
+            records = await records_named(db, version, state["name"]) if state["name"] else []
+        except LookupFailed:
+            return {"status": "failed"}
+        return {"evidence": {"passages": passages, "records": records}, "status": "ok"}
+
+    async def answer(state: ChatState) -> dict[str, Any]:
+        """The answer, from this turn's evidence only."""
+        prompt = answer_prompt(
+            latest_user_text(state["messages"]),
+            state["question"],
+            state["evidence"],
+            state["chatbot_name"],
+        )
+        try:
+            response = await models.answer.ainvoke(prompt)
+        except UNAVAILABLE:
+            logger.exception("answer failed")
+            return failure_reply(state["messages"])
         text = response.text
         return {"messages": [AIMessage(text)], "reply": {"text": text}}
 
