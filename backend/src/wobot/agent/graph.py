@@ -19,6 +19,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
@@ -214,8 +215,15 @@ def models_for(settings: Settings) -> Models:
     )
 
 
-def build_graph(models: Models, db: Database, embedder: Embedder) -> CompiledStateGraph:
-    """The graph, its nodes holding the models, database and embedder given."""
+def build_graph(
+    models: Models,
+    db: Database,
+    embedder: Embedder,
+    checkpointer: BaseCheckpointSaver | None = None,
+) -> CompiledStateGraph:
+    """The graph, its nodes holding the models, database and embedder given. With a
+    checkpointer, each thread's state is kept between turns; without, every call starts
+    from the input alone."""
     planner = models.rewrite.with_structured_output(SearchPlan, method="json_schema")
     # The first round must call a tool: a list question is always looked up (DV3). Later
     # rounds may stop once the lists found will do.
@@ -388,4 +396,4 @@ def build_graph(models: Models, db: Database, embedder: Embedder) -> CompiledSta
     for last in ("chat_reply", "answer", "write_list", "report_failure"):
         graph.add_edge(last, END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)

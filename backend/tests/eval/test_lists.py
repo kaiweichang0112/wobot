@@ -105,7 +105,7 @@ def test_the_cases_are_lists_v1s_with_their_labels_matched():
     cases, gold_files = list_cases([load_dataset("lists-v1")], ["dev"], corpus, gold.GOLD_DIR)
     by_id = {c.case.case_id: c for c in cases}
 
-    assert len(cases) == 16 and "LS-101" not in by_id
+    assert len(cases) == 17 and "LS-101" not in by_id
     assert "student:master:朱美憶" in by_id["LS-002"].gold
     assert any(key.startswith("unresolved") for key in by_id["LS-002"].gold)  # not in corpus
     assert by_id["LS-010"].gold is None and by_id["LS-016"].no_lists

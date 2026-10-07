@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     db_max_overflow: int = 2
     db_pool_timeout_seconds: float = 10
     db_connect_timeout_seconds: float = 10
+    # The chat graph's checkpoints, on a psycopg pool of their own (agent/checkpoints.py).
+    # Local only until R1 settles how they reach Cloud SQL, so the budget does not count it.
+    checkpoint_pool_size: int = 2
 
     # Needed only by commands that call OpenAI; in the cloud it comes from Secret Manager.
     openai_api_key: SecretStr | None = None

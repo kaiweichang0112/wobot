@@ -10,7 +10,8 @@ models for the chat graph's nodes on the route dataset; they call the models alo
 read no database. `rewrite` compares models for rewrite_query by what the retrieve node
 then finds, so it reads the index as `run` does; `answer` compares models for the answer on
 what the knowledge path finds. `list-agent` and `write-list` compare models for the list
-path's two model nodes on lists-v1, querying the records as the path does.
+path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
+turns-v1's conversations through the configured graph and scores each last turn.
 """
 
 import argparse
@@ -22,6 +23,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from langgraph.checkpoint.memory import MemorySaver
 from openai import AsyncOpenAI
 
 from wobot.agent import answer as answering
@@ -31,6 +33,7 @@ from wobot.agent import retrieval
 from wobot.agent import rewrite as rewriting
 from wobot.agent import route as routing
 from wobot.agent import write_list as writing
+from wobot.agent.graph import build_graph, models_for
 from wobot.agent.models import openai_model
 from wobot.agent.route import router_for
 from wobot.config import Settings, get_settings
@@ -61,6 +64,7 @@ from wobot.eval.report import (
     write_report,
     write_rewrite_report,
     write_route_report,
+    write_turns_report,
     write_vision_report,
     write_write_list_report,
 )
@@ -75,6 +79,8 @@ from wobot.eval.rewrite import (
 from wobot.eval.rewrite import compare as compare_rewrite
 from wobot.eval.route import compare, route_cases
 from wobot.eval.runner import case_refs, run_datasets
+from wobot.eval.turns import DATASET as TURNS_DATASET
+from wobot.eval.turns import play_all, turn_cases
 from wobot.eval.vision import compare_models, dev_transcriptions, fetch_pictures
 from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import DbAnswerCache
@@ -245,6 +251,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     writer.add_argument("--index-version", type=int, help="a version other than the active one")
     writer.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     writer.set_defaults(handler=_write_list)
+
+    turns = commands.add_parser(
+        "turns", help="play conversations through the configured graph (paid calls)"
+    )
+    turns.add_argument("--runs", type=int, default=3, help="times each conversation is played")
+    turns.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    turns.add_argument("--index-version", type=int, help="a version other than the active one")
+    turns.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    turns.set_defaults(handler=_turns)
 
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
@@ -607,6 +622,53 @@ async def _write_list(args: argparse.Namespace, settings: Settings) -> int:
             f"{r.candidate.label}: correct {r.mean_correct:.1f} / {scored}, "
             f"p50 {r.latency(0.5):.2f}s p95 {r.latency(0.95):.2f}s, {r.errors} errors"
         )
+    print(f"report: {path}")
+    return 0
+
+
+async def _turns(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    dataset = load_dataset(TURNS_DATASET)
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    cases = turn_cases([dataset], splits)
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+        embedder = _embedder(settings, corpus)
+        app = build_graph(models_for(settings), engine, embedder, MemorySaver())
+        started = datetime.now().astimezone()
+        result = await play_all(app, cases, version_id, args.runs, progress=print)
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    nodes = ("chat", "rewrite", "answer", "list_agent", "write_list")
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "models": f"classify {settings.classify_model}, "
+        + ", ".join(
+            f"{node} {getattr(settings, f'{node}_model')}:{getattr(settings, f'{node}_effort')}"
+            for node in nodes
+        ),
+        "index_version": version_id,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]}",
+        "splits": list(splits),
+        "cases": len(cases),
+        "runs": args.runs,
+    }
+    path = write_turns_report(result, cases, meta, args.out, f"{started:%Y%m%d-%H%M%S}-turns")
+    print(
+        f"right {result.mean_correct:.1f} / {len(cases)}, last turn p50 "
+        f"{result.latency(0.5):.2f}s p95 {result.latency(0.95):.2f}s, {result.errors} errors"
+    )
     print(f"report: {path}")
     return 0
 

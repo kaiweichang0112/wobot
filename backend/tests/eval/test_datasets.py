@@ -29,8 +29,9 @@ def test_every_gold_file_belongs_to_a_case():
     assert files == used
 
 
-def test_every_expected_list_call_is_one_the_tools_take():
-    cases = [c for c in load_dataset("lists-v1").cases if c.check["kind"] == "list_path"]
+@pytest.mark.parametrize("name", ["lists-v1", "turns-v1"])
+def test_every_expected_list_call_is_one_the_tools_take(name):
+    cases = [c for c in load_dataset(name).cases if c.check and "calls" in c.check]
 
     assert cases
     for case in cases:

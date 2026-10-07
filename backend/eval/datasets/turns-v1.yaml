@@ -1,0 +1,136 @@
+# Conversations (AGT-002, V5): the user's earlier messages alone are written here; the
+# chat graph answers each and keeps the turn in its checkpointer, and only the last turn
+# is scored. A follow-up is thus understood, or not, from what the graph itself kept,
+# such as the first 20 items of each list it showed.
+#   turns              what the user says before the last message, in order
+#   route              every acceptable path of the last turn
+#   calls              the list calls it should count, as lists-v1 scores them
+#   question_mentions  texts the rewritten question must hold
+#   mentions           texts the reply must hold; a list inside a list gives alternatives
+# Texts are matched ignoring case, spaces and dashes.
+#
+# Questions were drafted with AI, partly from route-v1, knowledge-v1 and a wobot-chat
+# session; the first and second items named are those the list path shows first in
+# index version 788. The checks were proposed by AI and confirmed by a person on
+# 2026-10-07.
+dataset: turns-v1
+query_time: "2026-10-07T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  # --- A follow-up on the list just shown
+  - case_id: TN-001
+    scenario: list_then_year
+    split: dev
+    turns:
+      - 列出 GRC 2021 年的碩士畢業生
+    user_input: 那 2022 年的呢？
+    expected_behavior: List the 2022 master graduates.
+    check:
+      kind: turns
+      route: [list]
+      calls:
+        - [{tool: list_students, degree: master, year_from: 2022, year_to: 2022}]
+  - case_id: TN-002
+    scenario: list_then_first
+    split: dev
+    turns:
+      - 有哪些臥床監測、離床預警的產品？
+    user_input: 第一個的廠商電話是多少？
+    expected_behavior: Take "the first" as the first product listed, and give its maker's phone number.
+    check:
+      kind: turns
+      route: [knowledge]
+      question_mentions: [Agicare]
+      mentions: ["2908-6840"]
+  - case_id: TN-003
+    scenario: name_after_list
+    split: dev
+    turns:
+      - 請列出 2013 年的碩士畢業生
+      - 張凱維的論文題目是什麼
+    user_input: 那張維益的呢？
+    expected_behavior: Take the question as asking for his thesis, and find it by his name.
+    check:
+      kind: turns
+      route: [knowledge, list]
+      mentions: [以感知地墊偵測行走路徑]
+  - case_id: TN-008
+    scenario: list_then_other_list
+    split: dev
+    turns:
+      - 我想知道 2012 年徐業良有哪些 paper
+    user_input: 那演講呢？
+    expected_behavior: List the talks of 2012, not filtered by his name.
+    check:
+      kind: turns
+      route: [list]
+      calls:
+        - [{tool: list_lectures, year_from: 2012, year_to: 2012}]
+
+  # --- A follow-up on a fact
+  - case_id: TN-004
+    scenario: knowledge_then_it
+    split: dev
+    turns:
+      - WhizPad 是什麼？
+    user_input: 那它能偵測離床嗎？
+    expected_behavior: Take "it" as WhizPad, and say what the sources state of bed-exit detection.
+    check:
+      kind: turns
+      route: [knowledge]
+      question_mentions: [WhizPad]
+      mentions: [[三階段, 離床提醒, 離床預警, 離床警示, 離床通知]]
+
+  # --- Back to small talk, and on to a fact
+  - case_id: TN-005
+    scenario: list_then_thanks
+    split: dev
+    turns:
+      - 列出 GRC 2021 年的碩士畢業生
+    user_input: 謝謝，你整理得很清楚。
+    expected_behavior: Chat back without looking anything up.
+    check: {kind: turns, route: [chat]}
+  - case_id: TN-006
+    scenario: knowledge_then_chat
+    split: dev
+    turns:
+      - GRC 是哪一年成立的？
+    user_input: 那你能講一個關於腳踏車的笑話嗎？
+    expected_behavior: Tell a joke without looking anything up.
+    check: {kind: turns, route: [chat]}
+  - case_id: TN-007
+    scenario: chat_then_knowledge
+    split: dev
+    turns:
+      - 今天天氣好熱。
+    user_input: 對了，GRC 的電話是多少？
+    expected_behavior: Turn to the question and give GRC's phone number from the sources.
+    check:
+      kind: turns
+      route: [knowledge]
+      mentions: ["455-5726"]
+
+  # --- Held out
+  - case_id: TN-101
+    scenario: list_then_year_english
+    split: heldout
+    turns:
+      - List GRC's PhD graduates of 2007.
+    user_input: And 2014?
+    expected_behavior: List the 2014 PhD graduates, in English.
+    check:
+      kind: turns
+      route: [list]
+      calls:
+        - [{tool: list_students, degree: phd, year_from: 2014, year_to: 2014}]
+  - case_id: TN-102
+    scenario: list_then_second
+    split: heldout
+    turns:
+      - GRC 2024 年有哪些研究計畫？
+    user_input: 第二項的委託單位是誰？
+    expected_behavior: Take "the second" as the second project listed, and name its funder.
+    check:
+      kind: turns
+      route: [knowledge]
+      mentions: [資訊工業策進會]

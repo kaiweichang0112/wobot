@@ -187,6 +187,18 @@ cases:
       calls:
         - [{tool: list_projects, year_from: 2030, year_to: 2030}]
       no_lists: true
+  - case_id: LS-017
+    scenario: owner_name
+    split: dev
+    # Most entries write him as Hsu, Y. L.: contains 徐業良 finds 4 of 2012's 17. Papers
+    # are journal and conference papers, not books or patents (a person, 2026-10-07).
+    user_input: 我想知道 2012 年徐業良有哪些 paper
+    expected_behavior: List the journal and conference papers of 2012, not filtered by his name.
+    check:
+      kind: list_path
+      calls:
+        - - {tool: list_publications, category: Journal papers, year_from: 2012, year_to: 2012}
+          - {tool: list_publications, category: Conference papers, year_from: 2012, year_to: 2012}
 
   # --- Held out
   - case_id: LS-101
