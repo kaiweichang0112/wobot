@@ -2,8 +2,10 @@
 case is played as a conversation, and latency percentiles (DV11)."""
 
 import math
-from collections.abc import Sequence
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
@@ -18,6 +20,7 @@ PRICES: dict[str, tuple[float, float]] = {
     "gpt-5.6-terra": (2.00, 12.00),
     "gpt-5.6-luna": (0.20, 1.20),
     "gpt-6-luna": (0.10, 0.50),
+    "gpt-4o": (2.50, 10.00),  # the model page, checked 2026-10-06
     "jev-latest": (0.042, 0.0),  # output is not charged
 }
 
@@ -73,3 +76,47 @@ def case_messages(case: Case) -> list[BaseMessage]:
     for turn in case.history:
         messages += [HumanMessage(turn["user"]), AIMessage(turn["answer"])]
     return [*messages, HumanMessage(case.user_input)]
+
+
+# DV11's rule: keep the candidates within one case of the best, take the fastest at p95,
+# and among those within a tenth of its p95 the cheapest.
+CASES_BEHIND_BEST = 1
+CLOSE_LATENCY = 0.10
+
+
+class Measured(Protocol):
+    def latency(self, share: float) -> float: ...
+
+    @property
+    def cost_per_thousand(self) -> float | None: ...
+
+
+def rule_pick[M: Measured](results: Sequence[M], correct: Callable[[M], float]) -> M:
+    """The candidate DV11's rule chooses, by its mean of cases right per run; the person
+    decides, with the numbers."""
+    best = max(correct(r) for r in results)
+    accurate = [r for r in results if correct(r) >= best - CASES_BEHIND_BEST]
+    fastest = min(r.latency(0.95) for r in accurate)
+    close = [r for r in accurate if r.latency(0.95) <= fastest * (1 + CLOSE_LATENCY)]
+    return min(close, key=lambda r: (r.cost_per_thousand is None, r.cost_per_thousand or 0))
+
+
+# Spaces and dashes of every width: a reply may write 03-455-5726 as 03 4555726.
+_IGNORED = re.compile(r"[\s\-\u2010-\u2015\uff0d]")
+
+
+def plain(text: str) -> str:
+    """Text as mentions are matched: ignoring case, spaces and dashes."""
+    return _IGNORED.sub("", text).casefold()
+
+
+def lacking(text: str, mentions: Sequence[str | Sequence[str]]) -> list[str]:
+    """The mentions the text does not hold; a list among them is held by any one of its
+    texts, and is shown as its texts joined by a slash."""
+    held = plain(text)
+    missing = []
+    for mention in mentions:
+        options = [mention] if isinstance(mention, str) else list(mention)
+        if not any(plain(option) in held for option in options):
+            missing.append(" / ".join(options))
+    return missing
