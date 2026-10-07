@@ -1,0 +1,233 @@
+# The list path (AGT-004, DV9): list_agent's tool calls and the lists write_list shows,
+# scored from the message the path receives. Whether classify sends a message here is
+# route-v1's to score.
+#   calls     every acceptable set of tool calls, as a list of sets; a call is its tool
+#             and every filter it gives, so a filter given or left out that a set does
+#             not name makes it another call. A list of strings for contains gives the
+#             spellings accepted. The calls counted are those that found something, or,
+#             when none did, those the tools ran; refused calls never count.
+#   gold      the items the reply must show, in full (list F1)
+#   mentions  texts the reply must hold, such as a count
+#   no_lists  the sources list nothing that matches: the reply shows no list
+# Relative dates are counted from the query time below.
+#
+# Questions were drafted with AI, partly from seed-v1, fixtures-v1 and route-v1; the
+# gold files are a person's, from those datasets. The expected calls were proposed by AI
+# and confirmed by a person on 2026-10-07.
+dataset: lists-v1
+query_time: "2026-10-07T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  # --- A year, a degree or a category, with the list labelled in full
+  - case_id: LS-001
+    scenario: fixed_date_list  # CASE-005
+    split: dev
+    user_input: 請完整列出徐業良 2024 年的演講，並附可點擊來源。
+    expected_behavior: List every talk of 2024, leaving out none.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_lectures, year_from: 2024, year_to: 2024}]
+      gold: {file: speeches-2024.txt, as: speech}
+  - case_id: LS-002
+    scenario: yearly_student_list  # CASE-006
+    split: dev
+    user_input: GRC 2022 年的碩士畢業生有哪些？請完整列出姓名與論文題目。
+    expected_behavior: List every 2022 master graduate with the thesis title.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_students, degree: master, year_from: 2022, year_to: 2022}]
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2022]}
+  - case_id: LS-003
+    scenario: year_isolation  # CASE-007
+    split: dev
+    user_input: 請列出 GRC 2021 年碩士畢業生的姓名與英文論文題目。
+    expected_behavior: List only the 2021 master graduates.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_students, degree: master, year_from: 2021, year_to: 2021}]
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2021]}
+  - case_id: LS-004
+    scenario: multi_year_count  # CASE-008
+    split: dev
+    user_input: 請分年度列出 GRC 2021、2022 年碩士畢業生與各年人數。
+    expected_behavior: List the 2021 and 2022 master graduates by year, with each year's count.
+    check:
+      kind: list_path
+      calls:
+        - - {tool: list_students, degree: master, year_from: 2021, year_to: 2021}
+          - {tool: list_students, degree: master, year_from: 2022, year_to: 2022}
+        - [{tool: list_students, degree: master, year_from: 2021, year_to: 2022}]
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2021, 2022]}
+  - case_id: LS-005
+    scenario: multi_year  # RT-014
+    split: dev
+    user_input: 列出 GRC 2021、2022 年的碩士畢業生。
+    expected_behavior: List every master graduate of 2021 and 2022.
+    check:
+      kind: list_path
+      calls:
+        - - {tool: list_students, degree: master, year_from: 2021, year_to: 2021}
+          - {tool: list_students, degree: master, year_from: 2022, year_to: 2022}
+        - [{tool: list_students, degree: master, year_from: 2021, year_to: 2022}]
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2021, 2022]}
+  - case_id: LS-006
+    scenario: full_candidate_list  # CASE-018
+    split: dev
+    user_input: 請完整列出產品表中分類為「臥床監測、離床預警、壓傷防護」的產品與公司。
+    expected_behavior: List every product of the category with its company.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_products, category: "1-3"}]
+      gold: {file: products-bed-monitoring.txt, as: product}
+  - case_id: LS-007
+    scenario: project_list  # FIX-001
+    split: dev
+    user_input: 請列出 GRC 2024 年的研究計畫，含委託單位、執行期間與金額。
+    expected_behavior: List every 2024 project with its funder, period and amount.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_projects, year_from: 2024, year_to: 2024}]
+      gold: {file: projects-2024.yaml, as: project}
+  - case_id: LS-008
+    scenario: mixed  # RT-024
+    split: dev
+    user_input: 列出 GRC 2024 年的期刊論文，再用一句話介紹 GRC 的研究方向。
+    # The research directions are no list: the reply says to ask them on their own,
+    # without saying whether the sources hold them. A person reads it until V8's judge.
+    expected_behavior: List every 2024 journal paper, then invite asking about the research directions apart.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_publications, category: Journal papers, year_from: 2024, year_to: 2024}]
+      gold: {file: publications-journal-2024.txt, as: publication}
+  - case_id: LS-009
+    scenario: count  # RT-015
+    split: dev
+    user_input: 徐業良教授 2024 年有幾場演講？
+    expected_behavior: Give the number of talks in 2024, and list them.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_lectures, year_from: 2024, year_to: 2024}]
+      gold: {file: speeches-2024.txt, as: speech}
+      mentions: ["32"]
+
+  # --- Tools and filters alone: no person has labelled these lists
+  - case_id: LS-010
+    scenario: category  # RT-017
+    split: dev
+    user_input: 目錄裡有哪些認知訓練類的產品？
+    expected_behavior: List every product of category 4-3.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_products, category: "4-3"}]
+  - case_id: LS-011
+    scenario: whole_list  # RT-018
+    split: dev
+    user_input: GRC 執行過哪些研究計畫？
+    expected_behavior: List every project, with no filter.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_projects}]
+  - case_id: LS-012
+    scenario: relative_date_list
+    split: dev
+    user_input: 徐業良近三年有哪些主題演講？
+    expected_behavior: List the keynote speeches of the last three years, counted back from today.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_lectures, last_years: 3, category: keynote}]
+  - case_id: LS-013
+    scenario: reference
+    split: dev
+    history:
+      - user: 列出 GRC 2024 年的研究計畫。
+        answer: 2024 年共有 7 項研究計畫。
+    user_input: 那 2023 年的呢？
+    expected_behavior: Take the question as asking for the projects of 2023.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_projects, year_from: 2023, year_to: 2023}]
+  - case_id: LS-014
+    scenario: contains
+    split: dev
+    # 感知地墊 would miss 智慧感測地墊.
+    user_input: 哪些學生的論文和地墊有關？
+    expected_behavior: List every student whose thesis title holds 地墊.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_students, contains: [地墊]}]
+  - case_id: LS-015
+    scenario: contains
+    split: dev
+    user_input: 世大智科在目錄裡有哪些產品？
+    expected_behavior: List the catalog's products whose company is 世大智科.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_products, contains: [世大智科]}]
+  - case_id: LS-016
+    scenario: no_match
+    split: dev
+    # Nothing is listed for 2030: dropping the year to find something lists all 153.
+    user_input: GRC 2030 年有哪些研究計畫？
+    expected_behavior: Say the sources list no project for 2030, and list none.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_projects, year_from: 2030, year_to: 2030}]
+      no_lists: true
+
+  # --- Held out
+  - case_id: LS-101
+    scenario: category  # RT-016
+    split: heldout
+    user_input: GRC 有哪些專利？
+    expected_behavior: List every patent.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_publications, category: Patents}]
+  - case_id: LS-102
+    scenario: reference  # RT-021
+    split: heldout
+    history:
+      - user: 列出 GRC 2021 年的碩士畢業生。
+        answer: 2021 年共有 5 位碩士畢業生：張宗聖、張斌權、曾暉原、謝佑丞、陳虹諭。
+    user_input: 那 2022 年的呢？
+    expected_behavior: Take the question as asking for the 2022 master graduates.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_students, degree: master, year_from: 2022, year_to: 2022}]
+      gold: {file: students-master-2021-2022.yaml, as: student, degree: master, years: [2022]}
+  - case_id: LS-103
+    scenario: english  # FIX-003
+    split: heldout
+    user_input: List every PhD graduate of GRC in 2007 with their thesis titles.
+    expected_behavior: List every 2007 PhD graduate, in English.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_students, degree: phd, year_from: 2007, year_to: 2007}]
+      gold: {file: students-phd-2007.yaml, as: student, degree: phd, years: [2007]}
+  - case_id: LS-104
+    scenario: category
+    split: heldout
+    # The catalog files one fall-detection radar under 1-3; the category is still 1-1.
+    user_input: 目錄裡有哪些跌倒偵測的產品？
+    expected_behavior: List the products of category 1-1.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_products, category: "1-1"}]
