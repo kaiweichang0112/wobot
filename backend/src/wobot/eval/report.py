@@ -30,6 +30,7 @@ from wobot.eval.rewrite import RewriteCase, RewriteResult, Searched
 from wobot.eval.rewrite import rule_pick as rewrite_rule_pick
 from wobot.eval.route import CandidateResult, rule_pick
 from wobot.eval.runner import CaseResult, RunResult
+from wobot.eval.turns import Played, TurnCase, TurnsResult
 from wobot.eval.vision import ModelResult
 
 
@@ -1056,4 +1057,137 @@ def write_write_list_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(write_list_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Conversations ----------------------------------------------------------------------
+
+TURN_NODES = (
+    "classify",
+    "chat_reply",
+    "rewrite_query",
+    "retrieve",
+    "answer",
+    "list_agent",
+    "list_tools",
+    "write_list",
+)
+
+
+def turns_markdown(result: TurnsResult, cases: Sequence[TurnCase], meta: Mapping[str, Any]) -> str:
+    per_run = result.correct_per_run()
+    lines = [
+        "# Conversations",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Result",
+        "",
+        f"Right counts the {len(cases)} conversations whose last turn took an accepted path, "
+        "made the calls a list needs, and held every text it should, per run.",
+        "",
+        f"**{result.mean_correct:.1f} / {len(cases)}** ({min(per_run)}–{max(per_run)}), "
+        f"{result.errors} errors.",
+        "",
+        "| Last turn's path | Plays | p50 s | p95 s |",
+        "| --- | --- | --- | --- |",
+    ]
+    for route in ("chat", "knowledge", "list"):
+        plays = [p for p in result.done if p.route == route]
+        if plays:
+            lines.append(
+                f"| {route} | {len(plays)} | {result.latency(0.5, route):.2f} "
+                f"| {result.latency(0.95, route):.2f} |"
+            )
+    lines += [
+        f"| all | {len(result.done)} | {result.latency(0.5):.2f} | {result.latency(0.95):.2f} |",
+        "",
+        "| Node | p50 s | p95 s |",
+        "| --- | --- | --- |",
+    ]
+    for node in TURN_NODES:
+        if any(node in p.nodes for p in result.done):
+            lines.append(
+                f"| {node} | {result.node_latency(node, 0.5):.2f} "
+                f"| {result.node_latency(node, 0.95):.2f} |"
+            )
+    lines += [
+        "",
+        "## Failures",
+        "",
+        "| Case | What went wrong |",
+        "| --- | --- |",
+    ]
+    for case_id, plays in sorted(result.failures().items()):
+        lines.append(f"| {case_id} | {_turn_failure_cell(plays)} |")
+    lines += [
+        "",
+        "## Conversations",
+        "",
+        "Each conversation in the first run: the graph's replies to the earlier messages, "
+        "then the last turn. The JSON keeps every run.",
+    ]
+    for item in cases:
+        case = item.case
+        first = next((p for p in result.plays if p.case_id == case.case_id), None)
+        lines += ["", f"### {case.case_id}", ""]
+        if first is None:
+            continue
+        for message, reply in zip(case.turns, first.earlier, strict=False):
+            lines += [f"> {message}\n>\n> — {_intro(reply)}\n"]
+        lines += [f"**User:** {case.user_input}", ""]
+        if first.error:
+            lines.append(f"Error: {first.error}")
+            continue
+        path = f"{first.route} ({'right' if first.right else 'wrong'})"
+        if first.question:
+            path += f" · read as: {first.question}"
+        if first.calls:
+            path += f" · {_calls(first.calls)}"
+        lines += [path, "", f"**Reply:** {_intro(first.text)}"]
+    errors = [p for p in result.plays if p.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {p.case_id} run {p.run}: {p.error}" for p in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _turn_failure_cell(plays: Sequence[Played]) -> str:
+    def problem(p: Played) -> str:
+        if p.error:
+            return "error"
+        parts = []
+        if not p.route_right:
+            parts.append(f"took {p.route}")
+        if p.calls_right is False:
+            parts.append(_calls(p.calls))
+        if p.question_lacking:
+            parts.append("question lacks " + ", ".join(p.question_lacking))
+        if p.lacking:
+            parts.append("lacks " + ", ".join(p.lacking))
+        return "; ".join(parts)
+
+    return "<br>".join(f"{n}× {text}" for text, n in _counted([problem(p) for p in plays]))
+
+
+def write_turns_report(
+    result: TurnsResult,
+    cases: Sequence[TurnCase],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "correct_per_run": result.correct_per_run(),
+        "p50": result.latency(0.5),
+        "p95": result.latency(0.95),
+        "plays": [asdict(p) | {"right": p.right} for p in result.plays],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(turns_markdown(result, cases, meta), encoding="utf-8")
     return markdown
