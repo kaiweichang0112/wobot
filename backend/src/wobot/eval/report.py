@@ -26,6 +26,9 @@ from wobot.eval.lists import (
     writer_rule_pick,
 )
 from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
+from wobot.eval.recommend import NODES as REC_NODES
+from wobot.eval.recommend import RecCase, RecPlay, RecResult
+from wobot.eval.recommend import rule_pick as rec_rule_pick
 from wobot.eval.rewrite import RewriteCase, RewriteResult, Searched
 from wobot.eval.rewrite import rule_pick as rewrite_rule_pick
 from wobot.eval.route import CandidateResult, rule_pick
@@ -1190,4 +1193,189 @@ def write_turns_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(turns_markdown(result, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Recommendation model comparison ----------------------------------------------------
+
+
+def _expected(item: RecCase) -> str:
+    parts = [" or ".join(item.actions)]
+    if item.recommends is not None:
+        parts.append(f"{len(item.recommends)} fit")
+    if item.never:
+        parts.append(f"{len(item.never)} never")
+    if item.prefers:
+        parts.append(f"prefers {item.prefers}")
+    if item.count is not None:
+        parts.append(f"count {item.count}")
+    if item.searches is False:
+        parts.append("no search")
+    if item.language:
+        parts.append(f"in {item.language}")
+    return " · ".join(parts)
+
+
+def _rec_failure_cell(plays: Sequence[RecPlay]) -> str:
+    shown = ["error" if p.error else "; ".join(p.problems) for p in plays]
+    return "<br>".join(f"{n}× {text}" for text, n in _counted(shown))
+
+
+def recommend_markdown(
+    results: Sequence[RecResult], cases: Sequence[RecCase], meta: Mapping[str, Any]
+) -> str:
+    pick = rec_rule_pick(results)
+    lines = [
+        "# Models for rec_agent",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        f"Right counts the {len(cases)} cases whose turn did an accepted thing, showed only "
+        "products labelled to fit, none that may never be shown, and as many as asked, per "
+        "run, as the mean and the range. Never shown counts plays that showed a product "
+        "that may never be shown. Preferred counts plays whose preferred product came "
+        "first, of those that could. Path runs from rec_agent to the reply, every round; "
+        "cost is every call of the agent's model. An error is wrong and left out of latency.",
+        "",
+        "| Candidate | Right | Never shown | Preferred | Model calls | Searches "
+        "| Path p50 s | Path p95 s | Tokens in / out | $ per 1,000 | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        per_run = r.correct_per_run()
+        tokens_in, tokens_out = r.mean_tokens
+        cost = r.cost_per_thousand
+        met, judged = r.preferred_shown()
+        lines.append(
+            f"| {r.candidate.label} | {r.mean_correct:.1f} / {len(cases)} "
+            f"({min(per_run)}–{max(per_run)}) | {r.never_shown} | {met} / {judged} "
+            f"| {r.mean_model_calls:.2f} | {r.mean_searches:.2f} "
+            f"| {r.latency(0.5):.2f} | {r.latency(0.95):.2f} "
+            f"| {tokens_in:.0f} / {tokens_out:.0f} "
+            f"| {'?' if cost is None else f'{cost:.4f}'} | {r.errors} |"
+        )
+    lines += [
+        "",
+        f"DV11's rule picks **{pick.candidate.label}**: within one case of the best, the "
+        "lowest path p95, then the cheapest among those close to it. Read the failures "
+        "and the flows before choosing.",
+        "",
+        "## Seconds in each node",
+        "",
+        "Each node's seconds in a play, every visit summed.",
+        "",
+        "| Candidate | " + " | ".join(f"{n} p50 | {n} p95" for n in REC_NODES) + " |",
+        "| --- |" + " --- | --- |" * len(REC_NODES),
+    ]
+    for r in results:
+        cells = " | ".join(
+            f"{r.node_latency(n, 0.5):.2f} | {r.node_latency(n, 0.95):.2f}" for n in REC_NODES
+        )
+        lines.append(f"| {r.candidate.label} | {cells} |")
+    lines += [
+        "",
+        "## Failures",
+        "",
+        "Each case some candidate got wrong, with what went wrong in each play.",
+        "",
+        "| Case | Expected | " + " | ".join(r.candidate.label for r in results) + " |",
+        "| --- | --- |" + " --- |" * len(results),
+    ]
+    by_id = {c.case.case_id: c for c in cases}
+    for case_id in sorted({case for r in results for case in r.failures()}):
+        cells = [_rec_failure_cell(r.failures().get(case_id, [])) for r in results]
+        lines.append(f"| {case_id} | {_expected(by_id[case_id])} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## Flows",
+        "",
+        "Each case in the first run: every node after classify, its seconds and what it "
+        "did, then the reply's first lines. The JSON keeps every run.",
+    ]
+    for item in cases:
+        case = item.case
+        lines += ["", f"### {case.case_id}", "", *_history(case), f"**User:** {case.user_input}"]
+        lines += ["", f"Expected: {_expected(item)}", ""]
+        for r in results:
+            first = next((p for p in r.plays if p.case_id == case.case_id), None)
+            if first is None:
+                continue
+            if first.error:
+                lines += [f"**{r.candidate.label}**: {first.error}", ""]
+                continue
+            verdict = "right" if first.right else "wrong: " + "; ".join(first.problems)
+            lines += [
+                f"**{r.candidate.label}** ({verdict}; {first.seconds:.2f}s)",
+                "",
+                "| # | Node | s | What it did |",
+                "| --- | --- | --- | --- |",
+                *(
+                    f"| {n} | {step.node} | {step.seconds:.2f} | {_cell(step.note)} |"
+                    for n, step in enumerate(first.flow, start=1)
+                ),
+                "",
+                f"> {_cell(_intro(first.text))}",
+                "",
+            ]
+    errors = [(r, p) for r in results for p in r.plays if p.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {r.candidate.label} {p.case_id} run {p.run}: {p.error}" for r, p in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _cell(text: str) -> str:
+    """Text that keeps a Markdown table row whole."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def write_recommend_report(
+    results: Sequence[RecResult],
+    cases: Sequence[RecCase],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "pick": rec_rule_pick(results).candidate.label,
+        "cases": [
+            {
+                "case_id": c.case.case_id,
+                "actions": list(c.actions),
+                "recommends": None if c.recommends is None else sorted(c.recommends),
+                "never": sorted(c.never),
+                "prefers": c.prefers,
+                "count": c.count,
+                "searches": c.searches,
+                "language": c.language,
+            }
+            for c in cases
+        ],
+        "candidates": [
+            {
+                "candidate": r.candidate.label,
+                "correct_per_run": r.correct_per_run(),
+                "never_shown": r.never_shown,
+                "preferred_shown": list(r.preferred_shown()),
+                "path_p50": r.latency(0.5),
+                "path_p95": r.latency(0.95),
+                "nodes": {
+                    n: {"p50": r.node_latency(n, 0.5), "p95": r.node_latency(n, 0.95)}
+                    for n in REC_NODES
+                },
+                "cost_per_thousand": r.cost_per_thousand,
+                "plays": [asdict(p) | {"right": p.right} for p in r.plays],
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(recommend_markdown(results, cases, meta), encoding="utf-8")
     return markdown

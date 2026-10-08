@@ -12,6 +12,8 @@ then finds, so it reads the index as `run` does; `answer` compares models for th
 what the knowledge path finds. `list-agent` and `write-list` compare models for the list
 path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
 turns-v1's conversations through the configured graph and scores each last turn.
+`recommend` compares models for rec_agent on recommendation-v2, searching the index and
+reading the products as the recommendation path does.
 """
 
 import argparse
@@ -56,11 +58,15 @@ from wobot.eval.lists import (
     list_path,
     write_cases,
 )
+from wobot.eval.recommend import DATASET as REC_DATASET
+from wobot.eval.recommend import compare as compare_recommend
+from wobot.eval.recommend import rec_cases
 from wobot.eval.report import (
     summary,
     write_answer_report,
     write_chat_report,
     write_list_agent_report,
+    write_recommend_report,
     write_report,
     write_rewrite_report,
     write_route_report,
@@ -260,6 +266,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     turns.add_argument("--index-version", type=int, help="a version other than the active one")
     turns.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     turns.set_defaults(handler=_turns)
+
+    recommend = commands.add_parser(
+        "recommend",
+        help="compare models for rec_agent on the recommendation dataset (paid calls)",
+    )
+    recommend.add_argument(
+        "--model",
+        action="append",
+        required=True,
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="a candidate, such as gpt-6-luna:low or gpt-4o:default; repeat for more",
+    )
+    recommend.add_argument("--runs", type=int, default=3, help="times each case is played")
+    recommend.add_argument("--split", choices=["all", "dev", "heldout"], default="dev")
+    recommend.add_argument("--index-version", type=int, help="a version other than the active one")
+    recommend.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    recommend.set_defaults(handler=_recommend)
 
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
@@ -669,6 +693,56 @@ async def _turns(args: argparse.Namespace, settings: Settings) -> int:
         f"right {result.mean_correct:.1f} / {len(cases)}, last turn p50 "
         f"{result.latency(0.5):.2f}s p95 {result.latency(0.95):.2f}s, {result.errors} errors"
     )
+    print(f"report: {path}")
+    return 0
+
+
+async def _recommend(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    if jev := [c.label for c in args.model if c.effort == "-"]:
+        print(f"{jev}: Jev classifies and calls no tools")
+        return 1
+    dataset = load_dataset(REC_DATASET)
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    cases = rec_cases([dataset], splits)
+    agents = [(c, openai_model(settings, c.model, c.effort)) for c in args.model]
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+        embedder = _embedder(settings, corpus)
+        started = datetime.now().astimezone()
+        results = await compare_recommend(
+            agents, cases, engine, embedder, version_id, args.runs, progress=print
+        )
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "index_version": version_id,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]}",
+        "splits": list(splits),
+        "cases": len(cases),
+        "runs": args.runs,
+    }
+    path = write_recommend_report(
+        results, cases, meta, args.out, f"{started:%Y%m%d-%H%M%S}-recommend"
+    )
+    for r in results:
+        print(
+            f"{r.candidate.label}: right {r.mean_correct:.1f} / {len(cases)}, "
+            f"never shown {r.never_shown}, path p50 {r.latency(0.5):.2f}s "
+            f"p95 {r.latency(0.95):.2f}s, {r.errors} errors"
+        )
     print(f"report: {path}")
     return 0
 
