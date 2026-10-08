@@ -13,34 +13,29 @@ graph TD;
 	list_agent(list_agent)
 	list_tools(list_tools)
 	write_list(write_list)
-	update_needs(update_needs)
 	rec_agent(rec_agent)
 	rec_tools(rec_tools)
-	decide(decide)
-	check(check)
 	report_failure(report_failure)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> classify;
-	check -. &nbsp;pass&nbsp; .-> __end__;
-	check -. &nbsp;retry&nbsp; .-> rec_agent;
 	classify -. &nbsp;chat&nbsp; .-> chat_reply;
 	classify -. &nbsp;list&nbsp; .-> list_agent;
+	classify -. &nbsp;recommend&nbsp; .-> rec_agent;
+	classify -. &nbsp;failed&nbsp; .-> report_failure;
 	classify -. &nbsp;knowledge&nbsp; .-> rewrite_query;
-	classify -. &nbsp;recommend&nbsp; .-> update_needs;
-	decide --> check;
 	list_agent -. &nbsp;tools&nbsp; .-> list_tools;
 	list_agent -. &nbsp;done&nbsp; .-> write_list;
 	list_tools -. &nbsp;ok&nbsp; .-> list_agent;
 	list_tools -. &nbsp;failed&nbsp; .-> report_failure;
-	rec_agent -. &nbsp;done&nbsp; .-> decide;
+	rec_agent -. &nbsp;answered&nbsp; .-> __end__;
 	rec_agent -. &nbsp;tools&nbsp; .-> rec_tools;
-	rec_tools -. &nbsp;ok&nbsp; .-> rec_agent;
+	rec_agent -. &nbsp;failed&nbsp; .-> report_failure;
+	rec_tools -. &nbsp;recommended&nbsp; .-> __end__;
+	rec_tools -. &nbsp;next&nbsp; .-> rec_agent;
 	rec_tools -. &nbsp;failed&nbsp; .-> report_failure;
 	retrieve -. &nbsp;ok&nbsp; .-> answer;
 	retrieve -. &nbsp;failed&nbsp; .-> report_failure;
 	rewrite_query --> retrieve;
-	update_needs -. &nbsp;ask&nbsp; .-> decide;
-	update_needs -. &nbsp;search&nbsp; .-> rec_agent;
 	answer --> __end__;
 	chat_reply --> __end__;
 	report_failure --> __end__;

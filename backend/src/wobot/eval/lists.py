@@ -146,6 +146,7 @@ def list_path(agent: BaseChatModel, writer: BaseChatModel, db: Database) -> Comp
         answer=writer,
         list_agent=agent,
         write_list=writer,
+        rec_agent=agent,
     )
     return build_graph(models, db, embedder=None)
 

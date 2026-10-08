@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     classify_effort: str = "none"
     # A route that takes longer has stalled: give up soon, and try once more at most.
     classify_timeout_seconds: float = 15
+    # Routes when Jev fails twice (DEC-067): 24 of 24 dev cases at 1.40s p50 (DEC-059).
+    classify_fallback_model: str = "gpt-6-luna"
+    classify_fallback_effort: str = "none"
     # Chosen for speed (DEC-060): first words at 0.78s p50 against 0.91s for gpt-6-luna.
     chat_model: str = "gpt-5.6-luna"
     chat_effort: str = "none"
@@ -69,6 +72,10 @@ class Settings(BaseSettings):
     # a mixed request's other part from memory.
     write_list_model: str = "gpt-6-luna"
     write_list_effort: str = "none"
+    # Chosen for accuracy (DEC-068): 11.7 of 14 dev against 9.7 at none and 11.3 for
+    # gpt-5.6-luna:low, the fewest products shown that may never be, at half the latter's cost.
+    rec_agent_model: str = "gpt-6-luna"
+    rec_agent_effort: str = "low"
     # For Jev; in the cloud it comes from Secret Manager.
     typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.

@@ -40,8 +40,10 @@ def fake_models(
     answers: Sequence[str] = ("答案。",),
     list_calls: Sequence[AIMessage] = (AIMessage("done"),),
     intro: ListIntro | None = None,
+    rec_calls: Sequence[AIMessage] = (AIMessage("想解決哪方面的照顧需求？"),),
 ) -> Models:
-    """Models that route, plan, answer, call list tools and introduce lists as given."""
+    """Models that route, plan, answer, call list tools, introduce lists and recommend as
+    given. Unless told otherwise, the recommendation agent asks what the user needs."""
     plan = plan or SearchPlan(question_zh="問題", question_en="question", name=None)
     return Models(
         router=FakeRouter(route),
@@ -50,6 +52,7 @@ def fake_models(
         answer=fake_chat(*answers),
         list_agent=FakeToolModel(*list_calls),
         write_list=FakeStructuredModel(intro or ListIntro(intro="沒有找到。", lists=[])),
+        rec_agent=FakeToolModel(*rec_calls),
     )
 
 
@@ -78,6 +81,14 @@ class FakeToolModel:
             return next(self.replies)
 
         return RunnableLambda(reply)
+
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> RunnableLambda:
+        """For a graph that builds every node's runnable: this model never answers so."""
+
+        def refuse(messages: list[BaseMessage]) -> Any:
+            raise AssertionError("a tool model was asked for structured output")
+
+        return RunnableLambda(refuse)
 
 
 class FakeStructuredModel:
