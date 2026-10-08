@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     classify_effort: str = "none"
     # A route that takes longer has stalled: give up soon, and try once more at most.
     classify_timeout_seconds: float = 15
+    # Routes when Jev fails twice (DEC-067): 24 of 24 dev cases at 1.40s p50 (DEC-059).
+    classify_fallback_model: str = "gpt-6-luna"
+    classify_fallback_effort: str = "none"
     # Chosen for speed (DEC-060): first words at 0.78s p50 against 0.91s for gpt-6-luna.
     chat_model: str = "gpt-5.6-luna"
     chat_effort: str = "none"

@@ -2,22 +2,27 @@ import hashlib
 import json
 from typing import get_args
 
+import httpx2
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_typesafe import ChoiceAnswer, ClassifierResponse, Usage
+from langchain_typesafe.client import TypeSafeAPIError, TypeSafeInternalServerError
 
 from tests.agent.fakes import FakeStructuredModel
 from wobot.agent import route
 from wobot.agent.route import (
     CRITERIA,
     RECENT_MESSAGES,
+    FallbackRouter,
     JevRouter,
     OpenAIRouter,
     Route,
     RouteChoice,
     Routed,
+    chat_router,
     router_state,
 )
+from wobot.config import Settings
 
 
 def test_every_route_has_its_criterion():
@@ -73,13 +78,22 @@ async def test_an_openai_router_sends_the_criteria_and_the_state_as_data():
     assert json.loads(human.content)["latest_message"] == "列出 2024 年的演講"
 
 
+def unavailable() -> TypeSafeInternalServerError:
+    return TypeSafeInternalServerError(503, None, httpx2.Headers())
+
+
 class FakeClassifier:
-    def __init__(self, choice: str):
+    """Jev, failing with the errors given before it answers."""
+
+    def __init__(self, choice: str, *failures: Exception):
         self.choice = choice
+        self.failures = list(failures)
         self.requests: list[dict] = []
 
     async def ainvoke(self, request: dict) -> ClassifierResponse:
         self.requests.append(request)
+        if self.failures:
+            raise self.failures.pop(0)
         answer = ChoiceAnswer(
             type="choice", choice=self.choice, probabilities={self.choice: 0.9}, confidence=0.8
         )
@@ -102,3 +116,64 @@ async def test_jev_answers_one_choice_with_its_confidence():
 async def test_a_choice_outside_the_routes_is_refused():
     with pytest.raises(ValueError, match="no route"):
         await JevRouter(FakeClassifier("weather"))([HumanMessage("今天天氣？")], None)
+
+
+async def test_jev_is_tried_once_more_when_it_is_down_a_moment():
+    classifier = FakeClassifier("recommend", unavailable())
+
+    routed = await JevRouter(classifier)([HumanMessage("下肢")], "哪一類復健？")
+
+    assert routed.route == "recommend" and len(classifier.requests) == 2
+
+
+async def test_jev_down_twice_fails():
+    classifier = FakeClassifier("recommend", unavailable(), unavailable())
+
+    with pytest.raises(TypeSafeInternalServerError):
+        await JevRouter(classifier)([HumanMessage("下肢")], None)
+
+
+async def test_a_refused_request_is_not_tried_again():
+    classifier = FakeClassifier("chat", TypeSafeAPIError(400, None, httpx2.Headers()))
+
+    with pytest.raises(TypeSafeAPIError):
+        await JevRouter(classifier)([HumanMessage("你好")], None)
+    assert len(classifier.requests) == 1
+
+
+class Fixed:
+    def __init__(self, routed: Routed | Exception):
+        self.routed = routed
+        self.calls = 0
+
+    async def __call__(self, messages, pending_question) -> Routed:
+        self.calls += 1
+        if isinstance(self.routed, Exception):
+            raise self.routed
+        return self.routed
+
+
+@pytest.mark.parametrize("failure", [unavailable(), ValueError("Jev chose no route: 'x'")])
+async def test_the_fallback_routes_when_the_first_router_fails(failure):
+    second = Fixed(Routed("recommend", None, 400, 5))
+
+    routed = await FallbackRouter(Fixed(failure), second)([HumanMessage("下肢")], None)
+
+    assert routed == Routed("recommend", None, 400, 5, fallback=True) and second.calls == 1
+
+
+async def test_the_fallback_waits_while_the_first_router_answers():
+    second = Fixed(Routed("chat", None))
+
+    routed = await FallbackRouter(Fixed(Routed("list", 0.9)), second)([HumanMessage("x")], None)
+
+    assert routed == Routed("list", 0.9) and second.calls == 0
+
+
+def test_the_chat_graph_falls_back_from_jev_only():
+    jev = Settings(classify_model="jev-latest", typesafe_api_key="k", openai_api_key="k")
+    luna = Settings(classify_model="gpt-6-luna", openai_api_key="k")
+
+    assert isinstance(chat_router(jev), FallbackRouter)
+    assert isinstance(chat_router(jev).second, OpenAIRouter)
+    assert isinstance(chat_router(luna), OpenAIRouter)

@@ -25,6 +25,7 @@ graph TD;
 	check -. &nbsp;retry&nbsp; .-> rec_agent;
 	classify -. &nbsp;chat&nbsp; .-> chat_reply;
 	classify -. &nbsp;list&nbsp; .-> list_agent;
+	classify -. &nbsp;failed&nbsp; .-> report_failure;
 	classify -. &nbsp;knowledge&nbsp; .-> rewrite_query;
 	classify -. &nbsp;recommend&nbsp; .-> update_needs;
 	decide --> check;

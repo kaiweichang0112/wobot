@@ -2,25 +2,43 @@
 
 Both routers read the same state and the same criteria, so a comparison measures the
 models, not two wordings. Neither writes text: rewriting the question is the next node's
-work on the paths that need it (DV8).
+work on the paths that need it (DV8). The chat graph routes with Jev, and with an OpenAI
+model when Jev cannot answer (DEC-067).
 """
 
 import json
+import logging
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, get_args
 
+import openai
 from langchain_core._api import LangChainBetaWarning
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_typesafe import Choice, TypeSafeClassifier
+from langchain_typesafe.client import (
+    TypeSafeAPIConnectionError,
+    TypeSafeError,
+    TypeSafeInternalServerError,
+    TypeSafeRateLimitError,
+)
 from pydantic import BaseModel, Field
 
 from wobot.agent.models import openai_model
 from wobot.config import Settings
 
+logger = logging.getLogger(__name__)
+
 Route = Literal["chat", "knowledge", "list", "recommend"]
+
+# Jev's failures another try may clear: the service down a moment, busy, slow or out of
+# reach. A timeout is a connection error too.
+JEV_TRANSIENT = (TypeSafeInternalServerError, TypeSafeRateLimitError, TypeSafeAPIConnectionError)
+# What a router raises when it gives no route: its provider failed, or its answer was not a
+# route.
+ROUTING_FAILED = (TypeSafeError, openai.APIError, TimeoutError, ValueError)
 
 # Bump with any change to the instructions or criteria; a test pins each version.
 PROMPT_VERSION = 1
@@ -66,6 +84,7 @@ class Routed:
     confidence: float | None  # Jev's; an OpenAI model gives none
     input_tokens: int = 0
     output_tokens: int = 0
+    fallback: bool = False  # routed by the fallback, the first router having failed
 
 
 class Router(Protocol):
@@ -132,7 +151,11 @@ class JevRouter:
             "state": router_state(messages, pending_question),
             "questions": {"route": Choice(instructions=INSTRUCTIONS, criteria=CRITERIA)},
         }
-        response = await self.classifier.ainvoke(request)
+        try:
+            response = await self.classifier.ainvoke(request)
+        except JEV_TRANSIENT:
+            logger.warning("Jev failed; trying once more", exc_info=True)
+            response = await self.classifier.ainvoke(request)
         answer = response.answers["route"]
         if answer.choice not in get_args(Route):
             raise ValueError(f"Jev chose no route: {answer.choice!r}")
@@ -140,6 +163,38 @@ class JevRouter:
         return Routed(
             answer.choice, answer.confidence, usage.input_tokens or 0, usage.output_tokens or 0
         )
+
+
+class FallbackRouter:
+    """Routes with the first router, and with the second when the first gives no route."""
+
+    def __init__(self, first: Router, second: Router):
+        self.first = first
+        self.second = second
+
+    async def __call__(
+        self, messages: Sequence[BaseMessage], pending_question: str | None
+    ) -> Routed:
+        try:
+            return await self.first(messages, pending_question)
+        except ROUTING_FAILED:
+            logger.warning("the router failed; routing with the fallback", exc_info=True)
+        routed = await self.second(messages, pending_question)
+        return Routed(
+            routed.route, routed.confidence, routed.input_tokens, routed.output_tokens, True
+        )
+
+
+def chat_router(settings: Settings) -> Router:
+    """The chat graph's router: the classify model, and the fallback model when the
+    classify model is Jev, a provider of its own (DEC-067)."""
+    router = router_for(settings, settings.classify_model, settings.classify_effort)
+    if not settings.classify_model.startswith("jev-"):
+        return router
+    fallback = router_for(
+        settings, settings.classify_fallback_model, settings.classify_fallback_effort
+    )
+    return FallbackRouter(router, fallback)
 
 
 def router_for(settings: Settings, model: str, effort: str) -> Router:

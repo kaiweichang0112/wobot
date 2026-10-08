@@ -70,7 +70,8 @@ def test_every_conditional_edge_is_labelled():
 
 @pytest.mark.parametrize("route", ["chat", "knowledge", "list", "recommend"])
 def test_the_route_names_the_path(route):
-    assert route_by_intent({"route": route}) == route
+    assert route_by_intent({"route": route, "status": "ok"}) == route
+    assert route_by_intent({"route": route, "status": "failed"}) == "failed"
 
 
 @pytest.mark.parametrize(("status", "label"), [("ok", "ok"), ("failed", "failed")])
@@ -306,3 +307,25 @@ async def test_a_failed_list_model_is_reported_as_retryable(broken):
     state = await app.ainvoke(turn("List every product."))
 
     assert state["reply"] == {"text": FAILURE_TEXT["en"], "retryable": True}
+
+
+async def test_a_turn_no_router_answers_is_reported_as_retryable():
+    models = replace(fake_models("chat"), router=FailingRouter())
+    app = build_graph(models, db=None, embedder=None)
+    asked = {**turn("下肢"), "pending_question": "你想做哪一類復健呢？"}
+
+    path, state = [], {}
+    async for mode, chunk in app.astream(asked, stream_mode=["updates", "values"]):
+        if mode == "updates":
+            path += list(chunk)
+        else:
+            state = chunk
+
+    assert path == ["classify", "report_failure"]
+    assert state["reply"] == {"text": FAILURE_TEXT["zh"], "retryable": True}
+    assert state["pending_question"] == "你想做哪一類復健呢？"  # for the message sent again
+
+
+class FailingRouter:
+    async def __call__(self, messages, pending_question):
+        raise TimeoutError("no answer")

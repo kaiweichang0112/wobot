@@ -12,6 +12,10 @@ def test_each_node_is_described_by_what_it_found():
     refused = ToolMessage("Not run: degree: bad", tool_call_id="call-2", status="error")
 
     assert describe("classify", {"route": "list", "route_confidence": 0.91}) == "route list (0.91)"
+    assert describe("classify", {"route": "chat", "route_fallback": True}) == (
+        "route chat (fallback)"
+    )
+    assert describe("classify", {"status": "failed"}) == "failed: no router answered"
     assert describe("rewrite_query", {"question": "張維益的論文？", "name": "張維益"}) == (
         "張維益的論文？, name 張維益"
     )

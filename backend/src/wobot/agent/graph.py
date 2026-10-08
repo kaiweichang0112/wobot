@@ -36,7 +36,7 @@ from wobot.agent.list_agent import (
 from wobot.agent.models import openai_model
 from wobot.agent.retrieval import UNAVAILABLE, LookupFailed, records_named, search_knowledge
 from wobot.agent.rewrite import SearchPlan, read_plan, rewrite_prompt, writes_chinese
-from wobot.agent.route import Route, Router, router_for
+from wobot.agent.route import ROUTING_FAILED, Route, Router, chat_router
 from wobot.agent.write_list import ListIntro, list_reply, lists_that_count, write_list_prompt
 from wobot.config import Settings
 from wobot.knowledge.embeddings import Embedder
@@ -64,6 +64,7 @@ class ChatState(TypedDict):
     # This turn's work, cleared by classify.
     route: Route
     route_confidence: float | None  # Jev's, when Jev routes
+    route_fallback: bool  # Jev failed, and the fallback model routed
     question: str  # the question, standalone, in the user's language
     queries: list[str]  # the question in Chinese and in English, as searched
     name: str | None  # a person, talk or project asked about by name
@@ -152,8 +153,8 @@ def report_failure(state: ChatState) -> dict[str, Any]:
 # --- Routing: each returns a label that the edges map to the next node ---------------
 
 
-def route_by_intent(state: ChatState) -> Route:
-    return state["route"]
+def route_by_intent(state: ChatState) -> Route | Literal["failed"]:
+    return "failed" if state["status"] == "failed" else state["route"]
 
 
 def ok_or_failed(state: ChatState) -> Literal["ok", "failed"]:
@@ -206,7 +207,7 @@ class Models:
 
 def models_for(settings: Settings) -> Models:
     return Models(
-        router=router_for(settings, settings.classify_model, settings.classify_effort),
+        router=chat_router(settings),
         chat=openai_model(settings, settings.chat_model, settings.chat_effort),
         rewrite=openai_model(settings, settings.rewrite_model, settings.rewrite_effort),
         answer=openai_model(settings, settings.answer_model, settings.answer_effort),
@@ -233,8 +234,18 @@ def build_graph(
 
     async def classify(state: ChatState) -> dict[str, Any]:
         """Names the kind of question: chat, knowledge, list or recommend."""
-        routed = await models.router(state["messages"], state.get("pending_question"))
-        return {"route": routed.route, "route_confidence": routed.confidence, **fresh_turn()}
+        try:
+            routed = await models.router(state["messages"], state.get("pending_question"))
+        except ROUTING_FAILED:
+            # Neither router answered: the question stays for the message sent again.
+            logger.exception("routing failed")
+            return {**fresh_turn(), "status": "failed"}
+        return {
+            "route": routed.route,
+            "route_confidence": routed.confidence,
+            "route_fallback": routed.fallback,
+            **fresh_turn(),
+        }
 
     async def chat_reply(state: ChatState) -> dict[str, Any]:
         """Small talk, general knowledge and writing, with no lookup."""
@@ -363,6 +374,7 @@ def build_graph(
             "knowledge": "rewrite_query",
             "list": "list_agent",
             "recommend": "update_needs",
+            "failed": "report_failure",
         },
     )
 

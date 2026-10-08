@@ -103,8 +103,11 @@ async def play_turn(app: CompiledStateGraph, turn: dict[str, Any], config: dict)
 def describe(node: str, update: dict[str, Any]) -> str:
     """What a node found, in a line: enough to follow the path a turn took."""
     if node == "classify":
+        if update.get("status") == "failed":
+            return "failed: no router answered"
         confidence = update.get("route_confidence")
-        return f"route {update['route']}" + (f" ({confidence:.2f})" if confidence else "")
+        by = " (fallback)" if update.get("route_fallback") else ""
+        return f"route {update['route']}{by}" + (f" ({confidence:.2f})" if confidence else "")
     if node == "rewrite_query":
         name = f", name {update['name']}" if update.get("name") else ""
         return f"{update['question']}{name}"
