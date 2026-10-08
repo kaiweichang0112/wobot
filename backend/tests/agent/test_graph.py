@@ -14,18 +14,18 @@ from wobot.agent.graph import (
     FAILURE_TEXT,
     MAX_LIST_ROUNDS,
     MAX_REC_ROUNDS,
+    after_rec_tools,
     build_graph,
     list_should_continue,
     ok_or_failed,
-    pass_or_retry,
     rec_should_continue,
     route_by_intent,
-    search_or_ask,
 )
 from wobot.agent.list_agent import result_handle
+from wobot.agent.retrieval import record_handle
 from wobot.agent.rewrite import SearchPlan
 from wobot.agent.write_list import ListIntro, ShownList
-from wobot.knowledge.lists import RecordQuery
+from wobot.knowledge.lists import RecordQuery, find_records
 
 EXPECTED_GRAPH = Path(__file__).with_name("expected_graph.mmd")
 
@@ -79,32 +79,26 @@ def test_a_failed_lookup_leaves_the_path(status, label):
     assert ok_or_failed({"status": status}) == label
 
 
-@pytest.mark.parametrize(
-    ("requirements", "label"),
-    [
-        (None, "ask"),
-        ({"goal": "", "must_have": []}, "ask"),  # "recommend a product", no more
-        ({"goal": "caring for a bedridden parent", "must_have": []}, "ask"),
-        ({"goal": "caring for a bedridden parent", "must_have": [{"id": "n1"}]}, "search"),
-    ],
-)
-def test_a_search_waits_for_a_goal_and_a_need(requirements, label):
-    assert search_or_ask({"requirements": requirements}) == label
+def test_the_list_loop_runs_tools_until_the_agent_stops_or_the_rounds_run_out():
+    def given(*messages, rounds=0):
+        return list_should_continue({"list_messages": list(messages), "tool_rounds": rounds})
+
+    assert given(CALLS_A_TOOL) == "tools"
+    assert given(CALLS_A_TOOL, rounds=MAX_LIST_ROUNDS) == "done"
+    assert given(AIMessage("These will do.")) == "done"
+    assert given(HumanMessage("all talks in 2024")) == "done"
+    assert given() == "done"
 
 
-@pytest.mark.parametrize(
-    ("should_continue", "key", "limit"),
-    [
-        (list_should_continue, "list_messages", MAX_LIST_ROUNDS),
-        (rec_should_continue, "rec_messages", MAX_REC_ROUNDS),
-    ],
-)
-def test_a_loop_runs_tools_until_the_agent_stops_or_the_rounds_run_out(should_continue, key, limit):
-    assert should_continue({key: [CALLS_A_TOOL], "tool_rounds": 0}) == "tools"
-    assert should_continue({key: [CALLS_A_TOOL], "tool_rounds": limit}) == "done"
-    assert should_continue({key: [AIMessage("These will do.")], "tool_rounds": 0}) == "done"
-    assert should_continue({key: [HumanMessage("all talks in 2024")], "tool_rounds": 0}) == "done"
-    assert should_continue({key: [], "tool_rounds": 0}) == "done"
+def test_the_recommendation_loop_runs_tools_until_there_is_a_reply():
+    calling = {"rec_messages": [CALLS_A_TOOL], "reply": {}, "status": "ok"}
+
+    assert rec_should_continue(calling) == "tools"
+    assert rec_should_continue(calling | {"reply": {"text": "請問在哪裡用？"}}) == "answered"
+    assert rec_should_continue(calling | {"status": "failed"}) == "failed"
+    assert after_rec_tools({"reply": {}, "status": "ok"}) == "next"
+    assert after_rec_tools({"reply": {"text": "推薦：…"}, "status": "ok"}) == "recommended"
+    assert after_rec_tools({"reply": {}, "status": "failed"}) == "failed"
 
 
 @pytest.mark.parametrize(
@@ -113,7 +107,7 @@ def test_a_loop_runs_tools_until_the_agent_stops_or_the_rounds_run_out(should_co
         ("chat", ["classify", "chat_reply"]),
         ("knowledge", ["classify", "rewrite_query", "retrieve", "answer"]),
         ("list", ["classify", "list_agent", "write_list"]),
-        ("recommend", ["classify", "update_needs", "decide", "check"]),
+        ("recommend", ["classify", "rec_agent"]),
     ],
 )
 async def test_the_route_picks_the_path(knowledge, route, path):
@@ -141,11 +135,6 @@ async def test_a_turn_starts_without_the_last_turns_work():
     final = await graph("chat", "嗨").ainvoke(state)
 
     assert final["rec_messages"] == [] and final["status"] == "ok"
-
-
-def test_a_decision_with_problems_goes_back_to_the_loop():
-    assert pass_or_retry({"problems": ["n2 is unknown for p-1"]}) == "retry"
-    assert pass_or_retry({"problems": []}) == "pass"
 
 
 # --- The knowledge path -----------------------------------------------------------------
@@ -309,17 +298,165 @@ async def test_a_failed_list_model_is_reported_as_retryable(broken):
     assert state["reply"] == {"text": FAILURE_TEXT["en"], "retryable": True}
 
 
+# --- The recommendation path ------------------------------------------------------------
+
+
+SEARCH = calls(("search_products", {"functions": ["離床偵測"]}))
+
+
+async def bed_product(knowledge) -> str:
+    """The handle of the fixture's bed, which states bed-exit detection."""
+    async with knowledge.db.begin() as conn:
+        beds = await find_records(
+            conn, knowledge.version_id, RecordQuery("product", category="1-3")
+        )
+    return next(
+        record_handle(item.record_id)
+        for item in beds.items
+        if item.fields["product_name"] == "測試床墊 TM-1"
+    )
+
+
+def recommending(product_id: str, *statuses: str) -> AIMessage:
+    """The agent recommending the product, judged on a function and a constraint."""
+    checks = [{"need": n, "status": status} for n, status in enumerate(statuses, start=1)]
+    return calls(
+        (
+            "recommend_products",
+            {
+                "needs": [
+                    {"text": "離床偵測", "kind": "function"},
+                    {"text": "居家使用", "kind": "constraint"},
+                ],
+                "products": [
+                    {"product_id": product_id, "checks": checks, "reason": "床墊下感測。"}
+                ],
+                "count": 1,
+                "intro": "這項產品符合你的需求。",
+            },
+        )
+    )
+
+
+async def played(app, state: dict) -> tuple[list[str], dict]:
+    """The nodes a turn passed through, in order, and the state it ended in."""
+    path, final = [], {}
+    async for mode, chunk in app.astream(state, stream_mode=["updates", "values"]):
+        if mode == "updates":
+            path += list(chunk)
+        else:
+            final = chunk
+    return path, final
+
+
+async def test_the_agent_asks_what_the_user_needs_without_searching():
+    models = fake_models("recommend")
+    app = build_graph(models, db=None, embedder=None)
+
+    path, state = await played(app, turn("推薦一個智慧照護產品給我"))
+
+    assert path == ["classify", "rec_agent"]
+    assert state["reply"] == {
+        "text": "想解決哪方面的照顧需求？",
+        "action": "replied",
+        "products": [],
+    }
+    assert state["pending_question"] == "想解決哪方面的照顧需求？"
+    assert state["messages"][-1].text == "想解決哪方面的照顧需求？"
+    choice, prompt = models.rec_agent.prompts[0]
+    assert choice is None  # not made to call a tool
+    assert prompt[-1].text == "推薦一個智慧照護產品給我"
+
+
+async def test_a_recommendation_the_guards_pass_ends_the_turn_as_a_card(knowledge):
+    bed = await bed_product(knowledge)
+    rounds = [SEARCH, recommending(bed, "supported", "unknown")]
+    models = fake_models("recommend", rec_calls=rounds)
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+    answering = {
+        **turn("在家裡用，要能偵測離床", knowledge.version_id),
+        "pending_question": "請問在哪裡用？",
+    }
+
+    path, state = await played(app, answering)
+
+    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent", "rec_tools"]
+    assert state["reply"]["action"] == "recommend"
+    assert [p["id"] for p in state["reply"]["products"]] == [bed]
+    assert state["reply"]["text"].startswith("這項產品符合你的需求。\n\n推薦：測試床墊 TM-1")
+    assert "- 居家使用：目錄未註明" in state["reply"]["text"]
+    assert state["messages"][-1].text == state["reply"]["text"]
+    assert state["pending_question"] is None
+    # The agent read the products found before it recommended.
+    _, second = models.rec_agent.prompts[1]
+    assert "測試床墊 TM-1" in second[-1].content
+
+
+async def test_a_refused_recommendation_goes_back_to_the_agent(knowledge):
+    bed = await bed_product(knowledge)
+    rounds = [
+        SEARCH,
+        recommending(bed, "unknown", "supported"),
+        AIMessage("目錄沒有寫到離床偵測。"),
+    ]
+    models = fake_models("recommend", rec_calls=rounds)
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+
+    path, state = await played(app, turn("要能偵測離床", knowledge.version_id))
+
+    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent", "rec_tools", "rec_agent"]
+    refused = json.loads(state["rec_messages"][-1].content)["refused"]
+    assert "function 1 (離床偵測) is unknown" in refused
+    assert state["reply"]["text"] == "目錄沒有寫到離床偵測。"
+
+
+async def test_code_names_what_was_found_when_the_rounds_run_out(knowledge):
+    models = fake_models("recommend", rec_calls=[SEARCH] * MAX_REC_ROUNDS)
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+
+    path, state = await played(app, turn("要能偵測離床", knowledge.version_id))
+
+    assert path.count("rec_tools") == MAX_REC_ROUNDS and path[-1] == "rec_agent"
+    assert len(models.rec_agent.prompts) == MAX_REC_ROUNDS  # the last turn asks no model
+    assert state["reply"]["action"] == "unverified"
+    assert "- 測試床墊 TM-1（範例科技股份有限公司）" in state["reply"]["text"]
+
+
+async def test_a_failed_product_search_is_reported_as_retryable(knowledge):
+    models = fake_models("recommend", rec_calls=[SEARCH])
+    app = build_graph(models, Unreachable(), knowledge.embedder)
+
+    path, state = await played(app, turn("想找偵測離床的"))
+
+    assert path[-1] == "report_failure"
+    assert state["reply"] == {"text": FAILURE_TEXT["zh"], "retryable": True}
+
+
+async def test_a_failed_agent_is_reported_as_retryable():
+    models = replace(fake_models("recommend"), rec_agent=Broken())
+    app = build_graph(models, db=None, embedder=None)
+
+    state = await app.ainvoke(turn("想找偵測離床的"))
+
+    assert state["reply"] == {"text": FAILURE_TEXT["zh"], "retryable": True}
+
+
+async def test_the_last_question_is_read_by_the_route_then_cleared():
+    models = fake_models("chat")
+    app = build_graph(models, db=None, embedder=None)
+
+    state = await app.ainvoke({**turn("你好"), "pending_question": "請問在哪裡用？"})
+
+    assert models.router.calls[0][1] == "請問在哪裡用？"
+    assert state["pending_question"] is None
+
+
 async def test_a_turn_no_router_answers_is_reported_as_retryable():
     models = replace(fake_models("chat"), router=FailingRouter())
     app = build_graph(models, db=None, embedder=None)
     asked = {**turn("下肢"), "pending_question": "你想做哪一類復健呢？"}
 
-    path, state = [], {}
-    async for mode, chunk in app.astream(asked, stream_mode=["updates", "values"]):
-        if mode == "updates":
-            path += list(chunk)
-        else:
-            state = chunk
+    path, state = await played(app, asked)
 
     assert path == ["classify", "report_failure"]
     assert state["reply"] == {"text": FAILURE_TEXT["zh"], "retryable": True}

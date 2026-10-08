@@ -2,9 +2,9 @@
 
 Every turn starts at `classify`, which only names the kind of question. Small talk goes
 to `chat_reply`; facts go through `rewrite_query` and `retrieve` to `answer`; lists loop
-between `list_agent` and `list_tools` before `write_list`; recommendations record the
-user's needs, loop between `rec_agent` and `rec_tools`, then `decide` and `check`. A
-database or provider failure on any path ends at `report_failure`.
+between `list_agent` and `list_tools` before `write_list`; recommendations loop between
+`rec_agent` and `rec_tools` until the agent replies or a recommendation passes code's
+guards (DEC-066). A database or provider failure on any path ends at `report_failure`.
 
 Nodes that call a model are made inside `build_graph`, so they hold the model they were
 given; the rest are stubs until their path is built. The edges are final, and a test
@@ -34,6 +34,23 @@ from wobot.agent.list_agent import (
     turn_date,
 )
 from wobot.agent.models import openai_model
+from wobot.agent.rec_agent import (
+    REC_TOOLS,
+    RecommendProducts,
+    SearchProducts,
+    answered,
+    own_words,
+    read_call,
+    rec_agent_prompt,
+    search_products,
+)
+from wobot.agent.recommend import (
+    fallback_reply,
+    recommended_before,
+    recommended_reply,
+    refusal,
+    review,
+)
 from wobot.agent.retrieval import UNAVAILABLE, LookupFailed, records_named, search_knowledge
 from wobot.agent.rewrite import SearchPlan, read_plan, rewrite_prompt, writes_chinese
 from wobot.agent.route import ROUTING_FAILED, Route, Router, chat_router
@@ -46,15 +63,14 @@ logger = logging.getLogger(__name__)
 
 # Tool rounds one turn's loop may take before it answers from what it has.
 MAX_LIST_ROUNDS = 3
-MAX_REC_ROUNDS = 4
+MAX_REC_ROUNDS = 3
 
 
 class ChatState(TypedDict):
     # Kept across turns by the checkpointer: the conversation as text, without tool
-    # results, and what the user needs from a product.
+    # results.
     messages: Annotated[list[BaseMessage], add_messages]
-    requirements: dict[str, Any] | None
-    pending_question: str | None  # the last turn's clarifying question, until answered
+    pending_question: str | None  # the last turn's question, read by the next one's route
 
     # Given by the caller each turn.
     index_version: int
@@ -73,9 +89,6 @@ class ChatState(TypedDict):
     list_results: dict[str, Any]  # every list found, in full, by result_id
     rec_messages: list[BaseMessage]  # the recommendation loop's scratch
     tool_rounds: int
-    decision: dict[str, Any] | None
-    problems: list[str]  # what check found wrong with the decision
-    retries: int
     status: Literal["ok", "failed"]
     reply: dict[str, Any]  # what the user is shown or told
 
@@ -92,40 +105,12 @@ def fresh_turn() -> dict[str, Any]:
         "list_results": {},
         "rec_messages": [],
         "tool_rounds": 0,
-        "decision": None,
-        "problems": [],
-        "retries": 0,
         "status": "ok",
         "reply": {},
     }
 
 
 # --- Nodes not built yet: stubs that change nothing -----------------------------------
-
-
-def update_needs(state: ChatState) -> dict[str, Any]:
-    """Records what the user needs from a product, numbered and versioned."""
-    return {}
-
-
-def rec_agent(state: ChatState) -> dict[str, Any]:
-    """Picks what to look up next about the candidate products."""
-    return {}
-
-
-def rec_tools(state: ChatState) -> dict[str, Any]:
-    """Runs the product tools the agent called and gathers their evidence."""
-    return {}
-
-
-def decide(state: ChatState) -> dict[str, Any]:
-    """Clarify, recommend or explain the limitation, checking each need per product."""
-    return {}
-
-
-def check(state: ChatState) -> dict[str, Any]:
-    """Holds the decision to the runtime guards, and shows it once it passes."""
-    return {}
 
 
 def latest_user_text(messages: Sequence[BaseMessage]) -> str:
@@ -161,14 +146,6 @@ def ok_or_failed(state: ChatState) -> Literal["ok", "failed"]:
     return "failed" if state["status"] == "failed" else "ok"
 
 
-def search_or_ask(state: ChatState) -> Literal["search", "ask"]:
-    """Search once the needs say what the product is for and one thing it must do."""
-    needs = state.get("requirements")
-    if needs and needs["goal"] and needs["must_have"]:
-        return "search"
-    return "ask"
-
-
 def _wants_tools(messages: list[BaseMessage], rounds: int, limit: int) -> bool:
     """The agent's last message called tools, and the loop has rounds left."""
     return bool(messages and getattr(messages[-1], "tool_calls", None)) and rounds < limit
@@ -180,14 +157,20 @@ def list_should_continue(state: ChatState) -> Literal["tools", "done"]:
     return "done"
 
 
-def rec_should_continue(state: ChatState) -> Literal["tools", "done"]:
-    if _wants_tools(state["rec_messages"], state["tool_rounds"], MAX_REC_ROUNDS):
+def rec_should_continue(state: ChatState) -> Literal["tools", "answered", "failed"]:
+    """The agent called tools, or replied itself; code replies when its rounds ran out."""
+    if state["status"] == "failed":
+        return "failed"
+    if not state["reply"] and getattr(state["rec_messages"][-1], "tool_calls", None):
         return "tools"
-    return "done"
+    return "answered"
 
 
-def pass_or_retry(state: ChatState) -> Literal["pass", "retry"]:
-    return "retry" if state["problems"] else "pass"
+def after_rec_tools(state: ChatState) -> Literal["next", "recommended", "failed"]:
+    """A recommendation the guards passed is the reply; anything else goes back."""
+    if state["status"] == "failed":
+        return "failed"
+    return "recommended" if state["reply"] else "next"
 
 
 # --- The graph -------------------------------------------------------------------------
@@ -203,6 +186,7 @@ class Models:
     answer: BaseChatModel
     list_agent: BaseChatModel
     write_list: BaseChatModel
+    rec_agent: BaseChatModel
 
 
 def models_for(settings: Settings) -> Models:
@@ -213,6 +197,7 @@ def models_for(settings: Settings) -> Models:
         answer=openai_model(settings, settings.answer_model, settings.answer_effort),
         list_agent=openai_model(settings, settings.list_agent_model, settings.list_agent_effort),
         write_list=openai_model(settings, settings.write_list_model, settings.write_list_effort),
+        rec_agent=openai_model(settings, settings.rec_agent_model, settings.rec_agent_effort),
     )
 
 
@@ -231,9 +216,12 @@ def build_graph(
     list_first = models.list_agent.bind_tools(LIST_TOOLS, tool_choice="required")
     list_next = models.list_agent.bind_tools(LIST_TOOLS)
     list_writer = models.write_list.with_structured_output(ListIntro, method="json_schema")
+    # Not made to call a tool: the agent may ask what the user needs first (DEC-066).
+    rec_model = models.rec_agent.bind_tools(REC_TOOLS)
 
     async def classify(state: ChatState) -> dict[str, Any]:
-        """Names the kind of question: chat, knowledge, list or recommend."""
+        """Names the kind of question: chat, knowledge, list or recommend. The last turn's
+        question is read here, then cleared: whatever the route, this message answers it."""
         try:
             routed = await models.router(state["messages"], state.get("pending_question"))
         except ROUTING_FAILED:
@@ -244,6 +232,7 @@ def build_graph(
             "route": routed.route,
             "route_confidence": routed.confidence,
             "route_fallback": routed.fallback,
+            "pending_question": None,
             **fresh_turn(),
         }
 
@@ -347,6 +336,77 @@ def build_graph(
         reply, remembered = list_reply(intro, results, writes_chinese(latest))
         return {"messages": [AIMessage(remembered)], "reply": reply}
 
+    async def rec_agent(state: ChatState) -> dict[str, Any]:
+        """Asks the user, calls a tool or says why nothing fits. With no round left, code
+        names what was found instead."""
+        messages = state["messages"]
+        chinese = writes_chinese(latest_user_text(messages))
+        if state["tool_rounds"] >= MAX_REC_ROUNDS:
+            reply = fallback_reply(state["evidence"], chinese)
+        else:
+            scratch = state["rec_messages"]
+            prompt = rec_agent_prompt(messages, state["chatbot_name"])
+            try:
+                response = await rec_model.ainvoke([*prompt, *scratch])
+            except UNAVAILABLE:
+                logger.exception("recommendation agent failed")
+                return {"status": "failed"}
+            if response.tool_calls:
+                return {"rec_messages": [*scratch, response]}
+            text = own_words(response.text)
+            if text:
+                reply = {"text": text, "action": "replied", "products": []}
+            else:  # neither a tool nor a word: code says what it has
+                reply = fallback_reply(state["evidence"], chinese)
+        # A reply asks or explains; either way the user's next message may answer it.
+        return {
+            "reply": reply,
+            "messages": [AIMessage(reply["text"])],
+            "pending_question": reply["text"],
+        }
+
+    async def rec_tools(state: ChatState) -> dict[str, Any]:
+        """Runs the agent's tool calls in turn: a search adds the products it found to the
+        evidence; a recommendation is held to the guards and, once passed, is the reply."""
+        scratch = state["rec_messages"]
+        evidence = state["evidence"]
+        chinese = writes_chinese(latest_user_text(state["messages"]))
+        answers = []
+        reply: dict[str, Any] = {}
+        for call in scratch[-1].tool_calls:
+            args = read_call(call)
+            if isinstance(args, SearchProducts):
+                try:
+                    answer, evidence = await search_products(
+                        db, embedder, state["index_version"], call, args, evidence
+                    )
+                except LookupFailed:
+                    return {"status": "failed"}
+            elif isinstance(args, RecommendProducts):
+                earlier = (m.text for m in state["messages"] if isinstance(m, AIMessage))
+                found = review(args, evidence, frozenset(recommended_before(earlier)))
+                if found.shown:
+                    reply = recommended_reply(args, found.shown, evidence, chinese)
+                    answer = answered(call, {"shown": [p.product_id for p in found.shown]})
+                else:
+                    answer = answered(call, {"refused": refusal(found.problems)})
+            else:  # the call was refused: the agent reads why
+                answer = args
+            answers.append(answer)
+        update: dict[str, Any] = {
+            "rec_messages": [*scratch, *answers],
+            "evidence": evidence,
+            "tool_rounds": state["tool_rounds"] + 1,
+            "status": "ok",
+        }
+        if reply:
+            update |= {
+                "reply": reply,
+                "messages": [AIMessage(reply["text"])],
+                "pending_question": None,
+            }
+        return update
+
     graph = StateGraph(ChatState)
 
     # The order nodes are added in is the order they are drawn in.
@@ -358,11 +418,8 @@ def build_graph(
     graph.add_node("list_agent", list_agent)
     graph.add_node("list_tools", list_tools)
     graph.add_node("write_list", write_list)
-    graph.add_node("update_needs", update_needs)
     graph.add_node("rec_agent", rec_agent)
     graph.add_node("rec_tools", rec_tools)
-    graph.add_node("decide", decide)
-    graph.add_node("check", check)
     graph.add_node("report_failure", report_failure)
 
     graph.add_edge(START, "classify")
@@ -373,7 +430,7 @@ def build_graph(
             "chat": "chat_reply",
             "knowledge": "rewrite_query",
             "list": "list_agent",
-            "recommend": "update_needs",
+            "recommend": "rec_agent",
             "failed": "report_failure",
         },
     )
@@ -392,18 +449,18 @@ def build_graph(
         "list_tools", ok_or_failed, {"ok": "list_agent", "failed": "report_failure"}
     )
 
-    # Recommendations: needs first, then the loop, the decision and its check.
+    # Recommendations: the agent loops through the tools until it replies, or until a
+    # recommendation passes the guards and is shown.
     graph.add_conditional_edges(
-        "update_needs", search_or_ask, {"search": "rec_agent", "ask": "decide"}
+        "rec_agent",
+        rec_should_continue,
+        {"tools": "rec_tools", "answered": END, "failed": "report_failure"},
     )
     graph.add_conditional_edges(
-        "rec_agent", rec_should_continue, {"tools": "rec_tools", "done": "decide"}
+        "rec_tools",
+        after_rec_tools,
+        {"next": "rec_agent", "recommended": END, "failed": "report_failure"},
     )
-    graph.add_conditional_edges(
-        "rec_tools", ok_or_failed, {"ok": "rec_agent", "failed": "report_failure"}
-    )
-    graph.add_edge("decide", "check")
-    graph.add_conditional_edges("check", pass_or_retry, {"pass": END, "retry": "rec_agent"})
 
     for last in ("chat_reply", "answer", "write_list", "report_failure"):
         graph.add_edge(last, END)

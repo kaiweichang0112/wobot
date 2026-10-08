@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # a mixed request's other part from memory.
     write_list_model: str = "gpt-6-luna"
     write_list_effort: str = "none"
+    # Chosen for accuracy (DEC-068): 11.7 of 14 dev against 9.7 at none and 11.3 for
+    # gpt-5.6-luna:low, the fewest products shown that may never be, at half the latter's cost.
+    rec_agent_model: str = "gpt-6-luna"
+    rec_agent_effort: str = "low"
     # For Jev; in the cloud it comes from Secret Manager.
     typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.

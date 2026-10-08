@@ -121,25 +121,63 @@ def describe(node: str, update: dict[str, Any]) -> str:
             return "no model call: the lists will do"
         if update.get("status") == "failed":
             return "failed"
-        calls = update["list_messages"][-1].tool_calls
-        return "; ".join(_call(c["name"], c["args"]) for c in calls) if calls else "done"
-    if node == "list_tools":
-        answers = takewhile(lambda m: isinstance(m, ToolMessage), reversed(update["list_messages"]))
-        return "; ".join(_answer(m) for m in reversed(list(answers)))
+        message = update["list_messages"][-1]
+        return "; ".join(_call(c["name"], c["args"]) for c in message.tool_calls) or "done"
+    if node == "rec_agent":
+        if update.get("status") == "failed":
+            return "failed"
+        if reply := update.get("reply"):
+            return f"{reply['action']}: " + reply["text"].split("\n", 1)[0]
+        message = update["rec_messages"][-1]
+        return "; ".join(_call(c["name"], c["args"]) for c in message.tool_calls)
+    if node in ("list_tools", "rec_tools"):
+        if update.get("status") == "failed":
+            return "failed"
+        scratch = update["list_messages" if node == "list_tools" else "rec_messages"]
+        answers = takewhile(lambda m: isinstance(m, ToolMessage), reversed(scratch))
+        said = "; ".join(_answer(m) for m in reversed(list(answers)))
+        if reply := update.get("reply"):
+            names = ", ".join(p["name"] for p in reply["products"])
+            return f"{said}; {reply['action']}: {names}"
+        return said
     return ""
 
 
 def _answer(message: ToolMessage) -> str:
-    """A tool's answer as the model read it: the list and its count, or why it was refused."""
+    """A tool's answer as the model read it, in a few words, or why it was refused."""
     if message.status == "error":
         return message.text
     content = json.loads(message.text)
-    return f"{content['list']} {content['count']}"
+    if "list" in content:
+        return f"{content['list']} {content['count']}"
+    if "refused" in content:
+        return content["refused"]
+    if "shown" in content:
+        return f"shown {', '.join(content['shown'])}"
+    names = [p["text"].split("\n", 1)[0].removeprefix("產品名稱：") for p in content["products"]]
+    return f"{len(names)} products: {', '.join(names)}"
 
 
 def _call(name: str, args: dict[str, Any]) -> str:
+    if name == "recommend_products":
+        return _recommendation(args)
     given = {k: v for k, v in args.items() if v is not None}
     return f"{name} {json.dumps(given, ensure_ascii=False)}"
+
+
+def _recommendation(args: dict[str, Any]) -> str:
+    """The needs, numbered and marked f(unction) or c(onstraint), then each product's
+    status on each, as the guards will read them."""
+    needs = ", ".join(
+        f"{n} {need.get('text')} ({str(need.get('kind', '?'))[0]})"
+        for n, need in enumerate(args.get("needs", []), start=1)
+    )
+    picks = "; ".join(
+        f"{pick.get('product_id')} "
+        + " ".join(f"{c.get('need')}={c.get('status')}" for c in pick.get("checks", []))
+        for pick in args.get("products", [])
+    )
+    return f"recommend_products needs [{needs}] count {args.get('count')}: {picks}"
 
 
 async def _ask() -> str | None:
