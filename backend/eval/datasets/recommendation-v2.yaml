@@ -1,0 +1,296 @@
+# Product recommendation through the ReAct agent (DEC-066): what the turn does with a need,
+# and which catalog products may or may never be shown for it.
+#   history / pending_question  the conversation before the message, as scripted
+#   action      every acceptable outcome: recommend (cards shown), replied (the agent's own
+#               words: a question or why nothing fits), or a route other than recommend
+#   route       the acceptable routes, when the turn should not recommend at all
+#   recommends  every product shown must be one of these
+#   never       none of these may be shown
+#   prefers     shown first whenever the agent passes it (DEC-065)
+#   count       how many products are shown; all means two or more
+#   searches    false: the turn must answer without searching
+#   language    the reply's language, when not Chinese
+#
+# Fits are judged from the product catalog alone, as the agent reads it (DEC-066): a
+# function must be stated; a constraint may be unstated but not contradicted (DEC-065). A
+# product neither fitting nor never is not scored. Questions come from recommendation-v1,
+# seed-v1 (CASE-021 to 025) and needs-v1; REC-FX-09 and 10 are new. Labels were proposed by
+# AI from the catalog of index version 788 and confirmed by a person on 2026-10-08, who
+# decided that only 病床 and 醫護人員 do not tie a product to institutions, while wards,
+# institutions or long-term care settings alone do; that 中央監控軟體 is viewing on a
+# computer; and that a product shown is not shown again when the user drops a condition.
+dataset: recommendation-v2
+query_time: "2026-10-08T10:00:00+08:00"
+timezone: Asia/Taipei
+cases:
+  # --- Not enough to search
+  - case_id: CASE-021
+    scenario: insufficient_need  # REC-FX-02
+    split: dev
+    user_input: 推薦一個智慧照護產品給我。
+    expected_behavior: Ask what the product is for, without searching.
+    check: {kind: recommendation, action: [replied], searches: false}
+  - case_id: REC-FX-03
+    scenario: decisive_difference
+    split: dev
+    user_input: 我爸最近很容易跌倒，我想找一個照護產品
+    expected_behavior: Ask whether a worn device is acceptable, or where it is used, or recommend a product that detects falls.
+    # Asking and recommending are both right (person, 2026-10-08): fits as NE-007.
+    check:
+      kind: recommendation
+      action: [replied, recommend]
+      recommends: ["AI-Care 日夜照護安全系統", "AI智能照護系統", "FusionCare 毫米波雷達基站", "OGA雷達毫米波生理感測裝置", "毫米波跌倒偵測雷達", "長者照護智慧觀測服務", "Care U 雲端居家照護系統", "JD‑170G 跌倒偵測腕戴呼叫器", "安照小護士MAX XC‑8000 居家型", "DOCTER Watch", "安全天使通話定位健康手錶900Zs", "AI照護感知系統", "毫米波雷達跌倒偵測系統", "智慧照護解決方案"]
+      never: ["WhizPad 安心臥智慧床墊", "GaitBEST步態分析軟體", "物聯網智慧鞋墊感測器"]
+  - case_id: REC-FX-03B
+    scenario: decisive_difference
+    split: dev
+    user_input: 我想找離床預警的產品
+    expected_behavior: Ask where it is used, or what kind of device is acceptable, or recommend a product with bed-exit alerts.
+    # Asking and recommending are both right (person, 2026-10-08): any bed-exit alert fits.
+    check:
+      kind: recommendation
+      action: [replied, recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站", "AI-Care 日夜照護安全系統", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "AI 零接觸智能照護系統", "Monibed 紅外線離床警示器", "AI照護感知系統", "美思臥床照護系統", "毫米波雷達跌倒偵測系統", "南丁格爾智慧照護系統", "奧比森長照輔助系統", "智慧照護解決方案", "家用緊急救援通報系統 HO-140"]
+      never: ["Agicare 智能均壓床", "iCue智慧照護幫手", "nFOPT 非侵入性光纖生理監測技術", "OGA雷達毫米波生理感測裝置"]
+      prefers: WhizPad 安心臥智慧床墊
+
+  # --- Bed-exit alerts, nothing worn, at home
+  # Fits: bed-exit alerts stated, and a form that is not worn. Home stated (iProték, 美維,
+  # FusionCare, AI-Care) or no place stated (ForeAider, AI 零接觸) or only 病床 and
+  # 醫護人員 (WhizPad, Pamorcare; 美維 says 病床 and home both). Never: worn (HO-140,
+  # 安照小護士), no bed-exit alert (Agicare, iCue, nFOPT, OGA), or written for institutions
+  # (Monibed, AI照護感知系統, 智慧照護解決方案 say so; 美思, 毫米波雷達跌倒偵測系統,
+  # 南丁格爾 and 奧比森 describe only wards, institutions or long-term care settings).
+  - case_id: CASE-022
+    scenario: need_fit  # REC-FX-01
+    split: dev
+    user_input: 家中長者臥床，主要需要離床預警，希望不用配戴裝置；請推薦一項適合居家使用的產品並解釋理由。
+    expected_behavior: Recommend one product that fits, with reasons; 世大智科's first when it fits.
+    check: &home_bed_exit
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站", "AI-Care 日夜照護安全系統", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "AI 零接觸智能照護系統"]
+      never: ["家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "Agicare 智能均壓床", "iCue智慧照護幫手", "nFOPT 非侵入性光纖生理監測技術", "OGA雷達毫米波生理感測裝置", "Monibed 紅外線離床警示器", "AI照護感知系統", "智慧照護解決方案", "美思臥床照護系統", "毫米波雷達跌倒偵測系統", "南丁格爾智慧照護系統", "奧比森長照輔助系統"]
+      prefers: WhizPad 安心臥智慧床墊
+      count: 1
+  - case_id: CASE-023
+    scenario: multi_turn_carry
+    split: dev
+    history:
+      - user: 我想找臥床監測產品。
+        answer: 好的。請問會在哪裡使用？最在意哪些功能？
+    pending_question: 好的。請問會在哪裡使用？最在意哪些功能？
+    user_input: 在居家使用，最在意離床提醒，不希望長者配戴裝置。
+    expected_behavior: Carry the first turn's need and do not ask again what was answered.
+    check: *home_bed_exit
+  - case_id: NE-005
+    scenario: clarify_answer  # RT-032
+    split: dev
+    history:
+      - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+        answer: 請問是在家裡用，還是在照護機構用？
+    pending_question: 請問是在家裡用，還是在照護機構用？
+    user_input: 在家裡。
+    expected_behavior: Take the answer with the earlier needs and recommend.
+    check: *home_bed_exit
+  - case_id: REC-FX-10
+    scenario: after_recommendation
+    split: dev
+    history:
+      - user: 想找離床預警、不用穿戴、在家裡用的產品。
+        answer: |-
+          這項產品符合你的需求。
+
+          推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+          床墊下感測離床，提供三階段離床提醒，不需配戴。
+          - 離床預警：符合
+          - 不用穿戴：符合
+          - 在家裡用：目錄未註明
+    user_input: 還有其他的嗎？
+    expected_behavior: Recommend another product that fits, not the one already shown; no email or sending.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站", "AI-Care 日夜照護安全系統", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "AI 零接觸智能照護系統"]
+      never: ["WhizPad 安心臥智慧床墊", "家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "Agicare 智能均壓床", "iCue智慧照護幫手", "nFOPT 非侵入性光纖生理監測技術", "Monibed 紅外線離床警示器", "AI照護感知系統", "智慧照護解決方案"]
+
+  # --- No camera, settled by how a product senses
+  # As CASE-022, less those sensing by images: AI-Care (影像), 奧比森 (AI影像),
+  # AI照護感知系統 (3D 深度). AI 零接觸's wall sensor does not say how it senses: unstated,
+  # so it passes (DEC-065).
+  - case_id: REC-FX-05B
+    scenario: exclusion_by_mechanism
+    split: dev
+    user_input: 家裡的長輩臥床，需要離床警示，不要穿戴、不要攝影機
+    expected_behavior: Infer nothing worn and no camera from how a product senses, and recommend.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "AI 零接觸智能照護系統"]
+      never: ["AI-Care 日夜照護安全系統", "奧比森長照輔助系統", "AI照護感知系統", "AI智能照護系統", "家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "Monibed 紅外線離床警示器"]
+      prefers: WhizPad 安心臥智慧床墊
+      count: 1
+
+  # --- Viewed on a computer
+  # Fits: bed-exit alerts and a computer stated: 南丁格爾 (手機或電腦端), 毫米波雷達跌倒偵測系統
+  # (手機或桌機), 美思 (中央監控軟體). Never: a phone app only (ForeAider, Pamorcare, iProték,
+  # 美維). WhizPad's computer view is on its official site, not the catalog: not scored.
+  - case_id: REC-FX-04
+    scenario: interface_constraint  # NE-101
+    split: dev
+    user_input: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
+    expected_behavior: Recommend only a product the catalog states can be viewed on a computer.
+    check:
+      kind: recommendation
+      action: [recommend, replied]
+      recommends: ["南丁格爾智慧照護系統", "毫米波雷達跌倒偵測系統", "美思臥床照護系統"]
+      never: ["ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "iProték 智慧床墊", "美維智慧照護系統"]
+  - case_id: NE-011
+    scenario: condition_added
+    split: dev
+    history:
+      - user: 想找能偵測長輩離床的，不要穿戴的。
+        answer: |-
+          推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+          床墊下感測離床，提供三階段離床提醒，不需配戴。
+          - 離床偵測：符合
+          - 不用穿戴：符合
+    user_input: 另外要能用電腦看
+    expected_behavior: Keep the earlier needs, add viewing on a computer, and recommend again.
+    check:
+      kind: recommendation
+      action: [recommend, replied]
+      recommends: ["南丁格爾智慧照護系統", "毫米波雷達跌倒偵測系統", "美思臥床照護系統"]
+      never: ["WhizPad 安心臥智慧床墊", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "iProték 智慧床墊", "美維智慧照護系統"]
+
+  # --- Answers that widen or change the needs
+  # 都可以: every bed-exit product not worn, wherever it is used.
+  - case_id: NE-006
+    scenario: clarify_any  # RT-033
+    split: dev
+    history:
+      - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+        answer: 請問是在家裡用，還是在照護機構用？
+    pending_question: 請問是在家裡用，還是在照護機構用？
+    user_input: 都可以。
+    expected_behavior: Keep both needs, add none, and show every product that fits.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站", "AI-Care 日夜照護安全系統", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "AI 零接觸智能照護系統", "Monibed 紅外線離床警示器", "AI照護感知系統", "美思臥床照護系統", "毫米波雷達跌倒偵測系統", "南丁格爾智慧照護系統", "奧比森長照輔助系統", "智慧照護解決方案"]
+      never: ["家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "Agicare 智能均壓床", "iCue智慧照護幫手", "nFOPT 非侵入性光纖生理監測技術"]
+      prefers: WhizPad 安心臥智慧床墊
+      count: all
+  # A condition taken back: bed-exit alerts alone, so a worn device may fit; the product
+  # already shown is not shown again.
+  - case_id: NE-008
+    scenario: condition_dropped
+    split: dev
+    history:
+      - user: 想找能偵測長輩離床的，不要穿戴的。
+        answer: |-
+          推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+          床墊下感測離床，提供三階段離床提醒，不需配戴。
+          - 離床偵測：符合
+          - 不用穿戴：符合
+    user_input: 其實穿戴的也可以
+    expected_behavior: Drop the condition taken back and recommend another product with bed-exit alerts.
+    check:
+      kind: recommendation
+      action: [recommend, replied]
+      recommends: ["iProték 智慧床墊", "美維智慧照護系統", "FusionCare 毫米波雷達基站", "AI-Care 日夜照護安全系統", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "AI 零接觸智能照護系統", "Monibed 紅外線離床警示器", "AI照護感知系統", "美思臥床照護系統", "毫米波雷達跌倒偵測系統", "南丁格爾智慧照護系統", "奧比森長照輔助系統", "智慧照護解決方案", "家用緊急救援通報系統 HO-140"]
+      never: ["WhizPad 安心臥智慧床墊", "Agicare 智能均壓床", "iCue智慧照護幫手", "nFOPT 非侵入性光纖生理監測技術"]
+  - case_id: REC-FX-06
+    scenario: greeting_keeps_needs
+    split: dev
+    history:
+      - user: 想找離床預警、不用配戴的產品，在家裡用。
+        answer: 好的，我來找找看。
+    user_input: 謝謝你！
+    expected_behavior: Answer the thanks; look nothing up.
+    check: {kind: recommendation, route: [chat]}
+
+  # --- Falls
+  # Fall detection stated. Never: worn (watches, wristbands, pendants, Care U's 手環 and
+  # HO-140's 隨身呼叫器), written for institutions (AI照護感知系統, 智慧照護解決方案,
+  # 毫米波雷達跌倒偵測系統), or only preventing falls or rating their risk (WhizPad,
+  # GaitBEST, 物聯網智慧鞋墊感測器).
+  - case_id: CASE-025
+    scenario: english_recommendation
+    split: dev
+    user_input: Recommend one smart-care product for detecting falls at home without a wearable device. Explain your choice using the available catalog.
+    expected_behavior: Recommend one fitting product, in English.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["AI-Care 日夜照護安全系統", "AI智能照護系統", "FusionCare 毫米波雷達基站", "OGA雷達毫米波生理感測裝置", "毫米波跌倒偵測雷達", "長者照護智慧觀測服務"]
+      never: ["DOCTER Watch", "JD‑170G 跌倒偵測腕戴呼叫器", "安全天使通話定位健康手錶900Zs", "安照小護士MAX XC‑8000 居家型", "家用緊急救援通報系統 HO-140", "Care U 雲端居家照護系統", "AI照護感知系統", "智慧照護解決方案", "毫米波雷達跌倒偵測系統", "WhizPad 安心臥智慧床墊", "GaitBEST步態分析軟體", "物聯網智慧鞋墊感測器"]
+      count: 1
+      language: en
+  - case_id: NE-007
+    scenario: count
+    split: dev
+    user_input: 推薦三個能偵測跌倒的產品
+    expected_behavior: Recommend three products that detect falls.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["AI-Care 日夜照護安全系統", "AI智能照護系統", "FusionCare 毫米波雷達基站", "OGA雷達毫米波生理感測裝置", "毫米波跌倒偵測雷達", "長者照護智慧觀測服務", "Care U 雲端居家照護系統", "JD‑170G 跌倒偵測腕戴呼叫器", "安照小護士MAX XC‑8000 居家型", "DOCTER Watch", "安全天使通話定位健康手錶900Zs", "AI照護感知系統", "毫米波雷達跌倒偵測系統", "智慧照護解決方案"]
+      never: ["WhizPad 安心臥智慧床墊", "GaitBEST步態分析軟體", "物聯網智慧鞋墊感測器"]
+      count: 3
+
+  # --- Held out
+  # A form that settles the need: a mattress. Every mattress or pad with bed-exit alerts
+  # fits; 世大智科's comes first (REC-FX-09: one product, a stable choice, no new question).
+  - case_id: REC-FX-09
+    scenario: equal_fits
+    split: heldout
+    user_input: 想找床墊型、能偵測離床的產品，推薦一個就好
+    expected_behavior: Recommend one product without asking more; 世大智科's when it fits.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "美思臥床照護系統", "南丁格爾智慧照護系統", "美維智慧照護系統"]
+      never: ["Agicare 智能均壓床", "iCue智慧照護幫手", "nFOPT 非侵入性光纖生理監測技術", "FusionCare 毫米波雷達基站", "AI-Care 日夜照護安全系統", "Monibed 紅外線離床警示器"]
+      prefers: WhizPad 安心臥智慧床墊
+      count: 1
+  # Fits: group use, cognition and exercise stated: HappyGoGo (1–6 人, 認知, 體能),
+  # WhizToys (認知訓練, 運動, 互動競爭, 照護機構與社區據點); 樂復影 (認知, 行動訓練) states
+  # no group, which passes as unstated. Never: the old need's bed products, and exercise or
+  # cognition alone.
+  - case_id: CASE-024
+    scenario: need_change  # REC-FX-07, NE-009
+    split: heldout
+    history:
+      - user: 我想找臥床監測產品。
+        answer: 請問主要想監測哪些狀況？例如離床或翻身？
+    pending_question: 請問主要想監測哪些狀況？例如離床或翻身？
+    user_input: 先前需求是臥床監測；現在改成日照中心的團體認知與運動活動，請重新推薦一項產品。
+    expected_behavior: Drop the old need and recommend for the new one.
+    check:
+      kind: recommendation
+      action: [recommend]
+      recommends: ["WhizToys運動地墊遊戲平台", "HappyGoGo團體運動軟體", "樂復影認知復能系統"]
+      never: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "Stampede 智能運動地墊", "Me-TAKA憶萬富翁益智App", "CogMate™ 腦年齡測驗"]
+      prefers: WhizToys運動地墊遊戲平台
+      count: 1
+  # Every bed-exit product in the catalog says it is plugged in; AI-Care and AI 零接觸 do
+  # not say, which passes as unstated.
+  - case_id: NE-102
+    scenario: condition_added  # RT-035
+    split: heldout
+    history:
+      - user: 我想找可以偵測長輩離床的產品，不要穿戴的，在家裡用。
+        answer: |-
+          推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+          床墊下感測離床，提供三階段離床提醒，不需配戴。
+          - 離床偵測：符合
+          - 不用穿戴：符合
+          - 在家裡用：目錄未註明
+    user_input: 有沒有不需要插電的？
+    expected_behavior: Say the catalog states no such product, or show one that does not say it needs power.
+    check:
+      kind: recommendation
+      action: [replied, recommend]
+      recommends: ["AI-Care 日夜照護安全系統", "AI 零接觸智能照護系統"]
+      never: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "ForeAider Z 智慧感知墊", "Pamorcare智慧臥床照護寶", "美維智慧照護系統", "南丁格爾智慧照護系統", "美思臥床照護系統", "毫米波雷達跌倒偵測系統", "Monibed 紅外線離床警示器", "FusionCare 毫米波雷達基站", "奧比森長照輔助系統", "AI照護感知系統"]
