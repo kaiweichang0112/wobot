@@ -69,20 +69,32 @@ def chunk_handle(chunk_id: uuid.UUID) -> str:
 
 
 async def search_knowledge(
-    db: Database, embedder: Embedder, version_id: int, queries: Sequence[str]
+    db: Database,
+    embedder: Embedder,
+    version_id: int,
+    queries: Sequence[str],
+    *,
+    limit: int = SEARCHED_CHUNKS,
+    record_type: str | None = None,
 ) -> list[dict[str, Any]]:
-    """The passages closest in meaning to the queries, best first, with the records each
-    is built from."""
+    """The `limit` passages closest in meaning to the queries, best first, with the
+    records each is built from; with `record_type`, only passages built from such a
+    record."""
     try:
         embedded = await embedder.embed(list(queries))
         async with db.begin() as conn:
             rankings = [
                 await search_chunks(
-                    conn, vector, embedder.config_id, FUSION_DEPTH, version_id=version_id
+                    conn,
+                    vector,
+                    embedder.config_id,
+                    FUSION_DEPTH,
+                    version_id=version_id,
+                    record_type=record_type,
                 )
                 for vector in embedded.vectors
             ]
-            hits = fuse(rankings, SEARCHED_CHUNKS)
+            hits = fuse(rankings, limit)
             members = await chunk_members(conn, [hit.chunk_id for hit in hits], version_id)
     except UNAVAILABLE as error:
         logger.exception("search failed", extra={"index_version": version_id})

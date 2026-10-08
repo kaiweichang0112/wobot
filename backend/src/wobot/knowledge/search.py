@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, exists, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from wobot.knowledge.models import (
@@ -37,13 +37,15 @@ async def search_chunks(
     k: int,
     *,
     version_id: int | None = None,
+    record_type: str | None = None,
 ) -> list[SearchHit]:
     """The k chunks closest to the query, by exact cosine distance.
 
     Searches the active version, or `version_id`, such as an unpublished candidate under
     evaluation. Membership narrows the candidates first, so a chunk only another version
-    holds is never returned. Without an index PostgreSQL computes every distance and
-    sorts: exact, and fast enough for a few thousand chunks.
+    holds is never returned. With `record_type`, only chunks built from a record of that
+    type are candidates, such as the catalog's products. Without an index PostgreSQL
+    computes every distance and sorts: exact, and fast enough for a few thousand chunks.
     """
     distance = Embedding.embedding.cosine_distance(list(query_vector)).label("distance")
     columns = (
@@ -68,6 +70,12 @@ async def search_chunks(
             select(*columns)
             .select_from(IndexVersionChunk)
             .where(IndexVersionChunk.index_version_id == version_id)
+        )
+    if record_type is not None:
+        candidates = candidates.where(
+            exists()
+            .where(ChunkRecord.chunk_id == IndexVersionChunk.chunk_id)
+            .where(Record.record_id == ChunkRecord.record_id, Record.record_type == record_type)
         )
     rows = await conn.execute(
         candidates.join(Chunk, Chunk.chunk_id == IndexVersionChunk.chunk_id)
