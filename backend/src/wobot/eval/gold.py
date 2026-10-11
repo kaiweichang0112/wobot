@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from wobot.eval.corpus import Corpus, Item
+from wobot.knowledge.facets import FACETS, allowed_values
 from wobot.knowledge.records.text import key_text
 from wobot.knowledge.sources.wix import IMAGE_HOST
 
@@ -247,6 +248,54 @@ def transcription_refs(path: Path, case_id: str) -> list[Ref]:
     return [Ref(ref_kind, value, where, {"text": text, "values": values})]
 
 
+def product_facet_refs(path: Path, split: str) -> list[Ref]:
+    """The split's products, each named by product and company, with every facet a person
+    read in its catalog text: each value with the span that states it. Every facet is
+    written out, `[]` where the catalog states none, so a facet left out is an error, not
+    an empty label."""
+    refs = []
+    for position, entry in enumerate(read_yaml(path) or [], start=1):
+        where = f"{path.name}#{position}"
+        if (
+            not isinstance(entry, dict)
+            or blank(entry.get("product"))
+            or blank(entry.get("company"))
+        ):
+            raise GoldError(f"{where}: name the product and its company")
+        if entry.get("split") not in ("dev", "heldout"):
+            raise GoldError(f"{where}: split is dev or heldout, got {entry.get('split')!r}")
+        if unknown := sorted(set(entry) - {"product", "company", "split", *FACETS}):
+            raise GoldError(f"{where}: no facet {', '.join(unknown)}")
+        if entry["split"] != split:
+            continue
+        facets = {}
+        for facet in FACETS:
+            if facet not in entry:
+                raise GoldError(f"{where}: {facet} is missing; write [] when the text states none")
+            facets[facet] = _facet_values(entry[facet] or [], facet, f"{where} {facet}")
+        name = {"name": entry["product"], "company": entry["company"]}
+        refs.append(Ref("product", name, where, {"facets": facets}))
+    return refs
+
+
+def _facet_values(rows: Any, facet: str, where: str) -> dict[str, str]:
+    """A facet's values, each with its span, as written."""
+    if not isinstance(rows, list):
+        raise GoldError(f"{where}: list the values, or write []")
+    values: dict[str, str] = {}
+    for row in rows:
+        row = row if isinstance(row, dict) else {}
+        value, span = str(row.get("value") or "").strip(), str(row.get("span") or "").strip()
+        if value not in allowed_values(facet):
+            raise GoldError(f"{where}: {value!r} is not a {facet} value")
+        if not span:
+            raise GoldError(f"{where}: {value} needs the span of the text that states it")
+        if value in values:
+            raise GoldError(f"{where}: {value} is listed twice")
+        values[value] = span
+    return values
+
+
 def _iso_date(value: Any, where: str) -> str | None:
     """A label's date as YYYY-MM-DD. A date the page states but that does not exist is
     expected to stay empty in the record, as ingestion keeps such typos only as text; text
@@ -281,6 +330,25 @@ class Resolved:
 def resolve(refs: Iterable[Ref], corpus: Corpus) -> list[Resolved]:
     index = _Index(corpus)
     return [index.resolve(ref) for ref in refs]
+
+
+# The catalog text a product's facet spans are read from.
+PRODUCT_TEXT_FIELDS = ("features_text", "usage_text", "summary_text")
+
+
+def facet_span_problems(resolved: Resolved, corpus: Corpus) -> list[str]:
+    """The facet spans of a matched product that its record's catalog text does not hold,
+    copied as written: a typo in the label, or text ingestion changed."""
+    if "facets" not in resolved.ref.expected or len(resolved.keys) != 1:
+        return []
+    item = next(i for i in corpus.of("product") if i.logical_key == resolved.keys[0])
+    texts = [item.fields.get(name) or "" for name in PRODUCT_TEXT_FIELDS]
+    return [
+        f"{facet} {value}: {span!r} is not in the catalog text"
+        for facet, values in resolved.ref.expected["facets"].items()
+        for value, span in values.items()
+        if not any(span in text for text in texts)
+    ]
 
 
 def item_keys(resolved: Iterable[Resolved]) -> dict[str, str]:

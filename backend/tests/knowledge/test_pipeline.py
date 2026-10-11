@@ -1,7 +1,14 @@
 import pytest
 from sqlalchemy import func, select
 
-from tests.knowledge.fakes import FakeEmbedder, FakeLectureReader, fake_vector
+from tests.knowledge.fakes import (
+    FakeEmbedder,
+    FakeFacetReader,
+    FakeLectureReader,
+    fake_facets,
+    fake_vector,
+    named_functions,
+)
 from tests.knowledge.grc_site import grc_fetcher, grc_source
 from tests.knowledge.workbooks import catalog_row, catalog_workbook, product_row
 from wobot.knowledge import repository
@@ -9,9 +16,15 @@ from wobot.knowledge.blobs import LocalBlobStore
 from wobot.knowledge.catalog import SOURCE_ID, CatalogFile, ProductCatalogSource
 from wobot.knowledge.chunking import products as product_chunking
 from wobot.knowledge.chunking.products import product_chunk
-from wobot.knowledge.extraction import CachedReader, DbAnswerCache
+from wobot.knowledge.extraction import Answer, CachedReader, DbAnswerCache
 from wobot.knowledge.grc import GrcWebsiteSource
-from wobot.knowledge.models import IndexVersion, IndexVersionRecord, IngestionRun
+from wobot.knowledge.models import (
+    IndexVersion,
+    IndexVersionRecord,
+    IngestionRun,
+    ProductFacet,
+    ProductRecord,
+)
 from wobot.knowledge.pipeline import run_ingestion
 from wobot.knowledge.records.products import normalize_product
 from wobot.knowledge.search import search_chunks
@@ -39,7 +52,11 @@ def ingest(ingest_db, tmp_path):
 
         embedder = FakeEmbedder()
         result = await run_ingestion(
-            ingest_db, LocalBlobStore(tmp_path), embedder, [ProductCatalogSource(fetch)], **options
+            ingest_db,
+            LocalBlobStore(tmp_path),
+            embedder,
+            [ProductCatalogSource(fetch, fake_facets())],
+            **options,
         )
         return result, embedder
 
@@ -73,6 +90,56 @@ async def test_first_run_publishes_every_row(ingest, ingest_db):
     }
     assert len(embedder.calls) == 1
     assert (await active(ingest_db)).index_version_id == result.index_version_id
+
+
+async def test_a_run_keeps_each_product_s_facets(ingest, ingest_db):
+    result, _ = await ingest(catalog(PRODUCTS))
+
+    async with ingest_db.begin() as conn:
+        rows = await conn.execute(
+            select(
+                ProductFacet.facet, ProductFacet.value, ProductFacet.span, ProductFacet.source_field
+            )
+            .join(ProductRecord, ProductRecord.record_id == ProductFacet.record_id)
+            .join(IndexVersionRecord, IndexVersionRecord.record_id == ProductRecord.record_id)
+            .where(
+                IndexVersionRecord.index_version_id == result.index_version_id,
+                ProductRecord.product_name == "測試床墊 TM-1",
+            )
+            .order_by(ProductFacet.facet)
+        )
+        read_by = await conn.scalar(
+            select(func.count()).where(ProductRecord.facets_model == "fake-facets")
+        )
+
+    assert [tuple(row) for row in rows] == [
+        ("form", "bed", "床墊下", "usage_text"),
+        ("functions", "離床偵測", "離床偵測", "features_text"),
+    ]
+    assert read_by >= 3
+    assert result.status == "published"
+
+
+async def test_a_product_without_facets_holds_the_version(ingest_db, tmp_path):
+    def refuse_the_mat(text):
+        if "地墊" in text.product:
+            return Answer(None, "refused: no", "fake-facets", 0, 0)
+        return named_functions(text)
+
+    async def fetch():
+        return catalog(PRODUCTS)
+
+    result = await run_ingestion(
+        ingest_db,
+        LocalBlobStore(tmp_path),
+        FakeEmbedder(),
+        [ProductCatalogSource(fetch, fake_facets(FakeFacetReader(refuse_the_mat)))],
+    )
+
+    assert (result.status, result.held) == (
+        "held",
+        ["product_catalog: 1 products have no facets: rows [3]"],
+    )
 
 
 async def test_the_same_file_again_changes_nothing(ingest, ingest_db):
@@ -208,7 +275,10 @@ async def test_a_source_that_cannot_be_read_is_a_recorded_failure(ingest_db, tmp
     before = await failed_runs()
     with pytest.raises(DriveError):
         await run_ingestion(
-            ingest_db, LocalBlobStore(tmp_path), FakeEmbedder(), [ProductCatalogSource(fetch)]
+            ingest_db,
+            LocalBlobStore(tmp_path),
+            FakeEmbedder(),
+            [ProductCatalogSource(fetch, fake_facets())],
         )
 
     assert await failed_runs() == before + 1
@@ -218,7 +288,7 @@ def catalog_source(catalog_file):
     async def fetch():
         return catalog_file
 
-    return ProductCatalogSource(fetch)
+    return ProductCatalogSource(fetch, fake_facets())
 
 
 @pytest.fixture

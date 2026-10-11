@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from wobot.knowledge.facets import FACET_SOURCE_FIELDS, FACETS
 from wobot.models import Base
 
 RECORD_TYPES = (
@@ -126,7 +127,13 @@ class Record(Base):
 
 class ProductRecord(Base):
     __tablename__ = "product_records"
-    __table_args__ = {"schema": "knowledge"}
+    __table_args__ = (
+        CheckConstraint(
+            "(facets_model IS NULL) = (facets_prompt_version IS NULL)",
+            name="product_records_facets_read",
+        ),
+        {"schema": "knowledge"},
+    )
 
     record_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("knowledge.records.record_id"), primary_key=True
@@ -146,6 +153,37 @@ class ProductRecord(Base):
     category_l2_label: Mapped[str | None] = mapped_column(Text)
     adoption_years: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default=text("'{}'"))
     adoption_years_raw: Mapped[str | None] = mapped_column(Text)
+    # Which model and prompt read the facets; NULL for a product read before facets.
+    facets_model: Mapped[str | None] = mapped_column(Text)
+    facets_prompt_version: Mapped[int | None] = mapped_column(Integer)
+
+
+class ProductFacet(Base):
+    """One value a product's catalog text states, with the span that states it (DEC-069).
+    A trigger holds the span to the text it names (migration 0006)."""
+
+    __tablename__ = "product_facets"
+    __table_args__ = (
+        CheckConstraint(
+            "facet IN (" + ", ".join(f"'{f}'" for f in FACETS) + ")",
+            name="product_facets_facet",
+        ),
+        CheckConstraint(
+            "source_field IN (" + ", ".join(f"'{f}'" for f in FACET_SOURCE_FIELDS) + ")",
+            name="product_facets_source_field",
+        ),
+        CheckConstraint("span <> ''", name="product_facets_span"),
+        Index("product_facets_facet_value", "facet", "value"),
+        {"schema": "knowledge"},
+    )
+
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge.product_records.record_id"), primary_key=True
+    )
+    facet: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, primary_key=True)
+    span: Mapped[str] = mapped_column(Text)
+    source_field: Mapped[str] = mapped_column(Text)
 
 
 class StudentRecord(Base):

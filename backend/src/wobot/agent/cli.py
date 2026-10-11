@@ -150,34 +150,25 @@ def _answer(message: ToolMessage) -> str:
     content = json.loads(message.text)
     if "list" in content:
         return f"{content['list']} {content['count']}"
-    if "refused" in content:
-        return content["refused"]
     if "shown" in content:
         return f"shown {', '.join(content['shown'])}"
-    names = [p["text"].split("\n", 1)[0].removeprefix("產品名稱：") for p in content["products"]]
-    return f"{len(names)} products: {', '.join(names)}"
+    names = ", ".join(p["name"] for p in content["products"][:3])
+    said = [f"{content['matched']} fit" + (f": {names}" if names else "")]
+    said += [f"decisive {s['facet']} {s['values']}" for s in content["decisive"]]
+    said += [f"gap {g['need']} {g['products']}" for g in content["gaps"]]
+    return ", ".join(said)
 
 
 def _call(name: str, args: dict[str, Any]) -> str:
-    if name == "recommend_products":
-        return _recommendation(args)
-    given = {k: v for k, v in args.items() if v is not None}
-    return f"{name} {json.dumps(given, ensure_ascii=False)}"
+    """A tool call in one line, leaving out what was not given, such as unnamed facets."""
+    return f"{name} {json.dumps(_given(args), ensure_ascii=False)}"
 
 
-def _recommendation(args: dict[str, Any]) -> str:
-    """The needs, numbered and marked f(unction) or c(onstraint), then each product's
-    status on each, as the guards will read them."""
-    needs = ", ".join(
-        f"{n} {need.get('text')} ({str(need.get('kind', '?'))[0]})"
-        for n, need in enumerate(args.get("needs", []), start=1)
-    )
-    picks = "; ".join(
-        f"{pick.get('product_id')} "
-        + " ".join(f"{c.get('need')}={c.get('status')}" for c in pick.get("checks", []))
-        for pick in args.get("products", [])
-    )
-    return f"recommend_products needs [{needs}] count {args.get('count')}: {picks}"
+def _given(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    kept = {key: _given(item) for key, item in value.items()}
+    return {key: item for key, item in kept.items() if item not in (None, [], {})}
 
 
 async def _ask() -> str | None:

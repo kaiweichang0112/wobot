@@ -252,7 +252,7 @@ async def _ingest(
         {e.source_id: len(active.record_revisions(e.source_id)) for e in extractions},
         {e.source_id: len(e.records) for e in extractions},
         max_drop=max_drop,
-    )
+    ) + [f"{e.source_id}: {hold}" for e in extractions for hold in e.report.holds]
     async with db.begin() as conn:
         version_id = await repository.create_version(
             conn,

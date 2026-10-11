@@ -5,36 +5,26 @@ import pytest
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from tests.agent.test_list_agent import Unreachable
+from tests.agent.test_find import bed_exit
 from wobot.agent import rec_agent
+from wobot.agent.find import FindProducts, find
 from wobot.agent.rec_agent import (
+    PRODUCTS_READ,
     REC_TOOLS,
     RECENT_MESSAGES,
+    TEXTS_READ,
     TOOLS_BY_NAME,
-    RecommendProducts,
-    SearchProducts,
+    ShowProducts,
+    found_content,
+    found_evidence,
     own_words,
     read_call,
     rec_agent_prompt,
-    search_products,
 )
-from wobot.agent.retrieval import LookupFailed
 
 
 def call(name: str, **args) -> dict:
     return {"name": name, "args": args, "id": "call-1"}
-
-
-async def search(knowledge, function: str, evidence=None):
-    tool_call = call("search_products", functions=[function])
-    return await search_products(
-        knowledge.db,
-        knowledge.embedder,
-        knowledge.version_id,
-        tool_call,
-        SearchProducts(functions=[function]),
-        evidence or {},
-    )
 
 
 def test_the_prompt_version_moves_with_the_prompt():
@@ -42,19 +32,23 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([rec_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (rec_agent.PROMPT_VERSION, fingerprint) == (5, "d64a4b2981f8")
+    assert (rec_agent.PROMPT_VERSION, fingerprint) == (8, "76def1f12f1e")
 
 
-def test_the_agent_searches_and_recommends():
+def test_the_agent_finds_and_shows():
     params = {
         name: set(convert_to_openai_tool(tool)["function"]["parameters"]["properties"])
         for name, tool in TOOLS_BY_NAME.items()
     }
 
     assert params == {
-        "search_products": {"functions"},
-        "recommend_products": {"needs", "products", "count", "intro"},
+        "find_products": {"functions", "must", "must_not", "other", "count"},
+        "show_products": {"products", "intro"},
     }
+    # The agent reads the vocabulary the extraction labels with.
+    assert (
+        "- 離床偵測（離床預警、離床警示、離床提醒、離床通知、在床狀態）" in rec_agent.INSTRUCTIONS
+    )
 
 
 def test_the_agent_reads_its_name_and_the_last_messages():
@@ -66,67 +60,23 @@ def test_the_agent_reads_its_name_and_the_last_messages():
     assert shown == messages[-RECENT_MESSAGES:]
 
 
-async def test_a_search_finds_catalog_products_with_their_text(knowledge):
-    answer, evidence = await search(knowledge, "離床偵測")
-
-    shown = json.loads(answer.content)["products"]
-    assert shown and all(p["id"].startswith("r-") for p in shown)  # none of GRC's site
-    bed = next(p for p in shown if "測試床墊 TM-1" in p["text"])
-    assert "離床偵測" in bed["text"] and "臥床監測" in bed["category"]
-    kept = evidence[bed["id"]]
-    assert kept["kind"] == "product" and kept["rank"] == shown.index(bed) + 1
-    assert kept["fields"] == {
-        "product_name": "測試床墊 TM-1",
-        "company_name": "範例科技股份有限公司",
-        "contact_phone": "02-0000-0000",
-        "product_url": "https://example.com/tm-1",
-    }
-
-
-async def test_a_product_keeps_its_best_rank_of_the_turn(knowledge):
-    _, first = await search(knowledge, "離床偵測")
-    worse = {h: e | {"rank": 99} for h, e in first.items()}
-    better = {h: e | {"rank": 1} for h, e in first.items()}
-
-    _, after_worse = await search(knowledge, "離床偵測", worse)
-    _, after_better = await search(knowledge, "離床偵測", better)
-
-    assert {h: e["rank"] for h, e in after_worse.items()} == {
-        h: e["rank"] for h, e in first.items()
-    }
-    assert {e["rank"] for e in after_better.values()} == {1}
-
-
 def test_a_call_is_read_as_its_tool():
-    found = read_call(call("search_products", functions=["離床預警", "通知照護人員"]))
-    recommended = read_call(
-        call(
-            "recommend_products",
-            needs=[{"text": "離床預警", "kind": "function"}],
-            products=[
-                {
-                    "product_id": "r-1a2b3c4d",
-                    "checks": [{"need": 1, "status": "supported"}],
-                    "reason": "床墊下感測。",
-                }
-            ],
-            count=1,
-            intro="這項產品符合你的需求。",
-        )
+    found = read_call(
+        call("find_products", functions=["離床偵測"], must_not={"form": ["worn"]}, count=1)
     )
+    shown = read_call(call("show_products", products=["r-1a2b3c4d"], intro="這項符合。"))
 
-    assert found == SearchProducts(functions=["離床預警", "通知照護人員"])
-    assert found.query == "離床預警、通知照護人員"
-    assert isinstance(recommended, RecommendProducts) and recommended.count == 1
+    assert isinstance(found, FindProducts) and found.query.must_not == {"form": ("worn",)}
+    assert shown == ShowProducts(products=["r-1a2b3c4d"], intro="這項符合。")
 
 
 @pytest.mark.parametrize(
     ("tool_call", "reason"),
     [
-        (call("search_products", functions=[]), "functions"),
-        (call("search_products", query="離床預警"), "functions"),
-        (call("recommend_products", needs=[], products=[], count=1, intro=""), "needs"),
-        (call("get_reviews"), "there is no tool get_reviews"),
+        (call("find_products", functions=["離床預警"]), "functions.0"),  # an alias, not a name
+        (call("find_products"), "name a function"),
+        (call("show_products", products=[], intro=""), "products"),
+        (call("search_products", functions=["離床偵測"]), "there is no tool search_products"),
     ],
 )
 def test_a_refused_call_tells_the_model_why(tool_call, reason):
@@ -136,16 +86,45 @@ def test_a_refused_call_tells_the_model_why(tool_call, reason):
     assert refused.status == "error" and reason in refused.content
 
 
-async def test_an_unreachable_database_fails_the_search(knowledge):
-    with pytest.raises(LookupFailed):
-        await search_products(
-            Unreachable(),
-            knowledge.embedder,
-            knowledge.version_id,
-            call("search_products", functions=["離床偵測"]),
-            SearchProducts(functions=["離床偵測"]),
-            {},
-        )
+# --- What a find leaves -------------------------------------------------------------------
+
+CATALOG = [
+    bed_exit(f"P{n}", places={"home": "居家"} if n % 2 else {}, text=f"第 {n} 項")
+    for n in range(12)
+]
+
+
+def test_the_agent_reads_the_best_fitting_products_and_what_splits_them():
+    args = FindProducts(functions=["離床偵測"], must={"places": ["home"]})
+    found = find(CATALOG, args.query, args.count, {})
+
+    content = found_content(found, args)
+    kept = found_evidence(found, args)
+
+    assert content["matched"] == 12 and len(content["products"]) == PRODUCTS_READ
+    first = content["products"][0]
+    assert first == {
+        "id": "r-P1",
+        "name": "P1",
+        "company": "Co",
+        "needs": {"離床偵測": "離床提醒", "places=home": "居家"},
+    }
+    assert content["decisive"] == [] and content["gaps"] == []
+    assert kept["needs"] == ["離床偵測", "places=home"] and kept["count"] is None
+    assert kept["reads_text"] is False and len(kept["products"]) == PRODUCTS_READ
+    assert kept["products"][0]["fields"] == {"product_name": "P1", "company_name": "Co"}
+    json.dumps(kept)  # plain values, as the checkpointer stores them
+
+
+def test_a_need_outside_the_vocabulary_has_the_agent_read_fewer_products_text():
+    args = FindProducts(functions=["離床偵測"], other=["夜間靜音"])
+    found = find(CATALOG, args.query, args.count, {})
+
+    content = found_content(found, args)
+
+    assert len(content["products"]) == TEXTS_READ
+    assert content["products"][0]["text"] == "第 0 項"
+    assert len(found_evidence(found, args)["products"]) == TEXTS_READ
 
 
 @pytest.mark.parametrize(

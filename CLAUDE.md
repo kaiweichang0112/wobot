@@ -23,6 +23,7 @@ DB_USER=wobot_ingest_user uv run wobot-ingest report|accept|rollback <version>
 uv run wobot-eval check-gold [--index-version <version>] [--show <case IDs>]
 uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
+DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only

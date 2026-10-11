@@ -70,3 +70,21 @@ cases:
     check:
       kind: transcription
       gold: {file: transcriptions.yaml, as: transcription}
+  - case_id: FACET-01
+    scenario: product_facets
+    split: dev
+    user_input: 產品目錄每項產品寫了哪些功能、形式、使用場所、感測方式、查看方式、電源與使用人數？
+    expected_behavior: Each facet value a product's catalog text states, with that span; none it does not state (DEC-069).
+    check:
+      kind: facets
+      records: product
+      gold: {file: product-facets.yaml, as: product_facets}
+  - case_id: FACET-02
+    scenario: product_facets
+    split: heldout
+    user_input: 產品目錄每項產品寫了哪些功能、形式、使用場所、感測方式、查看方式、電源與使用人數？
+    expected_behavior: Each facet value a product's catalog text states, with that span; none it does not state (DEC-069).
+    check:
+      kind: facets
+      records: product
+      gold: {file: product-facets.yaml, as: product_facets}

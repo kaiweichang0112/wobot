@@ -13,6 +13,7 @@ from wobot.eval.answer import rule_pick as answer_rule_pick
 from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
+from wobot.eval.facets import ModelResult as FacetModelResult
 from wobot.eval.lists import (
     AgentResult,
     Call,
@@ -25,9 +26,17 @@ from wobot.eval.lists import (
     list_f1,
     writer_rule_pick,
 )
-from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
+from wobot.eval.metrics import (
+    FacetScore,
+    FieldScore,
+    RetrievalScore,
+    SetScore,
+    TranscriptionScore,
+    mean,
+)
 from wobot.eval.recommend import NODES as REC_NODES
 from wobot.eval.recommend import RecCase, RecPlay, RecResult
+from wobot.eval.recommend import query_text as rec_query_text
 from wobot.eval.recommend import rule_pick as rec_rule_pick
 from wobot.eval.rewrite import RewriteCase, RewriteResult, Searched
 from wobot.eval.rewrite import rule_pick as rewrite_rule_pick
@@ -35,6 +44,7 @@ from wobot.eval.route import CandidateResult, rule_pick
 from wobot.eval.runner import CaseResult, RunResult
 from wobot.eval.turns import Played, TurnCase, TurnsResult
 from wobot.eval.vision import ModelResult
+from wobot.knowledge.facets import FACETS
 
 
 def to_json(run: RunResult, meta: Mapping[str, Any]) -> dict[str, Any]:
@@ -59,6 +69,8 @@ def _case_json(case: CaseResult) -> dict[str, Any]:
             "value_precision": t.value_precision,
             "value_recall": t.value_recall,
         }
+    if case.facets:
+        data["facets"] = facet_json(case.facets)
     if case.retrieval:
         r = case.retrieval
         data["retrieval"] |= {
@@ -85,6 +97,7 @@ def summary(run: RunResult) -> dict[str, Any]:
         retrievals = [c.retrieval for c in cases if c.retrieval]
         fields = [c.fields for c in cases if c.fields]
         transcriptions = [c.transcription for c in cases if c.transcription]
+        facets = [c.facets for c in cases if c.facets]
         group: dict[str, Any] = {"cases": len(cases)}
         if sets:
             group |= {
@@ -109,6 +122,13 @@ def summary(run: RunResult) -> dict[str, Any]:
                 "text_recall": mean([t.text_recall for t in transcriptions]),
                 "value_precision": mean([t.value_precision for t in transcriptions]),
                 "value_recall": mean([t.value_recall for t in transcriptions]),
+            }
+        if facets:
+            pooled = pooled_facets(facets)
+            group |= {
+                "facet_precision": pooled.precision(),
+                "facet_recall": pooled.recall(),
+                "facet_f1": pooled.f1(),
             }
         out[f"{kind}/{split}"] = group
     return out
@@ -173,6 +193,8 @@ def _result(case: CaseResult) -> str:
         )
     if case.transcription:
         parts.append(transcription_result(case.transcription))
+    if case.facets:
+        parts.append(facet_result(case.facets))
     if case.detail:
         parts.append(case.detail)
     return "; ".join(parts)
@@ -202,6 +224,8 @@ def _details(case: CaseResult) -> list[str]:
         lines += [f"- {case.case_id} not retrieved: {key}" for key in case.retrieval.missing]
     if case.transcription:
         lines += transcription_details(case.case_id, case.transcription)
+    if case.facets:
+        lines += [f"- {case.case_id} {line}" for line in case.facets.differences]
     return lines
 
 
@@ -211,6 +235,41 @@ def transcription_details(case_id: str, t: TranscriptionScore) -> list[str]:
         *(f"- {case_id} value not read: {value!r}" for value in t.missing_values),
         *(f"- {case_id} value read but not transcribed: {value!r}" for value in t.extra_values),
     ]
+
+
+def facet_result(score: FacetScore) -> str:
+    return (
+        f"P {_num(score.precision())} R {_num(score.recall())} F1 {_num(score.f1())} "
+        f"over {score.products} products"
+    )
+
+
+def facet_json(score: FacetScore) -> dict[str, Any]:
+    # Not asdict: it rebuilds a Counter from its items, counting the pairs as keys.
+    return {
+        "products": score.products,
+        "matched": dict(score.matched),
+        "extra": dict(score.extra),
+        "missed": dict(score.missed),
+        "precision": score.precision(),
+        "recall": score.recall(),
+        "f1": score.f1(),
+        "by_facet": {
+            facet: {"precision": score.precision(facet), "recall": score.recall(facet)}
+            for facet in FACETS
+        },
+        "differences": score.differences,
+    }
+
+
+def pooled_facets(scores: Sequence[FacetScore]) -> FacetScore:
+    pooled = FacetScore()
+    for score in scores:
+        pooled.matched += score.matched
+        pooled.extra += score.extra
+        pooled.missed += score.missed
+        pooled.products += score.products
+    return pooled
 
 
 def _num(value: float | None) -> str:
@@ -288,6 +347,103 @@ def write_vision_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(vision_markdown(results, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Facet model comparison -------------------------------------------------------------
+
+
+def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]) -> str:
+    lines = [
+        "# Facet models on the dev products",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Models",
+        "",
+        "Each value is a label from the vocabulary: precision counts the values the model "
+        "kept that a person labelled, recall the labelled values it kept. A value whose span "
+        "is not in the text is dropped before scoring, as ingestion drops it. Answers are "
+        "cached, so a model and prompt are read once: one run, no spread. Never passing "
+        "counts dev products a person said may never be shown for a recommendation need "
+        "that pass it on the model's facets, and must be 0; fits filtered, the fitting ones "
+        "that do not. Unlike labels counts, over every dev product and need, the decisions "
+        "that differ from deciding on a person's labels, listed or not.",
+        "",
+        "| Model | Never passing | Fits filtered | Unlike labels | Precision | Recall | F1 "
+        "| Functions F1 | Dropped spans | No answer | Tokens in / out | $ per 1,000 products "
+        "| New calls |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        s, d, cost = r.score, r.decisions, r.cost_per_thousand
+        lines.append(
+            f"| {r.model} | {len(d.never_passing)} | {len(d.fits_filtered)} "
+            f"| {len(d.unlike_labels)} of {d.compared} "
+            f"| {_num(s.precision())} | {_num(s.recall())} | {_num(s.f1())} "
+            f"| {_num(s.f1('functions'))} | {len(r.dropped)} | {len(r.failures)} "
+            f"| {r.input_tokens} / {r.output_tokens} "
+            f"| {'?' if cost is None else f'{cost:.3f}'} | {r.calls} |"
+        )
+    lines += [
+        "",
+        "## Each facet",
+        "",
+        "Precision / recall.",
+        "",
+        "| Facet | " + " | ".join(r.model for r in results) + " |",
+        "| --- |" + " --- |" * len(results),
+    ]
+    for facet in FACETS:
+        cells = [
+            f"{_num(r.score.precision(facet))} / {_num(r.score.recall(facet))}" for r in results
+        ]
+        lines.append(f"| {facet} | " + " | ".join(cells) + " |")
+    for r in results:
+        details = [f"- never passing: {line}" for line in r.decisions.never_passing]
+        details += [f"- fit filtered: {line}" for line in r.decisions.fits_filtered]
+        details += [f"- unlike labels: {line}" for line in r.decisions.unlike_labels]
+        details += [f"- {line}" for line in r.score.differences]
+        details += [f"- {line} (dropped)" for line in r.dropped]
+        details += [f"- {name}: no answer: {failure}" for name, failure in r.failures.items()]
+        if details:
+            lines += [
+                "",
+                f"## {r.model}",
+                "",
+                "`+` kept but not labelled, `-` labelled but not kept, each with its span.",
+                "",
+                *details,
+            ]
+    return "\n".join(lines) + "\n"
+
+
+def write_facets_report(
+    results: Sequence[FacetModelResult], meta: Mapping[str, Any], directory: Path, stem: str
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "models": [
+            {
+                "model": r.model,
+                "score": facet_json(r.score),
+                "decisions": asdict(r.decisions),
+                "failures": r.failures,
+                "dropped": r.dropped,
+                "calls": r.calls,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+                "cost_per_thousand": r.cost_per_thousand,
+            }
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(facets_markdown(results, meta), encoding="utf-8")
     return markdown
 
 
@@ -1236,21 +1392,25 @@ def recommend_markdown(
         "products labelled to fit, none that may never be shown, and as many as asked, per "
         "run, as the mean and the range. Never shown counts plays that showed a product "
         "that may never be shown. Preferred counts plays whose preferred product came "
-        "first, of those that could. Path runs from rec_agent to the reply, every round; "
-        "cost is every call of the agent's model. An error is wrong and left out of latency.",
+        "first, of those that could. Query right counts plays whose last find asked for "
+        "the case's labelled query, of those that found: a diagnosis, not part of Right. "
+        "Path runs from rec_agent to the reply, every round; cost is every call of the "
+        "agent's model. An error is wrong and left out of latency.",
         "",
-        "| Candidate | Right | Never shown | Preferred | Model calls | Searches "
+        "| Candidate | Right | Never shown | Preferred | Query right | Model calls | Searches "
         "| Path p50 s | Path p95 s | Tokens in / out | $ per 1,000 | Errors |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in results:
         per_run = r.correct_per_run()
         tokens_in, tokens_out = r.mean_tokens
         cost = r.cost_per_thousand
         met, judged = r.preferred_shown()
+        asked_right, asked = r.query_right()
         lines.append(
             f"| {r.candidate.label} | {r.mean_correct:.1f} / {len(cases)} "
             f"({min(per_run)}–{max(per_run)}) | {r.never_shown} | {met} / {judged} "
+            f"| {asked_right} / {asked} "
             f"| {r.mean_model_calls:.2f} | {r.mean_searches:.2f} "
             f"| {r.latency(0.5):.2f} | {r.latency(0.95):.2f} "
             f"| {tokens_in:.0f} / {tokens_out:.0f} "
@@ -1287,6 +1447,22 @@ def recommend_markdown(
     for case_id in sorted({case for r in results for case in r.failures()}):
         cells = [_rec_failure_cell(r.failures().get(case_id, [])) for r in results]
         lines.append(f"| {case_id} | {_expected(by_id[case_id])} | " + " | ".join(cells) + " |")
+    wrong = [(r, p) for r in results for p in r.plays if p.query_right is False and p.run == 0]
+    if wrong:
+        lines += [
+            "",
+            "## Queries",
+            "",
+            "Each first-run find that asked for other than the labelled query.",
+            "",
+            "| Case | Candidate | Labelled | Asked |",
+            "| --- | --- | --- | --- |",
+        ]
+        lines += [
+            f"| {p.case_id} | {r.candidate.label} "
+            f"| {_cell(rec_query_text(by_id[p.case_id].query))} | {_cell(p.asked or '')} |"
+            for r, p in wrong
+        ]
     lines += [
         "",
         "## Flows",
@@ -1352,6 +1528,7 @@ def write_recommend_report(
                 "count": c.count,
                 "searches": c.searches,
                 "language": c.language,
+                "query": None if c.query is None else rec_query_text(c.query),
             }
             for c in cases
         ],
@@ -1361,6 +1538,7 @@ def write_recommend_report(
                 "correct_per_run": r.correct_per_run(),
                 "never_shown": r.never_shown,
                 "preferred_shown": list(r.preferred_shown()),
+                "query_right": list(r.query_right()),
                 "path_p50": r.latency(0.5),
                 "path_p95": r.latency(0.95),
                 "nodes": {

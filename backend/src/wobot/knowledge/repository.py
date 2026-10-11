@@ -24,6 +24,7 @@ from wobot.knowledge.models import (
     LectureRecord,
     ListItemRecord,
     LlmExtraction,
+    ProductFacet,
     ProductRecord,
     ProjectRecord,
     Record,
@@ -128,6 +129,18 @@ async def put_records(
                 insert(table).on_conflict_do_nothing(index_elements=[table.record_id]),
                 [{"record_id": record_ids[draft.revision], **draft.fields} for draft in typed],
             )
+    facets = [
+        {"record_id": record_ids[draft.revision], **asdict(facet)}
+        for draft in drafts
+        for facet in draft.facets
+    ]
+    if facets:
+        await conn.execute(
+            insert(ProductFacet).on_conflict_do_nothing(
+                index_elements=[ProductFacet.record_id, ProductFacet.facet, ProductFacet.value]
+            ),
+            facets,
+        )
     return record_ids, new
 
 

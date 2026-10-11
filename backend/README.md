@@ -113,6 +113,12 @@ DB_USER=wobot_ingest_user uv run wobot-ingest rollback <version>
   which the database checks too. Answers are kept in `knowledge.llm_extractions` by
   input, model and prompt version, so a talk is paid for once. Chunks are built from
   the entry text, never from what the model read.
+- Each product's facets (what it does, its form, where it is used, how it senses,
+  where alerts are seen, its power and how many use it at once) come from
+  `FACETS_MODEL` in the fixed vocabulary of `knowledge/facets.py`. A value is kept only
+  with a span of the product's text, which a trigger checks too, and the model and prompt
+  version are part of the product's revision. A product the model did not read holds the
+  version: unread, it would never be found by its facets.
 - A run whose content matches the active version ends as `no_change` and embeds
   nothing. `--policy dry-run` builds and validates a version without publishing it.
 - A version that would empty a source, or lose more than `PUBLISH_MAX_DROP` of a
@@ -142,17 +148,20 @@ DB_USER=wobot_ingest_user uv run wobot-ingest rollback <version>
 ## Evaluation
 
 `wobot-eval` scores an index version against labelled datasets with RAGAS: complete lists,
-exact fields, retrieval, and vision readings against a person's transcriptions, all from
-item identities. RAGAS is a dev dependency, so this runs from a checkout. Labels are
-written by a person from the sources, never from system output. See `eval/README.md`.
+exact fields, retrieval, product facets, and vision readings against a person's
+transcriptions, all from item identities. RAGAS is a dev dependency, so this runs from a
+checkout. Labels are written by a person from the sources, never from system output. See
+`eval/README.md`.
 
 ```bash
 uv run wobot-eval check-gold
 uv run wobot-eval run
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
+DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
 ```
 
-`vision` compares vision models on the dev transcriptions (paid calls); see
+`vision` compares vision models on the dev transcriptions, and `facets` models reading
+the dev products' facets; both make paid calls, except for answers already cached. See
 `eval/gold/README.md`.
 
 ## Migrations
@@ -208,6 +217,7 @@ docker build -t wobot-api:local .
 | `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
 | `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
+| `FACETS_MODEL` | `gpt-6-luna` | Reads each product's facets; answers are cached per model |
 | `VISION_MODEL` | `gpt-6.1-sol` | Reads images and PDF pages; chosen with `wobot-eval vision`; answers are cached per model |
 | `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |

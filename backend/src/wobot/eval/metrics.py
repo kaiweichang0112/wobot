@@ -19,6 +19,8 @@ from typing import Any
 
 from ragas.dataset_schema import SingleTurnSample
 
+from wobot.knowledge.facets import FACETS
+
 with warnings.catch_warnings():
     # In ragas 0.4 the ID-based metrics exist only at this deprecated path;
     # ragas.metrics.collections lacks them.
@@ -269,6 +271,57 @@ def _folded(text: str) -> str | None:
     dashes and middle dots as one, and spaces beside Chinese characters gone."""
     text = unicodedata.normalize("NFKC", text).translate(_DASHES)
     return comparable(_SPACE_BY_CJK.sub("", " ".join(text.split())))
+
+
+# A product's facets as compared: each facet's values, each with the span that states it.
+Facets = Mapping[str, Mapping[str, str]]
+
+
+@dataclass
+class FacetScore:
+    """Facet values against a person's labels, pooled over products: per facet, the values
+    both gave, those only the model gave and those it missed. Counted here, not by RAGAS:
+    a value is a label from a fixed vocabulary, so equal is equal."""
+
+    matched: Counter[str] = field(default_factory=Counter)
+    extra: Counter[str] = field(default_factory=Counter)
+    missed: Counter[str] = field(default_factory=Counter)
+    products: int = 0
+    # One line per value that differs: "<product>: + viewing phone 「手機」".
+    differences: list[str] = field(default_factory=list)
+
+    def add(self, product: str, expected: Facets, actual: Facets) -> None:
+        self.products += 1
+        for facet in FACETS:
+            want, got = expected.get(facet, {}), actual.get(facet, {})
+            self.matched[facet] += len(want.keys() & got.keys())
+            for sign, counts, values, spans in (
+                ("+", self.extra, got.keys() - want.keys(), got),
+                ("-", self.missed, want.keys() - got.keys(), want),
+            ):
+                counts[facet] += len(values)
+                self.differences += [
+                    f"{product}: {sign} {facet} {value} 「{spans[value]}」"
+                    for value in sorted(values)
+                ]
+
+    def precision(self, facet: str | None = None) -> float | None:
+        matched, given = self._count(self.matched, facet), self._count(self.extra, facet)
+        return matched / (matched + given) if matched + given else None
+
+    def recall(self, facet: str | None = None) -> float | None:
+        matched, missed = self._count(self.matched, facet), self._count(self.missed, facet)
+        return matched / (matched + missed) if matched + missed else None
+
+    def f1(self, facet: str | None = None) -> float | None:
+        precision, recall = self.precision(facet), self.recall(facet)
+        if precision is None or recall is None or precision + recall == 0:
+            return None
+        return 2 * precision * recall / (precision + recall)
+
+    @staticmethod
+    def _count(counts: Counter[str], facet: str | None) -> int:
+        return counts[facet] if facet else sum(counts.values())
 
 
 def mean(values: Sequence[float | None]) -> float | None:

@@ -3,16 +3,17 @@ the need, whether every product it showed fits and none it may never show, how m
 showed, and at what latency and cost.
 
 Each case is played through the chat graph's recommendation path with the candidate as
-rec_agent: the agent asks, searches, judges and recommends, and code checks and shows, as
-in the app. Every message is routed there, so the router's mistakes are not counted
-against the agent; a case that checks the route itself is the router's, and left out.
+rec_agent: the agent asks or turns the need into a query, and code judges, ranks and
+shows (DEC-069), as in the app. Every message is routed there, so the router's mistakes
+are not counted against the agent; a case that checks the route itself is the router's,
+and left out.
 Each play keeps its flow, node by node, with seconds and what each node did.
 """
 
 import statistics
 import time
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -22,8 +23,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import LLMResult
 from langgraph.graph.state import CompiledStateGraph
+from pydantic import ValidationError
 
 from wobot.agent.cli import describe
+from wobot.agent.find import FindProducts
 from wobot.agent.graph import Models, build_graph
 from wobot.agent.rewrite import writes_chinese
 from wobot.agent.route import Routed
@@ -31,6 +34,7 @@ from wobot.eval import candidates
 from wobot.eval.candidates import Candidate, case_messages, cost_per_thousand
 from wobot.eval.dataset import Case, Dataset
 from wobot.knowledge.embeddings import Embedder
+from wobot.knowledge.facets import FacetQuery, condition_name, conditions_of
 from wobot.knowledge.repository import Database
 
 DATASET = "recommendation-v2"
@@ -50,6 +54,7 @@ class RecCase:
     count: int | str | None  # how many are shown; "all" is two or more
     searches: bool | None  # False: the turn must not search
     language: str | None  # the reply's, when not Chinese
+    query: FacetQuery | None = None  # what a find should ask for this need (DEC-069)
 
 
 def rec_cases(datasets: Sequence[Dataset], splits: Sequence[str]) -> list[RecCase]:
@@ -73,6 +78,7 @@ def rec_cases(datasets: Sequence[Dataset], splits: Sequence[str]) -> list[RecCas
                     check.get("count"),
                     check.get("searches"),
                     check.get("language"),
+                    FacetQuery.of(check["query"]) if "query" in check else None,
                 )
             )
     return found
@@ -174,6 +180,10 @@ class RecPlay:
     input_tokens: int
     output_tokens: int
     error: str | None = None
+    asked: str | None = None  # the turn's last find, as code names its needs
+    # Whether that find asked for the case's query: None where the case has none or the
+    # turn found nothing, such as when it asked the user first.
+    query_right: bool | None = None
 
     @property
     def right(self) -> bool:
@@ -215,7 +225,9 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
     action = reply.get("action", "")
     shown = tuple(p["name"] for p in reply.get("products", []))
     asked = [m for m in final.get("rec_messages", []) if isinstance(m, AIMessage)]
-    searches = sum(c["name"] == "search_products" for m in asked for c in m.tool_calls)
+    finds = [c["args"] for m in asked for c in m.tool_calls if c["name"] == "find_products"]
+    searches = len(finds)
+    last_find = query_of(finds[-1]) if finds else None
     text = reply.get("text", "")
     nodes: dict[str, float] = defaultdict(float)
     for step in flow:
@@ -236,7 +248,39 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         error=error,
+        asked=None if last_find is None else query_text(last_find),
+        query_right=(
+            None
+            if item.query is None or not finds
+            else last_find is not None and same_query(last_find, item.query)
+        ),
     )
+
+
+def query_of(args: dict[str, Any]) -> FacetQuery | None:
+    """A find's arguments as its query; None when they are not a valid find."""
+    try:
+        return FindProducts.model_validate(args).query
+    except ValidationError:
+        return None
+
+
+def same_query(asked: FacetQuery, labelled: FacetQuery) -> bool:
+    """The same functions and conditions, whatever their order."""
+
+    def sets(part: Mapping[str, Sequence[str]]) -> dict[str, set[str]]:
+        return {facet: set(values) for facet, values in part.items() if values}
+
+    return (
+        set(asked.functions) == set(labelled.functions)
+        and sets(asked.must) == sets(labelled.must)
+        and sets(asked.must_not) == sets(labelled.must_not)
+    )
+
+
+def query_text(query: FacetQuery) -> str:
+    conditions = [condition_name(f, *vs, must=m) for f, vs, m in conditions_of(query)]
+    return " ".join([*query.functions, *conditions])
 
 
 @dataclass
@@ -262,6 +306,11 @@ class RecResult:
         return sum(
             any("may never be shown" in problem for problem in p.problems) for p in self.done
         )
+
+    def query_right(self) -> tuple[int, int]:
+        """Plays whose last find asked for the case's query, of those that found."""
+        judged = [p.query_right for p in self.done if p.query_right is not None]
+        return sum(judged), len(judged)
 
     def preferred_shown(self) -> tuple[int, int]:
         """Plays where the preferred product could come first, and how many it did."""

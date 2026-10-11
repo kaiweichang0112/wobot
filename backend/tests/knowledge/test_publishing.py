@@ -4,7 +4,7 @@ the maintenance moves that publish or roll back by hand."""
 import pytest
 from sqlalchemy import select
 
-from tests.knowledge.fakes import FakeEmbedder
+from tests.knowledge.fakes import FakeEmbedder, fake_facets
 from tests.knowledge.workbooks import catalog_workbook, product_row
 from wobot.knowledge import repository
 from wobot.knowledge.blobs import LocalBlobStore
@@ -27,7 +27,7 @@ def ingest(ingest_db, tmp_path):
         async def fetch():
             return CatalogFile(locator="catalog.xlsx", content=content)
 
-        source = ProductCatalogSource(fetch)
+        source = ProductCatalogSource(fetch, fake_facets())
         return await run_ingestion(
             ingest_db, LocalBlobStore(tmp_path), FakeEmbedder(), [source], **options
         )
