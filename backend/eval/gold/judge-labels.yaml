@@ -1,0 +1,1720 @@
+# Judge labels: a person's verdicts on replies a wobot-eval answer run kept, which the
+# judge is measured against (V8). Read the message, what the case expects and the reply;
+# where an entry asks for supported, also its case's passages under evidence. Write pass
+# or fail. A blank is not a label, and the judge's own verdicts are not shown.
+#
+#   expected   the reply does what expected says: judge the meaning, not the wording or
+#              the order, and do not require what expected marks optional ("may")
+#   supported  every fact the reply states is in the passages or records; a greeting,
+#              advice, encouragement and wording the user asked to be written are not
+#              facts, and neither is saying the sources do not state something
+#
+# Made by wobot-eval judge-sample from 20261011-173118-judge.json, seed 0.
+run: 20261007-103141-answer.json
+index_version: 788
+labelled_on: '2026-10-11'
+replies:
+- id: JL-01
+  case_id: KN-016
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 14f95cdf0809
+  message: G-Tech 有多少員工？
+  expected_behavior: Say the sources do not give it.
+  reply: 目前提供的資料沒有說明 G-Tech 的員工人數。
+  expected: pass
+  note: ''
+- id: JL-02
+  case_id: KN-018
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: 1fa5f0b5e29c
+  message: GRC 的地址和電話是什麼？
+  expected_behavior: Give both the address and the phone number.
+  reply: |-
+    GRC 地址：桃園市中壢區遠東路135號，元智大學三館五樓3524室。
+
+    電話：03-455-5726。
+  expected: pass
+  note: ''
+- id: JL-03
+  case_id: KN-014
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: 1d9b589dfbb6
+  message: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  expected_behavior: Write the line and name the company the catalog gives.
+  reply: |-
+    每天動一動、身體更有活力，讓健康陪您走得更長久！
+
+    WhizToys 運動地墊遊戲平台是世大福智科技股份有限公司（SEDA G-Tech，世大智科）的產品。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-04
+  case_id: KN-012
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: f6aa0f0ee485
+  history:
+  - user: 請列出 2013 年的碩士畢業生
+    answer: 2013 年共有 3 位碩士畢業生。
+  - user: 張凱維的論文題目是什麼
+    answer: 張凱維的論文題目是「活動感知地墊及多元互動應用之開發」。
+  message: 那張維益的呢？
+  expected_behavior: Ask for 張維益's thesis by name and give its title.
+  reply: 張維益的論文題目是「以感知地墊偵測行走路徑並計算碎形維度以分析失智症患者遊走行為」。英文題目為：Using fractal dimension derived from
+    trajectory measured by motion sensing carpet to assess wandering behaviors of dementia
+    patients。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-05
+  case_id: KN-005
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 8edcf3489e79
+  message: G-Tech 這家公司是做什麼的？
+  expected_behavior: Describe what the G-Tech website says the company makes.
+  reply: 世大智科是由元智大學老人福祉科技研究中心與世大化成股份有限公司合作成立的新創公司，致力於開發老人福祉科技產品，運用科技與設計協助長者獨立生活、參與社會，也減輕照護者負擔。產品包括智慧床墊與照護系統，以及運動地墊遊戲平台。
+  expected: pass
+  note: ''
+- id: JL-06
+  case_id: KN-007
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: c52743ff2e47
+  message: WhizPad 是什麼產品？
+  expected_behavior: Say what WhizPad is, from the catalog and the G-Tech pages.
+  reply: |-
+    WhizPad 安心臥智慧床墊是世大智科開發的智慧照護床墊，結合 AI 與物聯網技術，可監測臥床狀態，提供三階段離床預警、壓傷防護及睡眠活動分析。
+
+    床墊採用溫感釋壓記憶泡綿，並可連接生理量測裝置，協助醫療院所、養護機構及居家照護進行遠距與精準照護。
+  expected: pass
+  note: ''
+- id: JL-07
+  case_id: KN-007
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: 266352cab7ee
+  message: WhizPad 是什麼產品？
+  expected_behavior: Say what WhizPad is, from the catalog and the G-Tech pages.
+  reply: WhizPad 安心臥智慧床墊是世大智科開發的智慧照護床墊，結合 AI 與物聯網技術，可監測臥床狀態，提供三階段離床預警、壓傷防護與睡眠活動分析。床墊採用溫感釋壓記憶泡綿，並可連接生理量測裝置，協助醫療、養護機構及居家進行遠距照護。
+  expected: pass
+  note: ''
+- id: JL-08
+  case_id: KN-009
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: bf29ad24aa6b
+  message: WhizPad 的布套可以拆下來洗嗎？
+  expected_behavior: Say the cover comes off and can be washed.
+  reply: 可以拆下清潔，但資料只明確說明醫療級防水外布套可用濕布擦拭；居家款為萊賽爾天絲布套。來源沒有說明是否可以直接水洗或機洗。
+  expected: fail
+  supported: fail
+  note: ''
+- id: JL-09
+  case_id: KN-017
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: e047515414c7
+  message: OGA 雷達毫米波生理感測裝置多少錢？
+  expected_behavior: Say the catalog gives no price; the maker's contact may help.
+  reply: 資料來源未提供 OGA 雷達毫米波生理感測裝置的價格。建議直接洽詢製造商尚茂智能科技股份有限公司。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-10
+  case_id: KN-011
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: 515c7ebd85d2
+  history:
+  - user: WhizPad 是什麼？
+    answer: WhizPad 是一款鋪在床墊下的智慧床墊，用來了解長者在床上的狀態。
+  message: 那它能偵測離床嗎？
+  expected_behavior: Read "it" as WhizPad and say it detects leaving the bed.
+  reply: 可以。WhizPad 能偵測臥床狀態，並提供躺床、坐床、床緣到離床的三階段提醒。
+  expected: pass
+  note: ''
+- id: JL-11
+  case_id: KN-014
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: 361108e23aeb
+  message: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  expected_behavior: Write the line and name the company the catalog gives.
+  reply: |-
+    給長輩的一句鼓勵：每天動一動，讓身體更有活力、心情也更愉快！
+
+    WhizToys 運動地墊遊戲平台是世大智科的產品，資料中所列公司全名為世大福智科技股份有限公司。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-12
+  case_id: KN-013
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: e52ee253fd67
+  history:
+  - user: 我想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 算了，先告訴我 GRC 的地址在哪裡。
+  expected_behavior: Leave the product question and give GRC's address.
+  reply: GRC 地址是桃園市中壢區遠東路135號，元智大學三館五樓3524室。
+  expected: pass
+  note: ''
+- id: JL-13
+  case_id: KN-017
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: 10cab8f53b9b
+  message: OGA 雷達毫米波生理感測裝置多少錢？
+  expected_behavior: Say the catalog gives no price; the maker's contact may help.
+  reply: 資料來源沒有提供 OGA 雷達毫米波生理感測裝置的價格，建議洽詢尚茂智能科技股份有限公司。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-14
+  case_id: KN-008
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: e16c5b3d542c
+  message: OGA 雷達毫米波生理感測裝置是哪家公司的產品？
+  expected_behavior: Name the company the catalog gives.
+  reply: OGA 雷達毫米波生理感測裝置是尚茂智能科技股份有限公司的產品。
+  expected: pass
+  note: ''
+- id: JL-15
+  case_id: KN-007
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: adfa93e19457
+  message: WhizPad 是什麼產品？
+  expected_behavior: Say what WhizPad is, from the catalog and the G-Tech pages.
+  reply: WhizPad 安心臥智慧床墊是世大智科的智慧照護床墊，搭配照護系統可監測臥床與睡眠活動，提供三階段離床提醒和壓傷防護，也能連接生理量測裝置支援遠距照護。床墊採用溫感釋壓泡綿，並以電池供電，無需插電。
+  expected: pass
+  note: ''
+- id: JL-16
+  case_id: KN-017
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: cc92b113a2e2
+  message: OGA 雷達毫米波生理感測裝置多少錢？
+  expected_behavior: Say the catalog gives no price; the maker's contact may help.
+  reply: 資料來源未提供 OGA 雷達毫米波生理感測裝置的價格。建議洽詢製造商尚茂智能科技股份有限公司。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-17
+  case_id: KN-011
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: a691c09fbd40
+  history:
+  - user: WhizPad 是什麼？
+    answer: WhizPad 是一款鋪在床墊下的智慧床墊，用來了解長者在床上的狀態。
+  message: 那它能偵測離床嗎？
+  expected_behavior: Read "it" as WhizPad and say it detects leaving the bed.
+  reply: 可以。WhizPad 安心臥智慧床墊能偵測臥床狀態，並提供「躺床→坐床→床緣→離床」三階段提醒，及時通知照護人員。
+  expected: pass
+  note: ''
+- id: JL-18
+  case_id: KN-002
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: 096c12d2bf52
+  message: 嗨，早安！請問 GRC 是哪一年成立的？
+  expected_behavior: Greet back, then give the founding year.
+  reply: 元智大學老人福祉科技研究中心（GRC）於2003年成立，由徐業良教授創立。
+  expected: fail
+  note: ''
+- id: JL-19
+  case_id: KN-010
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: c98e4f236d8e
+  history:
+  - user: 有哪些臥床監測或離床預警的產品？
+    answer: 這個分類共有 12 項產品，第一項是 Agicare 智能均壓床。
+  message: 第一個的廠商電話是多少？
+  expected_behavior: Read "the first one" as Agicare and give its maker's phone number.
+  reply: Agicare 智能均壓床的廠商醫博科技股份有限公司，電話是 +886-2-2908-6840。
+  expected: pass
+  note: ''
+- id: JL-20
+  case_id: KN-009
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: f9088fe4f734
+  message: WhizPad 的布套可以拆下來洗嗎？
+  expected_behavior: Say the cover comes off and can be washed.
+  reply: 資料顯示，WhizPad 有醫療級防水外布套，可用濕布擦拭清潔；另有居家款 LYOCELL 天絲布套。但來源沒有說明布套是否可以拆下水洗。
+  expected: fail
+  note: ''
+- id: JL-21
+  case_id: KN-002
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: 1cbc4d4c3853
+  message: 嗨，早安！請問 GRC 是哪一年成立的？
+  expected_behavior: Greet back, then give the founding year.
+  reply: 元智大學老人福祉科技研究中心（GRC）成立於2003年。早安！
+  expected: pass
+  note: ''
+- id: JL-22
+  case_id: KN-017
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 2d60b4577576
+  message: OGA 雷達毫米波生理感測裝置多少錢？
+  expected_behavior: Say the catalog gives no price; the maker's contact may help.
+  reply: 目前提供的資料沒有列出 OGA 雷達毫米波生理感測裝置的價格，建議向廠商尚茂智能科技股份有限公司詢價。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-23
+  case_id: KN-011
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 6e4b9b415460
+  history:
+  - user: WhizPad 是什麼？
+    answer: WhizPad 是一款鋪在床墊下的智慧床墊，用來了解長者在床上的狀態。
+  message: 那它能偵測離床嗎？
+  expected_behavior: Read "it" as WhizPad and say it detects leaving the bed.
+  reply: 可以。WhizPad 可偵測臥床狀態，並提供躺床、坐床、床緣到離床的三階段提醒，通知照護人員。
+  expected: pass
+  note: ''
+- id: JL-24
+  case_id: KN-014
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 0485772b92c2
+  message: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  expected_behavior: Write the line and name the company the catalog gives.
+  reply: |-
+    鼓勵長輩多運動的一句話：每天動一動，讓身體更有活力，心情也更愉快！
+
+    WhizToys 運動地墊遊戲平台是世大智科（世大福智科技股份有限公司）的產品。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-25
+  case_id: KN-009
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: 89954afc48c0
+  message: WhizPad 的布套可以拆下來洗嗎？
+  expected_behavior: Say the cover comes off and can be washed.
+  reply: 資料沒有說布套可以拆下來清洗。型錄只提到醫療級防水外布套可用濕布擦拭清潔。
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-26
+  case_id: KN-015
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: 58b821de213b
+  message: WhizPad 的保固期是幾年？
+  expected_behavior: Say the sources do not give it; never borrow WhizToys' warranty.
+  reply: 來源未提供 WhizPad 安心臥智慧床墊的保固期限。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-27
+  case_id: KN-017
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: afc424dd90f6
+  message: OGA 雷達毫米波生理感測裝置多少錢？
+  expected_behavior: Say the catalog gives no price; the maker's contact may help.
+  reply: 目前提供的資料沒有列出 OGA 雷達毫米波生理感測裝置的價格。
+  expected: pass
+  note: ''
+- id: JL-28
+  case_id: KN-005
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 20bb2e99a65e
+  message: G-Tech 這家公司是做什麼的？
+  expected_behavior: Describe what the G-Tech website says the company makes.
+  reply: |-
+    世大智科（G-Tech）是由元智大學老人福祉科技研究中心與世大化成股份有限公司合作成立的新創事業，主要從事智慧生活、物聯網與老人福祉科技產品開發。
+
+    其產品包括安心臥智慧床墊與照護系統，以及 WhizToys 運動地墊遊戲平台，協助長輩獨立生活、社會參與，並減輕照護者負擔。
+  expected: pass
+  note: ''
+- id: JL-29
+  case_id: KN-011
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: 92edab2757fd
+  history:
+  - user: WhizPad 是什麼？
+    answer: WhizPad 是一款鋪在床墊下的智慧床墊，用來了解長者在床上的狀態。
+  message: 那它能偵測離床嗎？
+  expected_behavior: Read "it" as WhizPad and say it detects leaving the bed.
+  reply: 可以。WhizPad 安心臥智慧床墊能偵測臥床狀態，並提供「躺床→坐床→床緣→離床」三階段提醒，及時通知照護人員，協助預防離床跌倒。
+  expected: pass
+  note: ''
+- id: JL-30
+  case_id: KN-009
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: fdb72e137288
+  message: WhizPad 的布套可以拆下來洗嗎？
+  expected_behavior: Say the cover comes off and can be washed.
+  reply: 資料沒有說明布套能否拆下來清洗。型錄只提到醫療級防水外布套可用濕布擦拭；居家款則為萊賽爾天絲布套。
+  expected: fail
+  note: ''
+- id: JL-31
+  case_id: KN-014
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: 330c7ed5af42
+  message: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  expected_behavior: Write the line and name the company the catalog gives.
+  reply: |-
+    每天動一動、保持好心情，讓身體更健康、生活更有活力！
+
+    WhizToys 運動地墊遊戲平台是世大福智科技股份有限公司（SEDA G-Tech）的產品。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-32
+  case_id: KN-012
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: db28773d36e7
+  history:
+  - user: 請列出 2013 年的碩士畢業生
+    answer: 2013 年共有 3 位碩士畢業生。
+  - user: 張凱維的論文題目是什麼
+    answer: 張凱維的論文題目是「活動感知地墊及多元互動應用之開發」。
+  message: 那張維益的呢？
+  expected_behavior: Ask for 張維益's thesis by name and give its title.
+  reply: 張維益的論文題目是「以感知地墊偵測行走路徑並計算碎形維度以分析失智症患者遊走行為」。
+  expected: pass
+  note: ''
+- id: JL-33
+  case_id: KN-013
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: e52ee253fd67
+  history:
+  - user: 我想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 算了，先告訴我 GRC 的地址在哪裡。
+  expected_behavior: Leave the product question and give GRC's address.
+  reply: GRC 地址是桃園市中壢區遠東路135號，元智大學三館五樓3524室。
+  expected: pass
+  note: ''
+- id: JL-34
+  case_id: KN-009
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: 2a9f91b887b2
+  message: WhizPad 的布套可以拆下來洗嗎？
+  expected_behavior: Say the cover comes off and can be washed.
+  reply: 醫療級防水外布套可用濕布擦拭清潔；資料沒有說布套可以拆下來清洗。居家款另有萊賽爾布套，但也未說明是否可拆洗。
+  expected: fail
+  note: ''
+- id: JL-35
+  case_id: KN-017
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: a12281c5182b
+  message: OGA 雷達毫米波生理感測裝置多少錢？
+  expected_behavior: Say the catalog gives no price; the maker's contact may help.
+  reply: 資料來源未提供 OGA 雷達毫米波生理感測裝置的價格。建議直接洽詢尚茂智能科技股份有限公司。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-36
+  case_id: KN-014
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 0d94115631c2
+  message: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  expected_behavior: Write the line and name the company the catalog gives.
+  reply: |-
+    鼓勵長輩每天多運動，活動筋骨、保持健康，生活更有活力！
+
+    WhizToys 運動地墊遊戲平台是世大福智科技股份有限公司（SEDA G-Tech，世大智科）的產品。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-37
+  case_id: KN-014
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: ef0d00b48a4c
+  message: 幫我寫一句鼓勵長輩多運動的話，另外 WhizToys 運動地墊是哪家公司的產品？
+  expected_behavior: Write the line and name the company the catalog gives.
+  reply: |-
+    可以鼓勵長輩：「每天動一動，讓身體更有活力、心情也更愉快！」
+
+    WhizToys 運動地墊遊戲平台是世大智科（世大福智科技股份有限公司）的產品。
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-38
+  case_id: KN-009
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: 319b992224fe
+  message: WhizPad 的布套可以拆下來洗嗎？
+  expected_behavior: Say the cover comes off and can be washed.
+  reply: 資料顯示，醫療級防水外布套可用濕布擦拭清潔；另有居家款 LYOCELL（萊賽爾）天絲布套。但來源沒有說明布套是否可以拆下水洗。
+  expected: fail
+  note: ''
+- id: JL-39
+  case_id: KN-003
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: 15b2db49b975
+  message: 你好！順便問一下，GRC 的電話是多少？
+  expected_behavior: Give GRC's phone number, not G-Tech's.
+  reply: 你好！GRC 的電話是 03-455-5726。
+  expected: pass
+  note: ''
+- id: JL-40
+  case_id: KN-018
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: fe3a109b133b
+  message: GRC 的地址和電話是什麼？
+  expected_behavior: Give both the address and the phone number.
+  reply: |-
+    地址：桃園市中壢區遠東路135號，元智大學三館五樓3524室。
+    電話：03-455-5726。
+  expected: pass
+  note: ''
+evidence:
+  KN-009:
+    passages:
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 1 頁 (1/2)
+      text: |-
+        頁面文字（原文）：
+        照護系統
+        Care Relieve System
+        WhizPad智慧床墊ｘ安心臥照護系統
+        溫感釋壓泡綿床墊
+        醫學中心實驗證實，降低壓傷發生率
+        裝電池的智慧床墊
+        不需拉線插電，安全可靠又方便
+        不需Wi-Fi直接上網
+        連接手機基地台，上電即上線
+        *WhizPad智慧床墊除厚墊(12cm)外
+        ，亦提供薄墊(5cm)版本，可直接鋪
+        設在原有的床墊上使用。
+        三階段臥離床提醒
+        及早發出離床提醒，有效預防跌倒
+        睡眠活動資料分析
+        個人資料長期紀錄，建立精準照護模式
+
+        模型描述：這是一張 WhizPad 智慧床墊與安心臥照護系統的產品介紹海報，列出釋壓、離床提醒、睡眠資料分析、電池供電與連網等功能。下半部展示藍色床墊、厚薄床墊特寫，以及電腦和手機上的照護介面，背景為白色與淺藍色幾何色塊。
+
+        圖中其他文字（模型轉錄）：
+        SEDA
+        iTech
+        不需Wi–Fi直接上網
+        IMAGER-37.
+        Medical Series
+        AOC
+
+        圖示關係（模型說明）：
+        - 標題中的「安心臥」以粉紅色呈現，「照護系統」以深灰色呈現。
+        - 左側五項功能說明各以折線與圓圈標示，連向床墊展示區。
+        - 右側兩張圓形特寫並列展示厚墊與薄墊的外觀。
+        - 右下角電腦與手機畫面並列，展示照護系統的不同裝置介面。
+        - 左下角放置一個 QR 碼。
+    - header: 產品目錄｜長者日常照顧輔助/安全監測科技產品 › 臥床監測、離床預警、壓傷防護
+      text: |-
+        產品名稱：WhizPad 安心臥智慧床墊
+        公司：世大智科股份有限公司
+        主要功能：WhizPad 安心臥智慧床墊結合AI與物聯網技術，提供離床預警、壓瘡防護及睡眠管理等功能。床墊內建30個感測區塊，透過類神經網路機器學習，精準判斷使用者的臥床狀態，並提供三階段離床提醒，有效預防跌倒。此外，床墊採用溫感釋壓記憶泡綿材質，提供舒適的睡眠體驗，並可與生理量測裝置連接，實現遠距照護。
+        使用方式：使用者只需將WhizPad智慧床墊鋪設於病床上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測使用者的臥床狀態。透過主機上的控制面板，醫護人員可設定翻身角度、翻身方向和翻身停留時間等參數。當發現異常情況時，系統會即時發送通知至照護人員，並提供實時的健康建議。
+        簡介：WhizPad 安心臥智慧床墊結合AI與物聯網技術，提供離床預警、壓瘡防護及睡眠管理等功能。床墊內建30個感測區塊，透過類神經網路機器學習，精準判斷使用者的臥床狀態，並提供三階段離床提醒，有效預防跌倒。此外，床墊採用溫感釋壓記憶泡綿材質，提供舒適的睡眠體驗，並可與生理量測裝置連接，實現遠距照護。
+        導入年份：2024
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 4 頁 (1/2)
+      text: |-
+        頁面文字（原文）：
+        國內醫學中心加護病房招募254名
+        壓傷高危險病患
+        分為醫院標準床墊組與活動感知床墊（WhizPad）組，
+        追蹤病患至出院或轉出加護病房。
+        歷經一年的試驗，壓傷發生率下降88%
+        ，延緩壓傷發生時間近一倍
+        （結果具有統計學顯著意義）
+        D. L. Bai, T. W. Liu, H. L. Chou, Y. L. Hsu (In press). Relationship between a
+        pressure redistributing foam mattress and pressure injuries: An observational
+        prospective cohort study. PLoS ONE 15(11)
+        研究結果經嚴格審查，發表於知名國際生物醫學期刊
+        臥床壓力均勻分布 經實驗證實有效預防壓傷
+        防水 透濕
+        抗菌 耐燃
+        減壓材質
+        強大的形塑能力連微小的指紋都能掌握
+        ，凹凸的人體身形包覆完全沒問題！
+        雙層式結構設計，利於身體支撐，維
+        持脊椎自然彎曲，提升睡眠品質。
+        醫療級防水外布套，採用抗菌、防霉、透氣材質，
+        可直接以濕布擦拭，安心好清潔。另也有居家款式
+        的LYOCELL（萊賽爾）天絲布套，透氣又涼爽。
+        溫感釋壓記憶泡綿材質
+        高分子溫感釋壓材質可依環境溫度變化，改變材質表面
+        軟硬度，當材質接觸到人體溫度時，可由點至面降低皮
+        膚因單點所產生的壓力，連細微的指紋都可掌握。
+        高密度支撐層
+        感測層
+        （智慧床墊才有！）
+
+        溫感釋壓層
+        醫療級防水外布套及
+        居家舒適透氣布套
+    - header: 世大智科 G-Tech › 首頁 › WhizPad安心臥智慧床墊x安心臥照護系統
+      text: |-
+        模型描述：畫面是一隻手張開手指，向下按壓白色軟墊的近景。手掌周圍的墊面呈現凹陷，畫面中沒有可見文字或數字。
+
+        原圖：https://static.wixstatic.com/media/2927b2_75030d6a875241168e923ae908b5fad5~mv2.jpg
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 (1/4)
+      text: |-
+        ## 安心臥智慧床墊
+
+        ## 打造最安心的好眠體驗 健康睡眠智慧升級 ＋
+        「安心臥智慧床墊」搭配「安心臥照護系統」將離床預警、褥瘡防護及睡眠管理合而為一，以極舒適、非穿非戴的方式結合「AI智慧」 大數據分析進行智能睡眠感知，搭配以「標準物聯網技術」開發的系統平台可以廣泛進行高品質的智慧生活與科技照護應用，實現以床為核心的智能環境。
+
+        及早發現狀況並及時送醫，將遺憾降至最低
+
+        數據為長者代言 精準掌握長者狀況
+
+        特殊溫度感應釋壓記憶泡綿
+        床墊採用獨家溫度感應釋壓記憶材質提供良好身形包覆與支撐，讓肌肉與骨骼達到充分地放鬆與保護。
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 (3/4)
+      text: |-
+        睡眠活動資料長期紀錄 建立精準照護模式
+        ✔單日臥離床紀錄圖表
+        白天/夜晚/全天臥床時間
+
+        ✔兩週常模（常模分數）圖表
+        白天/夜晚/全天平均臥床時間
+
+        ✔當日臥床時間與常模比較差異顯示
+
+        ✔大數據分析製作臥離床常模分群
+
+        醫療院所智慧床墊照護管理方案
+        舒適好睡的溫感釋壓泡綿材質床墊，經實驗證實有效降低 壓傷發
+        生率，搭配安心臥照護系統，中央護理站即時管理 病患臥離床狀
+        態，並可自行設定通知功能。
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 2 頁
+      text: |-
+        模型描述：圖片是一片空白的白色畫面。沒有可見的文字、數字、圖表或物件。
+
+        PDF：https://drive.google.com/file/d/12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X/view#page=2
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋
+      text: |-
+        模型描述：照片中，一隻手掌張開，掌心朝下按在淺色的軟墊表面上，前臂由畫面上方伸入。軟墊邊緣有接縫，手掌周圍的表面略微下陷。
+
+        原圖：https://static.wixstatic.com/media/2927b2_e65ca3e408f84257a455528d43fb4717~mv2.gif
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 11 頁
+      text: |-
+        模型描述：圖片是一整片白色的空白畫面。沒有可見的文字、數字、圖表或物件。
+
+        PDF：https://drive.google.com/file/d/12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X/view#page=11
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋
+      text: |-
+        模型描述：照片顯示一張米色布面床架，配有米色床頭板、白色床墊及上層藍色床墊。床位於明亮的白色房間內，左側窗戶掛著透光白色窗簾。
+
+        圖中文字（模型轉錄）：
+        IMAGER-37®
+        Medical Series
+
+        圖示關係（模型說明）：
+        - 「IMAGER-37®」與「Medical Series」標誌印在藍色床墊靠近床尾的位置。
+        - 藍色床墊疊放在白色床墊上，下方是米色床架。
+
+        原圖：https://static.wixstatic.com/media/2927b2_c0da8d3699a8450ea7e1e4f38fdb9023~mv2.jpg
+    - header: 世大智科 G-Tech › 首頁 › 40間醫療/教學單位使用
+      text: |-
+        模型描述：圖片是一張病床的等角插畫，床上鋪有標示「WhizPad」的藍色床墊，四周有護欄，底部有腳輪。病床上方畫有雲朵與兩塊淡藍色半透明面板，面板內呈現波形、橫線及人體示意圖。
+
+        圖中文字（模型轉錄）：
+        WhizPad
+
+        圖示關係（模型說明）：
+        - 「WhizPad」標示在藍色床墊上，旁邊的白色點狀線延伸至床墊左側。
+        - 病床上方的半透明面板分別呈現波形線條及人體輪廓與連接圓圈。
+
+        原圖：https://static.wixstatic.com/media/2927b2_118d67d62f38469d97fb1880f5837ae3~mv2.png
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 4 頁 (2/2)
+      text: |-
+        模型描述：這是一頁床墊材質與研究結果的產品說明，包含溫感記憶泡綿、功能圖示、床墊分層示意及布套照片。下半部以論文縮圖和文字介紹壓傷高危險病患試驗，列出招募人數、壓傷發生率下降比例與期刊引文。
+
+        圖中其他文字（模型轉錄）：
+        PLOS ONE
+        RESEARCH ARTICLE
+        Abstract
+        Background and purpose
+        Methods
+        Results
+
+        圖示關係（模型說明）：
+        - 右上方五個彩色圖示分別搭配減壓材質、防水、透濕、抗菌與耐燃標籤。
+        - 床墊剖面圖由上至下標示溫感釋壓層、感測層與高密度支撐層。
+        - 感測層的標籤附註此層僅智慧床墊具有。
+        - 手掌壓痕照片旁以圓形放大圖呈現泡綿表面紋理。
+        - 兩張圓形布套照片與醫療級及居家款布套說明並列。
+        - 下方論文頁面縮圖與病患招募、試驗結果及期刊引文並列。
+
+        無法辨識（模型回報）：
+        - 中段左側藍色床墊照片上的品牌字樣及其餘英文小字。
+        - 左下方論文縮圖中的作者資訊、側欄、摘要內文、頁尾及其他細小文字與數字。
+
+        PDF：https://drive.google.com/file/d/12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X/view#page=4
+    - header: WhizToys 技術文件 › 規格說明 › 產品內容及外觀
+      text: |-
+        圖片替代文字（網頁原文）：產品配備圖
+
+        模型描述：照片由上往下拍攝，呈現一組攤放在米色磁磚地板上的設備與配件，包括堆疊的黑色板件、網狀墊、兩個提袋及使用手冊。下方另有線材、轉接器、袋裝小零件和一台放在盒內、顯示 WhizToys 畫面的平板。
+
+        圖中文字（模型轉錄）：
+        IoTiles
+        WhizToys
+        One Toy Many Game
+        世大智科
+        Smart Living: IoT-Gerontechnology
+        WhizToys
+        使用手冊
+        mi
+        WhizToys
+
+        圖示關係（模型說明）：
+        - 左上方的黑色方形板件堆疊在黑色網狀墊上。
+        - 右上方的大型黑色提袋印有 IoTiles 與 WhizToys 標誌，小型藍色提把黑袋放在其前方。
+        - 使用手冊、轉接器、線材及小零件排列在板件與提袋下方。
+        - 右下方盒內的平板螢幕顯示 WhizToys 標誌，後方放有印著 mi 標誌的白色盒子。
+
+        無法辨識（模型回報）：
+        - 小型黑色提袋標誌中的細小英文文字。
+        - 左下方使用手冊封面的頂部標誌、標誌下方小字及「使用手冊」上方的中文標題。
+        - 下方線材接頭及黑色配件上的細小標示。
+        - 右下方平板螢幕左上角的小標籤、WhizToys 標誌下方的小字，以及紅色與藍色按鈕文字。
+        - 右下方白色包裝盒側面的細小文字。
+
+        原圖：https://docusaurus.seda-gtech.com.tw/assets/images/hardware-c6d840c5447f9068bf81b0b35f4e702a.png
+    - header: 世大智科 G-Tech › 首頁
+      text: |-
+        世大智科 SEDA G-Tech
+
+        智慧生活 / 物聯網 / 老人福祉科技
+
+        世大智科 SEDA G-Tech：https://www.seda-gtech.com.tw
+        產品技術總覽：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro
+        line.me：https://line.me/R/ti/p/@067agchp
+        www.instagram.com：https://www.instagram.com/seda_gtech?igsh=MXRmcnB6b2R6Y20zdA%3D%3D&utm_source=qr
+        www.facebook.com：https://www.facebook.com/SedaGTech
+        www.youtube.com：https://www.youtube.com/channel/UCzwhPpTbokuRejM35VmE9Gg/videos
+
+        ## WhizPad安心臥智慧床墊x安心臥照護系統
+        世大智科「安心臥智慧床墊」材質舒適、無需插電使用，搭配「安心臥照護系統」將離床預警、褥瘡防護及睡眠管理合而為一，建立完整科技照護方案。
+
+        ## 溫感釋壓泡綿床墊
+        醫學中心實驗證實，降低88%壓傷發生率
+
+        ## 三階段臥離床提醒
+        及早發出離床提醒，有效降低88%跌倒發生率
+
+        ## 睡眠活動資料分析
+        個人資料長期紀錄，建立精準照護模式
+
+        ## 生理資訊量測紀錄
+        藍牙連接量測裝置，App掌握生理資訊
+
+        ## 裝電池的智慧床墊
+        不需拉線插電，安全可靠又方便
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋
+      text: |-
+        模型描述：圖片大部分為白色，左上方有一個淡灰色的手指指腹特寫，可見細微的指紋紋路。影像向右方及下方逐漸淡入白色背景，沒有文字、數字或標示。
+
+        原圖：https://static.wixstatic.com/media/2927b2_6772c65c97a64ac886729b00e8d7c477~mv2.png
+  KN-012:
+    passages:
+    - header: 徐業良教授著作｜Journal papers｜2016年
+      text: |-
+        Hsu, Y. L. (2016). A Chinese response to the aging society. Gerontechnology, 14(4), 187-190.
+        PDF：https://journal.gerontechnology.org/currentIssueContent.aspx?aid=2225
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2000年
+      text: |-
+        葉欲君
+        論文名稱：三維虛擬設計環境的建構
+        電子全文：https://hdl.handle.net/11296/uz2754
+
+        徐元展
+        論文名稱：電子連接器接觸彈簧形態最佳化設計
+        Thesis title: Shape optimal design of the contact springs of a connector
+        電子全文：https://hdl.handle.net/11296/zgpybk
+
+        林浩瑋
+        論文名稱：精密定位與自動進給手術用骨骼鑽孔平台之研究
+        Thesis title: Development of automated precision bone drilling machine for medical surger
+        電子全文：https://hdl.handle.net/11296/m9pak4
+    - header: 徐業良教授著作｜Journal papers｜2014年
+      text: |-
+        徐業良, & 黃于珍 (2014). 善用資通訊科技協助高齡者照護－從遠距居家照護到溝通與關懷. 公共治理季刊, 2(2), 58-68.
+        PDF：https://www.airitilibrary.com/Publication/alDetailedMesh?docid=23064811-201406-201407140015-201407140015-58-68
+
+        徐業良 (2014). 海峽兩岸應對老齡社會之研究共識論壇. 福祉科技與服務管理學刊, 2(2).
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=58
+
+        徐業良 (2014). 第九屆國際老人福祉科技學會世界年會在台灣. 福祉科技與服務管理學刊, 2(1).
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=45
+
+        徐業良 (2014). 老人福祉科技產業的機會和挑戰. 福祉科技與服務管理學刊, 2(1).
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=52
+
+        Su, R. H., Hsu, Y. L., Chan, L., Lin, H., & Yang, C. C. (2014). Assessing abnormal gaits of Parkinson’s disease patients using a wearable motion detector. Biomedical Engineering: Applications, Basis and Communications, 26(2).
+        PDF：https://www.semanticscholar.org/paper/ASSESSING-ABNORMAL-GAITS-OF-PARKINSON%27S-DISEASE-A-Su-Hsu/e1a4ff61900373af7f79e4f823a66d20bf2573e9?p2df
+
+        Lin, H., Hsu, Y. L., Hsu, M. S., & Cheng, C. M. (2014). Development of a telehealthcare decision support system for patients discharged from hospital. Telemedicine and e-Health, 20(8), 748-756.
+        PDF：https://www.semanticscholar.org/paper/Development-of-a-telehealthcare-decision-support-Lin-Hsu/55b663b61a08c7817579b67549c7b947ae315713?p2df
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2001年
+      text: |-
+        尹居中
+        論文名稱：新型人工全膝關節之設計
+        Thesis title: Design of a new total knee prosthesis
+        電子全文：https://hdl.handle.net/11296/6zphuy
+
+        陳友凡
+        論文名稱：機械設計知識服務供給者建構模式之研究
+        Thesis title: Development of a mechanical design knowledge service provide
+        電子全文：https://hdl.handle.net/11296/fs3c9b
+
+        黃宗正
+        論文名稱：防音防護具舒適性能評估研究
+        Thesis title: Comfort evaluation of hearing protectors
+        電子全文：https://hdl.handle.net/11296/5432rg
+    - header: 徐業良教授著作｜Conference papers｜2008年
+      text: |-
+        張冠群, 楊弘仁, 徐仁熙, 許明信, 江美惠, 徐業良, 鄭智銘, 余家杰, 林翰俊, "遠距居家照護服務之實務應用—糖尿病照護中心(Practical application of home telehealth system - diabetic management center)," 2008國際台灣老人急重症醫學會學術研討會(International conference of geriatric emergency and critical care, 2008 anniversary congress of Taiwan society of geriatric emergency and critical care medicine), Taipei, Taiwan, 2008/12.
+
+        許明信, 楊弘仁, 張冠群, 徐仁熙, 陳文華, 徐業良, 鄭智銘, 江美惠, 余家杰, 林翰俊, "遠距照護服務對高齡者慢性病管理的影響(The study on chronic disease management with tele-healthcare services for the elderly)," 2008國際台灣老人急重症醫學會學術研討會(International conference of geriatric emergency and critical care, 2008 anniversary congress of Taiwan society of geriatric emergency and critical care medicine), Taipei, Taiwan , 2008/12.
+
+        王堯弘, 楊弘仁, 許明信, 許世機, 徐業良, 鄭智銘, 鄭安芝, 李哲熙, "可攜式生理訊號即時監測系統之開發(Development of ubiquitous vital signs monitoring platform using wireless technologies and mobile computing)," 2008國際台灣老人急重症醫學會學術研討會(International conference of geriatric emergency and critical care, 2008 anniversary congress of Taiwan society of geriatric emergency and critical care medicine), Taipei, Taiwan, 2008/12.
+
+        徐業良, 許博爾, 洪永杰, "結合專利資訊與公理設計之創新設計流程," 第三屆中華萃思(TRIZ)學會學術暨實務研討會暨第一屆海峽兩岸萃思研討會, Hsinchu, Taiwan, 2008/11.
+
+        Hsu, Y. L., "Development of a decentralized home telehealth system," the First France-Taiwan Workshop on Bilateral Cooperation in Health Technologies: Diagnostic Imaging, Telemedicine & Homecare, National Yang-Ming University, Taipei, Taiwan, 2008/03.
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2019年
+      text: |-
+        張譯云
+        論文名稱：窄帶物聯網智慧照護系統創新開發與場域驗證
+        Thesis title: Innovative development and field trial of narrow band internet of things smart care system.
+        電子全文：https://hdl.handle.net/11296/zdktj7
+
+        吳傳雅
+        論文名稱：使用活動感知地墊建立計時起走測試及延伸應用
+        Thesis title: Timed Up & Go Test and extended application using motion sensing carpet
+        電子全文：https://hdl.handle.net/11296/26mbfs
+
+        林恩如
+        論文名稱：智慧照護產品使用者經驗設計與實務應用
+        Thesis title: Smart care products user experience design – learning from practical application
+        電子全文：https://hdl.handle.net/11296/gtd76d
+    - header: 徐業良教授著作｜Conference papers｜2005年
+      text: |-
+        Hsu, Y. L., & Yang, C. C., "Design of a portable tele-homecare monitoring system for the elderly," 2005 International Symposium on Gerontechnology and Care Service, Nantou, Taiwan, 2005/11.
+
+        Hsu, Y. L., Chen, M. C., Cheng, C. M., & Wu, C. H. (2005, October). Development of a portable device for home monitoring of snoring. In 2005 IEEE International Conference on Systems, Man and Cybernetics (Vol. 3, pp. 2420-2424). IEEE.
+        PDF：https://ieeexplore.ieee.org/abstract/document/1571511?casa_token=kSgbMjNvv4gAAAAA:gpKEHKzUxuQ1s8nO9nLtzdn4_bDZ8F0vYVlT6WYMdDwJ3dnhnirNogUhaHiYePq_IiZoA8Lf0uI
+
+        Liu, T. C., & Hsu, Y. L., "A fuzzy proportional-derivative controller for constraint-bound engineering optimization problems," the 13th International Conference on Fuzzy Theory and Its Applications, Kaohsiung, Taiwan, 2005/09.
+
+        洪永杰, 徐業良, "質子交換膜型燃料電池膜電極組(MEA)－ 專利地圖與專利分析," 2005年燃料電池國際研討會, Tauyuan, Taiwan, 2005/09.
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2009年
+      text: |-
+        蕭雅丹
+        論文名稱：以專利資訊為基礎之創新設計流程應用與工具開發
+        Thesis title: Development and application of a design around tool based on the innovative patent-based design process
+        電子全文：https://hdl.handle.net/11296/8f4k5k
+
+        黃冠穎
+        論文名稱：與高齡者互動溝通之遠端臨場機器人-以ARM處理器為核心之規劃與建置
+        Thesis title: Constructing an ARM-based telepresence robot for interpersonal communication systems
+        電子全文：https://hdl.handle.net/11296/6z53k2
+
+        鄭智文
+        論文名稱：輕量型移動櫃參數式自動規劃軟體之建立
+        Thesis title: Developing a parametrically automatic planning software for light-duty mobile shelving
+        電子全文：https://hdl.handle.net/11296/2gg8e7
+
+        李哲熙
+        論文名稱：行動式生理訊號即時監測系統之開發
+        Thesis title: Development of vital signs monitoring system using wireless technologies
+        電子全文：https://hdl.handle.net/11296/4rgc8x
+    - header: 徐業良教授著作｜Journal papers｜2026年
+      text: |-
+        Hsu, Y. L., Bhekumuzi, M., & Yang, Z. H. (2026). What do we do in Gerontechnology? Mapping the field through semantic consensus analysis (2017–2025). Gerontechnology, 25(1), 1–11. https://doi.org/10.4017/gt.2026.25.1.1257.03
+        DOI：https://doi.org/10.4017/gt.2026.25.1.1257.03
+        PDF：https://journal.gerontechnology.org/currentIssueContent.aspx?aid=4996
+
+        Amabili, G., Maranesi, E., Barbarossa, F., Margaritini, A., Bonfigli, A. R., Su, F. C., Lin, C. J., Chieh, H. F., Vasseur, D., Nap, H. H., Hsu, Y. L., Bai, D., & Bevilacqua, R. (2026). Authors’ reply: Posttrial withdrawal ethics in the healthy ageing ecosystem for people with dementia (HAAL) study. JMIR Research Protocols, 15, e95516. https://doi.org/10.2196/95516
+        DOI：https://doi.org/10.2196/95516
+        PDF：https://www.researchprotocols.org/2026/1/e95516
+
+        Hsu, Y.-L., Yi, C.-H., Lee, S.-C., & Yen, K.-H. (2026). RSSI-based localization of smart mattresses in hospital settings. Journal of Low Power Electronics and Applications, 16(1), Article 4. https://doi.org/10.3390/jlpea16010004
+        DOI：https://doi.org/10.3390/jlpea16010004
+        PDF：https://www.mdpi.com/2079-9268/16/1/4
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2012年
+      text: |-
+        張志吉
+        論文名稱：TFT LCD框膠製程參數田口法分析研究
+        Thesis title: Research of process of TFT LCD main-seal with Taguchi method
+        電子全文：https://hdl.handle.net/11296/5k5s95
+
+        王竹安
+        論文名稱：應用二維條碼於自動引導車型態之機器人室內導航系統開發
+        Thesis title: Development and commercialization of a motion-sensing mattress applied in home environment
+
+        吳科沅
+        論文名稱：適用於居家環境具止鼾功能之智慧型床墊設計與開發
+        Thesis title: Development of an intelligent bed mattress with stop-snoring function for use in the home environment
+        電子全文：https://hdl.handle.net/11296/4r2ux4
+
+        李亦陞
+        論文名稱：適用於居家環境下遠距日常生活活動監測系統之開發
+        Thesis title: Development of remote monitoring and assessment system of daily activities in the home environment
+        電子全文：https://hdl.handle.net/11296/5pq9x6
+    - header: 徐業良教授著作｜Journal papers｜2024年
+      text: |-
+        Wen M. H., Chen P. Y., Lin S., Lien C. W., Tu S. H., Chueh C. Y., Wu Y. F., Tan Cheng Kian K., Hsu Y. L, Bai D. (2024) Enhancing Patient Safety Through an Integrated Internet of Things Patient Care System: Large Quasi-Experimental Study on Fall Prevention J Med Internet Res 2024;26:e58380 doi: 10.2196/58380
+        PDF：https://drive.google.com/file/d/12baVotQscT8WwngIfMqpO_t1NdE9E-OQ/view?usp=drive_link
+
+        Mathunjwa, B. M., Chen, Y. F., Tsai, T. C., & Hsu, Y. L. (2024). A Lifestyle Monitoring System for Older Adults Living Independently Using Low-Resolution Smart Meter Data. Sensors, 24(11), 3662. https://doi.org/10.3390/s24113662
+        DOI：https://doi.org/10.3390/s24113662
+        PDF：https://drive.google.com/file/d/1KPFjDAihP0O_FNamOhohwwlaJjPG3GqX/view?usp=drive_link
+
+        徐業良 (2024). 高齡智慧科技落地應用第一步—產品適用性評估, 護理雜誌, The journal of nursing, 71(3), 20-25.
+        PDF：https://drive.google.com/file/d/1JAOgx3xB_-ybjt-RGcbBSwNL_iFNdWPf/view
+
+        徐業良, 李孟潔 (2024). 落地應用－國家衛生研究院「推動智慧科技應用於高齡照顧」計畫第一年成果, 福祉科技與服務管理學刊, 12(0), 3-12
+        PDF：https://csgj.gerontechnology.org.tw/currentIssueContent.aspx?aid=533
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2015年
+      text: |-
+        姜依帆
+        論文名稱：以加速度感測器為核心發展穿戴式裝置個人生活型態模式分析技術
+        Thesis title: Analysis of personal life patterns using accelerometer based wearable devices
+        電子全文：https://hdl.handle.net/11296/ay4mp4
+
+        張維益
+        論文名稱：以感知地墊偵測行走路徑並計算碎形維度以分析失智症患者遊走行為
+        Thesis title: Using fractal dimension derived from trajectory measured by motion sensing carpet to assess wandering behaviors of dementia patients
+        電子全文：https://hdl.handle.net/11296/ac9mtv
+
+        卜令遠
+        論文名稱：結合組裝性設計於3D列印之研究－應用於個人化互動機器人設計
+        Thesis title: Study of design for assembly using 3D printing─applying to the design of personalized interactive robots
+        電子全文：https://hdl.handle.net/11296/rpxs27
+    - header: 徐業良教授著作｜Journal papers｜2018年
+      text: |-
+        白麗, 鄭家凱, 林恩如, 陳思宇, 張譯云, 徐業良, 華碩電腦智慧機器人產品企劃團隊 (2018). 陪伴型機器人使用者經驗評估─ 以智慧居家機器人 Zenbo 為例. 福祉科技與服務管理學刊, 6(3), 265-282.
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=395
+
+        徐業良, & 白麗 (2018). 智慧科技於高齡者生活與照護應用之前瞻發展建議. 福祉科技與服務管理學刊, 6(3), 325-338.
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=397
+
+        徐業良, & 白麗 (2018). Gerontechnology-老人福祉科技的機會和挑戰. 福祉科技與服務管理學刊, 6(1), 89-104.
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=383
+
+        徐業良, & 白麗 (2018). 充分應用智慧科技面對高齡社會挑戰. 福祉科技與服務管理學刊, 6(1), 75-80.
+        PDF：https://journal.gerontechnology.org.tw/currentIssueContent.aspx?aid=377
+    - header: 元智大學老人福祉科技研究中心｜碩士畢業生｜2006年
+      text: |-
+        馬鴻祥
+        論文名稱：可攜式遠距健康監測系統應用於日常生活活動監測之研究
+        Thesis title: Development of a portable tele-homecare monitoring system for activities of daily living
+        電子全文：https://hdl.handle.net/11296/bc9kj3
+
+        楊哲彰
+        論文名稱：應用於居家環境之身體活動監測與評估系統之開發
+        Thesis title: Development of a portable system for physical activity assessment in a home environment
+        電子全文：https://hdl.handle.net/11296/j7jw26
+
+        黃喻鴻
+        論文名稱：運用於電源供應器中之多點熱源散熱片最佳化設計
+        Thesis title: Heat sink optimization of multi-heat source for power supply units
+        電子全文：https://hdl.handle.net/11296/3eh7cf
+
+        馬安一
+        論文名稱：以分散式資料伺服器為核心之遠端臨場機器人之研發
+        Thesis title: Development of telepresence robot with distributing data server center controller
+        電子全文：https://hdl.handle.net/11296/e5936q
+
+        黃柏森
+        論文名稱：多功能健康休閒座椅之設計
+        Thesis title: Design of multi-functional chair
+        電子全文：https://hdl.handle.net/11296/2dycug
+    - header: 徐業良教授著作｜General publications｜2025年
+      text: |-
+        徐業良, 從菁英科技到民主工具 徐業良談生成式AI在照顧的未來｜AI照顧進化論, ĀnkěCare創新照顧 ,【專家觀點】, 2025/06/03
+        Link：https://www.ankecare.com/article/3689-2025-06-03-03-59-51
+
+        徐業良, 從門口插上小黃旗，到智慧電表關懷，台電讓獨居長者多一道守護, 銀天下,【徐業良專欄】, 2025/04/29
+        Link：https://www.cw.com.tw/aging/article/5135122
+
+        徐業良, 應用智慧科技不再是未來式，我們的照顧者準備好了！銀天下,【徐業良專欄】, 2025/02/25
+        Link：https://www.cw.com.tw/aging/article/5134191
+    records:
+    - type: student
+      name: 張維益
+      degree: master
+      graduation_year: 2015
+      thesis_title_zh: 以感知地墊偵測行走路徑並計算碎形維度以分析失智症患者遊走行為
+      thesis_title_en: Using fractal dimension derived from trajectory measured by motion
+        sensing carpet to assess wandering behaviors of dementia patients
+    - type: publication
+      year: 2013
+      category: Conference papers
+      item_text: 張維益, 張凱維, 劉育瑋, 徐業良, "適用於居家環境之活動感測地墊開發與應用," 2013福祉科技與服務管理研討會, Taoyuan, Taiwan,
+        2013/06.
+    - type: publication
+      year: 2015
+      category: Patents
+      item_text: 徐業良, 王為寬, 張凱維, 劉育瑋, 張維益, “活動感知地墊之監視系統,” 中華民國專利發明第I511094號, 2015/12
+    - type: publication
+      year: 2016
+      category: Patents
+      item_text: 徐業良, 王為寬, 張凱維, 劉育瑋, 張維益, 戴志穎, 陳純弘, 林致緯, 黃文成, 李杰儒, 潘冠宇, “具有發光功能之感測床、感測床系統及其感測方法,”
+        中華民國專利發明第I536936號, 2016/06
+    - type: publication
+      year: 2016
+      category: Patents
+      item_text: 徐業良, 王為寬, 張凱維, 劉育瑋, 張維益, “活動感知地墊及其總成,” 中華民國專利發明第I519702號, 2016/01
+  KN-014:
+    passages:
+    - header: WhizToys 技術文件 › WhizToys 運動地墊遊戲平台總覽
+      text: |-
+        ## 一分鐘教你如何拼接WhizToys
+        video：https://www.youtube.com/embed/7PkjU2Dgi34?si=rNF5EbQGwcP70WjB
+
+        ## 聯絡支援
+        若在使用過程中有任何疑問，歡迎透過以下方式聯繫我們：
+
+        - 客服信箱：support@seda-gtech.com.tw
+
+        - 官方網站：世大福智科技股份有限公司
+
+        - 客服專線：(02)8978-3018
+    - header: 世大智科 G-Tech › WhizToys 運動地墊遊戲平台
+      text: |-
+        模型描述：這是一張 WhizToys 的深色產品宣傳圖，左側有拼圖形狀標誌、品牌名稱與藍色發光文字。右側的黑色方形裝置排列在地毯上，每塊表面有圓形線條，邊角亮起藍光。
+
+        圖中文字（模型轉錄）：
+        全新第三代上線
+        WhizToys
+        ONE TOY
+        MANY GAMES
+
+        數值（模型讀取）：
+        - 全新第三代：三代
+
+        圖示關係（模型說明）：
+        - 左上角的緞帶標示「全新第三代上線」。
+        - 左側品牌名稱下方排列「ONE TOY」與「MANY GAMES」兩行標語，右側展示帶有藍色發光邊角的方形裝置。
+
+        原圖：https://static.wixstatic.com/media/2927b2_b9f6404b0dd14bf387eb22b24febdf95~mv2.png
+    - header: 世大智科 G-Tech › WhizToys 操作說明書 › 第 1 頁
+      text: |-
+        頁面文字（原文）：
+        運動地墊遊戲平台
+        使用手冊
+        One Toy Many Games
+
+        模型描述：這是一張白底的運動地墊遊戲平台使用手冊封面。中央展示帶有拼接凹凸邊緣的方形地墊俯視示意圖，下方印有 WhizToys 標誌、英文標語與中文標題。
+
+        圖中其他文字（模型轉錄）：
+        SEDA GTech
+        SEDA GTech
+        WhizToys
+
+        圖示關係（模型說明）：
+        - 左上角與地墊中央皆放置 SEDA GTech 標誌。
+        - 地墊示意圖的四個角落各有兩段青藍色發光線條，中央排列四段弧線。
+        - WhizToys 標誌與英文標語位於地墊示意圖下方，中文手冊名稱置於其下。
+
+        PDF：https://www.seda-gtech.com.tw/_files/ugd/2927b2_27c6d06e70eb472f9ee162217be1b30f.pdf#page=1
+    - header: WhizToys 技術文件 › WhizToys 運動地墊遊戲平台總覽
+      text: |-
+        歡迎使用 WhizToys 運動地墊遊戲平台！這是一款結合「運動地墊」與「數位遊戲」的互動式健身系統，透過精準的壓力感測技術，讓居家運動變得更有趣且具備數據追蹤功能。
+
+        ## 產品核心特點
+        一地墊多遊戲：支援多種拼接形狀（如九宮格、長條型），因應不同遊戲需求。
+        精準感測：採用高靈敏度壓力感測器，能即時偵測使用者的踩踏位置。
+        數據回饋：透過藍牙連接專屬 App，記錄每次運動的表現與成果。
+        適合全家大小：包含趣味訓練、燈光互動，以及專為高齡者設計的體適能評估量表。
+    - header: WhizToys 技術文件 › WhizToys App 說明 › 與 SDK 開發的關係
+      text: |-
+        WhizToys App 是面向一般使用者的產品。如果您是開發者，希望在自己的應用中整合 WhizToys 地墊，請參考以下資源：
+
+        - Unity SDK：使用 Unity 遊戲引擎開發自定義遊戲與應用。
+
+        - BLE 通訊規格：直接透過藍牙協定與控制盒通訊，適合非 Unity 平台的開發。
+
+        Unity SDK：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/software/unity
+        BLE 通訊規格：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/hardware/ble-profile
+    - header: WhizToys 技術文件 › 規格說明
+      text: |-
+        ## 產品內容及外觀
+        WhizToys 運動地墊遊戲平台包含以下標準配件 ：
+
+        - 運動地墊：片數依採購方案而定。
+
+        - 藍牙控制盒：含轉接器 1 組。
+
+        - USB 電源供應器：1 顆。
+
+        - 推鈕工具：1 支。
+
+        ## 技術規格
+        - 單片尺寸：430L × 430W × 12.5H (mm)。
+
+        - 單片重量：1.25kg。
+
+        - 承重能力：成人 150kg 以上。
+
+        - 防水等級：IP44。
+
+        - 感測器：壓力感應電阻 (Force-Sensitive Resistor)。
+
+        ## 安裝前注意事項
+        在開始拼接前，請確保 ：
+
+        - 有足夠空間擺放地墊與線材。
+
+        - 地面堅硬平整，避免接頭錯位導致感應不良。
+
+        - 周圍有合適的電源插座。
+    - header: 世大智科 G-Tech › WhizToys 運動地墊遊戲平台
+      text: |-
+        線上型錄-中文版：https://www.seda-gtech.com.tw/_files/ugd/2927b2_d8142d8a2d4248aca03996a339e16c3e.pdf
+
+        ## 運動地墊遊戲平台
+        從“嚴肅遊戲”的角度，將運動及復健內容遊戲化，結合認知訓練、互動競爭及聲光刺激回饋，以提高長者參與活動的意願。透過客製化遊戲內 容，亦可應用在幼兒學習及運動訓練領域。
+
+        線上型錄-英文版：https://drive.google.com/file/d/1riXW5NKj8O5dzKOTIsZroOqJ8nTq3wfj/view?usp=sharing
+
+        ## 經銷代理
+        歡迎相同領域事業群 成為我們的經銷商或代理商
+
+        ## 長期租賃
+        為社區、銀髮、教育單位等提供彈性租借方案
+
+        ## 短期租賃
+        短期活動、展覽租借服務
+
+        ## 技術串接
+        軟、硬體多元應用
+        開發
+
+        ## 直接購買
+        購買單套，定期活動使用
+
+        ## 全新硬體及遊戲開發
+        操作說明書下載：https://www.seda-gtech.com.tw/_files/ugd/2927b2_27c6d06e70eb472f9ee162217be1b30f.pdf
+        產品技術總覽：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro
+    - header: WhizToys 技術文件 › 規格說明 › 產品內容及外觀
+      text: |-
+        圖片替代文字（網頁原文）：產品配備圖
+
+        模型描述：照片由上往下拍攝，呈現一組攤放在米色磁磚地板上的設備與配件，包括堆疊的黑色板件、網狀墊、兩個提袋及使用手冊。下方另有線材、轉接器、袋裝小零件和一台放在盒內、顯示 WhizToys 畫面的平板。
+
+        圖中文字（模型轉錄）：
+        IoTiles
+        WhizToys
+        One Toy Many Game
+        世大智科
+        Smart Living: IoT-Gerontechnology
+        WhizToys
+        使用手冊
+        mi
+        WhizToys
+
+        圖示關係（模型說明）：
+        - 左上方的黑色方形板件堆疊在黑色網狀墊上。
+        - 右上方的大型黑色提袋印有 IoTiles 與 WhizToys 標誌，小型藍色提把黑袋放在其前方。
+        - 使用手冊、轉接器、線材及小零件排列在板件與提袋下方。
+        - 右下方盒內的平板螢幕顯示 WhizToys 標誌，後方放有印著 mi 標誌的白色盒子。
+
+        無法辨識（模型回報）：
+        - 小型黑色提袋標誌中的細小英文文字。
+        - 左下方使用手冊封面的頂部標誌、標誌下方小字及「使用手冊」上方的中文標題。
+        - 下方線材接頭及黑色配件上的細小標示。
+        - 右下方平板螢幕左上角的小標籤、WhizToys 標誌下方的小字，以及紅色與藍色按鈕文字。
+        - 右下方白色包裝盒側面的細小文字。
+
+        原圖：https://docusaurus.seda-gtech.com.tw/assets/images/hardware-c6d840c5447f9068bf81b0b35f4e702a.png
+    - header: 產品目錄｜提升長者身體及認知能力科技產品 › 認知訓練/運動遊戲
+      text: |-
+        產品名稱：WhizToys運動地墊遊戲平台
+        公司：世大智科
+        主要功能：採用「嚴肅遊戲」的設計理念，將運動與復健內容遊戲化，結合認知訓練、互動競爭及聲光刺激回饋，以提高長者參與活動的意願。產品由9片燈光地墊組成，搭配行動裝置App進行各項遊戲及運動。App內建「趣味復健」、「基本檢測」、「燈光互動」三大類別活動，除了在樂齡照護相關機構、社區活動據點等長者場域使用外，亦可應用在幼兒教育機構運動健身領域。遊戲結果資料儲存於雲端，保障使用者隱私，並可依使用者需求開放查詢。
+        使用方式：使用者可透過下載 WhizToys App，搭配實體訓練機進行認知訓練。每次訓練約需10-15分鐘，操作簡單，長者易學快上手。訓練過程中，設備會發出指示，使用者依序按壓對應的按鈕，完成各項認知挑戰。所有訓練數據將上傳至雲端，並由治療師進行分析與回饋，提供個人化建議。此外，使用者可參與線上課程，獲得專業指導與建議，確保訓練效果。
+        簡介：WhizToys 運動地墊遊戲平台結合認知訓練、互動競爭及聲光刺激回饋，透過9片燈光地墊與行動裝置App進行遊戲與運動。App內建「趣味復健」、「基本檢測」、「燈光互動」三大類別活動，適用於樂齡照護機構、社區活動據點及幼兒教育機構。遊戲結果資料儲存於雲端，保障使用者隱私，並可依使用者需求開放查詢。
+    - header: WhizToys 技術文件 › 授權條款與開源聲明 (License Agreement) (1/2)
+      text: |-
+        ## 2. 說明文件與圖文內容 (Documentation & Guides)
+        本技術手冊網站所包含之產品操作手冊、硬體介紹、教學圖文與規格文件（/docs 目錄下之所有內容），採用 創用 CC 姓名標示 4.0 國際 (Creative Commons Attribution 4.0 International, CC BY 4.0) 授權釋出。
+
+        轉載、改作或引用時，必須載明出處為「世大福智科技股份有限公司 (SEDA G-Tech Co., Ltd.)」並提供原文件連結：
+        https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro/
+
+        https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro/：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro/
+
+        ## 3. 商標與專利保留聲明 (Trademarks & Patents Notice)
+        - 商標保留：本開源授權不包含任何商標使用權利。「世大福智」、「SEDA G-Tech」、「WhizToys」之文字、標誌及相關商業識別均為世大福智科技股份有限公司之專屬商標，未經書面許可不得作為競品推廣、官方背書或營利使用。
+    - header: WhizToys 技術文件 › WhizToys App 說明
+      text: |-
+        WhizToys App 是運動地墊的專屬控制應用程式，負責藍牙連線、遊戲啟動與數據記錄。
+
+        ## App 下載
+        您可以在以下平台搜尋「WhizToys」進行下載：
+
+        平台：Google Play（Android）｜搜尋關鍵字：WhizToys
+
+        平台：App Store（iOS）｜搜尋關鍵字：WhizToys
+
+        ## 登入模式
+        App 提供兩種運作模式：
+
+        - 訪客模式：無需註冊，快速開始體驗，但不會保存遊戲紀錄。
+
+        - 帳號登入：可設定多位玩家檔案，長期記錄遊戲數據與健康檢測結果。
+    - header: WhizToys 技術文件 › WhizToys 燈光遊戲
+      text: 歡迎來到 WhizToys 燈光遊戲！這裡彙整了所有燈光互動訓練的遊戲介紹。
+    - header: 世大智科 G-Tech › WhizToys 線上型錄（中文版） › 第 1 頁
+      text: |-
+        頁面文字（原文）：
+        自由拼接
+        方便攜帶
+
+        模型描述：這是一張深藍色背景的 WhizToys 運動地墊遊戲平台宣傳圖，中央展示可拼接且帶有藍色燈光的黑色地墊，右下方放置一台平板。周圍文字說明體能檢測、認知訓練與互動遊戲用途，底部提供公司聯絡資訊、二維碼及社群平台圖示。
+
+        圖中其他文字（模型轉錄）：
+        WhizToys
+        運動地墊遊戲平台
+        ONE TOY MANY GAMES
+        長者基本
+        體能檢測
+        認知訓練
+        互動遊戲
+        SEDA
+        GTech
+        世大智科 SEDA G-Tech
+        Smart Living / IoT / Gerontechnology
+        世大福智科技股份有限公司SEDA G-Tech CO., LTD.
+        +8862–8978–3018
+        whiztoys.sales@seda-gtech.com.tw
+        239新北市鶯歌區八德路56號3樓
+        SEDA G–Tech 世大智科
+
+        圖示關係（模型說明）：
+        - 品牌名稱左側的圖示呈拼圖片形狀。
+        - 中央地墊由多塊方形模組拼接，模組邊緣亮起藍色燈光。
+        - 地墊周圍三個圓形標籤分別標示長者基本體能檢測、認知訓練互動遊戲及自由拼接方便攜帶。
+        - 右下方平板螢幕顯示多個遊戲選項。
+        - 底部左側排列二維碼、社群平台圖示與搜尋列，右側排列公司名稱及聯絡資訊。
+
+        無法辨識（模型回報）：
+        - 右下方平板螢幕內各遊戲選項及底部操作圖示旁的小字。
+        - 中央地墊模組表面的細小標記。
+
+        PDF：https://www.seda-gtech.com.tw/_files/ugd/2927b2_d8142d8a2d4248aca03996a339e16c3e.pdf#page=1
+    - header: WhizToys 技術文件 › WhizToys SDK(Unity) 說明文件
+      text: |-
+        - SDK 版本：待補
+
+        - 支援 Unity 版本：待補
+
+        - Android 最低版本：待補
+
+        - iOS 最低版本：待補
+
+        ## 安裝
+        下載 SDK：Whiztoys_SDK.unitypackage（Google Drive）
+
+        在您的 Unity 項目中加入 SDK：
+
+        - 將 Whiztoys_SDK.unitypackage 安裝至您的專案中。
+
+        Whiztoys_SDK.unitypackage（Google Drive）：https://drive.google.com/file/d/1-YAiSqnrTy-lzcavDKJU22pNm6qwymde/view?usp=sharing
+    - header: 世大智科 G-Tech › WhizToys 運動地墊遊戲平台 › 運動地墊遊戲平台 (1/2)
+      text: |-
+        模型描述：這是一張題為「合作模式」的資訊圖，介紹雲端串接服務、遊戲數據提供及開放式平台方案。中央以等角插畫呈現不同年齡使用者在互動踏墊上運動或遊戲，周圍搭配雲端、伺服器、平板與資料分析圖示。
+
+        圖中文字（模型轉錄）：
+        合作模式
+        遊戲數據提供
+        與第三方廠商配合收集長者日常遊戲
+        紀錄並進行大數據分析，建立遊戲結
+        果常模，為不同狀況的長者搭配不同
+        強度的活動，以此實現「精準健康老
+        化」之生活模式。
+        雲端串接服務
+        遊戲結果資料儲存於雲端，在資訊安全、保
+        障使用者隱私之前提下，個人雲端遊戲紀錄
+        可依使用者需求開放查詢，並可提供第三方
+        服務商以「雲對雲(cloud to cloud)」的方
+        式，進行資料串接。
+        30
+        1/8
+        STOP
+        開放式平台方案
+        本產品可提供API，給不同需求業
+        者作為第三方開發商/服務商使用
+        。如職場健康促進應用、健身課
+        程開發、幼兒教學遊戲開發等。
+
+        數值（模型讀取）：
+        - 螢幕左上角圓形標示：30
+        - 螢幕中央標示：1/8
+  KN-015:
+    passages:
+    - header: 產品目錄｜長者日常照顧輔助/安全監測科技產品 › 臥床監測、離床預警、壓傷防護
+      text: |-
+        產品名稱：WhizPad 安心臥智慧床墊
+        公司：世大智科股份有限公司
+        主要功能：WhizPad 安心臥智慧床墊結合AI與物聯網技術，提供離床預警、壓瘡防護及睡眠管理等功能。床墊內建30個感測區塊，透過類神經網路機器學習，精準判斷使用者的臥床狀態，並提供三階段離床提醒，有效預防跌倒。此外，床墊採用溫感釋壓記憶泡綿材質，提供舒適的睡眠體驗，並可與生理量測裝置連接，實現遠距照護。
+        使用方式：使用者只需將WhizPad智慧床墊鋪設於病床上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測使用者的臥床狀態。透過主機上的控制面板，醫護人員可設定翻身角度、翻身方向和翻身停留時間等參數。當發現異常情況時，系統會即時發送通知至照護人員，並提供實時的健康建議。
+        簡介：WhizPad 安心臥智慧床墊結合AI與物聯網技術，提供離床預警、壓瘡防護及睡眠管理等功能。床墊內建30個感測區塊，透過類神經網路機器學習，精準判斷使用者的臥床狀態，並提供三階段離床提醒，有效預防跌倒。此外，床墊採用溫感釋壓記憶泡綿材質，提供舒適的睡眠體驗，並可與生理量測裝置連接，實現遠距照護。
+        導入年份：2024
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 9 頁 (1/3)
+      text: |-
+        頁面文字（原文）：
+        取得台灣、美國、日本、中國多項專利
+        被電線限制移動了!
+        電量持久
+        兩顆三號乾電池，經場域長期實測，約
+        可使用6-10個月左右（依每個人的使用
+        程度不同，消耗的電量有所差異）。
+        我們的優勢
+        快速升級為舒適的智慧照護環境
+        床墊規格：寬90cmX長192cmX厚5cm/12cm±1％
+        能源供應：3號鹼性電池*2
+        傳輸方式：藍牙／無線網路(Wi-Fi/NBIoT)
+        清潔方式：床墊遇水可曝曬晾乾，布套可拆卸清洗
+        不需Wi-Fi直接上網
+        客製化技術服務
+        裝電池的智慧床墊
+        無需插電，安全又方便
+        不管是連接現有的系統，還是
+        創新服務需求，我們都能提供
+        完整的技術支援。
+        使用NB-IoT連線方式，過程如手機行動上網，隨插即用，不易受網路環境影響。
+        醫療院所另外架設內部網路連線，資安無風險。
+        同步整合多方資訊
+        可依照護需求彈性接收市售藍
+        牙照護產品（如血壓／血糖計）
+        資訊，建立專屬系統。
+        中華民國專利發明第I611801號，I536936號
+        美國發明專利US8905929B2
+        日本發明專利JP6479075
+        中華人民共和國專利發明申請公布號CN 108209310 A
+        Cloud
+        Cloud
+        Cloud
+        WhizConnect藍牙網關
+        照護系統
+        Care Relieve System
+        WhizPad智慧床墊
+        市售藍牙生理量測裝置
+
+        醫療院所智慧床墊照護管理方案 養護機構精準照護方案 關心零距離居家睡眠健康方案
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 1 頁 (1/2)
+      text: |-
+        頁面文字（原文）：
+        照護系統
+        Care Relieve System
+        WhizPad智慧床墊ｘ安心臥照護系統
+        溫感釋壓泡綿床墊
+        醫學中心實驗證實，降低壓傷發生率
+        裝電池的智慧床墊
+        不需拉線插電，安全可靠又方便
+        不需Wi-Fi直接上網
+        連接手機基地台，上電即上線
+        *WhizPad智慧床墊除厚墊(12cm)外
+        ，亦提供薄墊(5cm)版本，可直接鋪
+        設在原有的床墊上使用。
+        三階段臥離床提醒
+        及早發出離床提醒，有效預防跌倒
+        睡眠活動資料分析
+        個人資料長期紀錄，建立精準照護模式
+
+        模型描述：這是一張 WhizPad 智慧床墊與安心臥照護系統的產品介紹海報，列出釋壓、離床提醒、睡眠資料分析、電池供電與連網等功能。下半部展示藍色床墊、厚薄床墊特寫，以及電腦和手機上的照護介面，背景為白色與淺藍色幾何色塊。
+
+        圖中其他文字（模型轉錄）：
+        SEDA
+        iTech
+        不需Wi–Fi直接上網
+        IMAGER-37.
+        Medical Series
+        AOC
+
+        圖示關係（模型說明）：
+        - 標題中的「安心臥」以粉紅色呈現，「照護系統」以深灰色呈現。
+        - 左側五項功能說明各以折線與圓圈標示，連向床墊展示區。
+        - 右側兩張圓形特寫並列展示厚墊與薄墊的外觀。
+        - 右下角電腦與手機畫面並列，展示照護系統的不同裝置介面。
+        - 左下角放置一個 QR 碼。
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 (4/4)
+      text: |-
+        養護機構精準照護方案
+        溫感釋壓泡綿材質床墊，有效降低壓傷發生率。安心臥照 護系統提供個人睡眠活動資料長期紀錄分析，為機構住民 「代言」，讓照護者及時發現細微異狀，擬定相應照護策 略或及早就醫；各項數據資料協助住民家屬了解真實狀況 ，與照護人員共同制定最佳照護方案。
+
+        關心零距離，睡眠健康再升級居家方案
+        居家版安心臥智慧床墊，以睡眠健康促進、智能健康管理 與即時
+        照顧提醒為主要概念，搭配安心臥家用版App及生 理量測裝置，
+        打造舒適智慧的睡眠環境，建立充滿信任的 精準照護模式。
+
+        WhizPad安心臥智慧床墊
+
+        遠距照護組合包
+
+        客製化系統串接服務
+
+        線上型錄：https://drive.google.com/file/d/12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X/view?usp=sharing
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 (1/4)
+      text: |-
+        ## 安心臥智慧床墊
+
+        ## 打造最安心的好眠體驗 健康睡眠智慧升級 ＋
+        「安心臥智慧床墊」搭配「安心臥照護系統」將離床預警、褥瘡防護及睡眠管理合而為一，以極舒適、非穿非戴的方式結合「AI智慧」 大數據分析進行智能睡眠感知，搭配以「標準物聯網技術」開發的系統平台可以廣泛進行高品質的智慧生活與科技照護應用，實現以床為核心的智能環境。
+
+        及早發現狀況並及時送醫，將遺憾降至最低
+
+        數據為長者代言 精準掌握長者狀況
+
+        特殊溫度感應釋壓記憶泡綿
+        床墊採用獨家溫度感應釋壓記憶材質提供良好身形包覆與支撐，讓肌肉與骨骼達到充分地放鬆與保護。
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 (3/4)
+      text: |-
+        睡眠活動資料長期紀錄 建立精準照護模式
+        ✔單日臥離床紀錄圖表
+        白天/夜晚/全天臥床時間
+
+        ✔兩週常模（常模分數）圖表
+        白天/夜晚/全天平均臥床時間
+
+        ✔當日臥床時間與常模比較差異顯示
+
+        ✔大數據分析製作臥離床常模分群
+
+        醫療院所智慧床墊照護管理方案
+        舒適好睡的溫感釋壓泡綿材質床墊，經實驗證實有效降低 壓傷發
+        生率，搭配安心臥照護系統，中央護理站即時管理 病患臥離床狀
+        態，並可自行設定通知功能。
+    - header: 世大智科 G-Tech › 首頁
+      text: |-
+        世大智科 SEDA G-Tech
+
+        智慧生活 / 物聯網 / 老人福祉科技
+
+        世大智科 SEDA G-Tech：https://www.seda-gtech.com.tw
+        產品技術總覽：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro
+        line.me：https://line.me/R/ti/p/@067agchp
+        www.instagram.com：https://www.instagram.com/seda_gtech?igsh=MXRmcnB6b2R6Y20zdA%3D%3D&utm_source=qr
+        www.facebook.com：https://www.facebook.com/SedaGTech
+        www.youtube.com：https://www.youtube.com/channel/UCzwhPpTbokuRejM35VmE9Gg/videos
+
+        ## WhizPad安心臥智慧床墊x安心臥照護系統
+        世大智科「安心臥智慧床墊」材質舒適、無需插電使用，搭配「安心臥照護系統」將離床預警、褥瘡防護及睡眠管理合而為一，建立完整科技照護方案。
+
+        ## 溫感釋壓泡綿床墊
+        醫學中心實驗證實，降低88%壓傷發生率
+
+        ## 三階段臥離床提醒
+        及早發出離床提醒，有效降低88%跌倒發生率
+
+        ## 睡眠活動資料分析
+        個人資料長期紀錄，建立精準照護模式
+
+        ## 生理資訊量測紀錄
+        藍牙連接量測裝置，App掌握生理資訊
+
+        ## 裝電池的智慧床墊
+        不需拉線插電，安全可靠又方便
+    - header: 世大智科 G-Tech › WhizToys 操作說明書 › 第 2 頁 (1/2)
+      text: |-
+        頁面文字（原文）：
+        目錄
+        首次使用WhizToys運動地墊遊戲平台⋯⋯1
+        （一）產品內容及外觀
+        （二）安裝前注意事項
+        （三）拼接形狀⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯2
+        （四）地墊拼接方法⋯⋯⋯⋯⋯⋯⋯⋯⋯3
+        軟體操作⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯4
+        （一）下載WhizToys運動地墊遊戲平台App
+        （二）登入說明
+        （三）主頁面一覽
+        （四）新增 / 切換使用者⋯⋯⋯⋯⋯⋯⋯5
+        （五）裝置連線
+        故障排除⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯⋯6
+        技術規格、安全資訊⋯⋯⋯⋯⋯⋯⋯⋯⋯7
+        NCC警語、服務保證卡、廠商資訊⋯⋯10
+
+        模型描述：這是一張白底文件目錄頁，文字集中在頁面右下方，上方及左側留有大片空白。目錄列出WhizToys運動地墊遊戲平台的首次使用、軟體操作、故障排除、技術規格與安全資訊等內容及頁碼。
+
+        圖中其他文字（模型轉錄）：
+        首次使用WhizToys運動地墊遊戲平台……1
+        （三）拼接形狀……………………………2
+        （四）地墊拼接方法………………………3
+        軟體操作……………………………………4
+        （四）新增 / 切換使用者…………………5
+        故障排除……………………………………6
+        技術規格、安全資訊………………………7
+        NCC警語、服務保證卡、廠商資訊……10
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 (2/4)
+      text: |-
+        經實驗證實 有效降低88％壓傷發生率
+        國內醫學中心加護病房招募254名壓傷高危險病 患，分為醫院標準床墊組與活動感知床墊 (WhizPad)組，追蹤病患至出院或轉出ICU。歷 經一年的試驗，壓傷發生率下降88%，延緩壓 傷發生時間近一倍（具有統計學顯著意義）。
+
+        三階段離床提前報知 降低88%離床跌倒發生率
+        可設定「躺床→坐床」、「坐床→床緣」、 「床緣→離床」的即時提醒，正確判斷使用者 是否即將離床，預防離床跌倒。
+        ・國內醫學中心1300名具跌倒風險患者的實驗證實，與傳統床邊 離床警報墊相比，離床跌倒的可能性降低了88%（P = 0.047）。
+        Wen, et. al., (2024) Enhancing Patient Safety Through an Integrated Internet of Things Patient Care System: Large Quasi-Experimental Study on Fall Prevention J Med Internet Res 2024;26:e58380
+    - header: WhizToys 技術文件 › 授權條款與開源聲明 (License Agreement) (1/2)
+      text: |-
+        ## 2. 說明文件與圖文內容 (Documentation & Guides)
+        本技術手冊網站所包含之產品操作手冊、硬體介紹、教學圖文與規格文件（/docs 目錄下之所有內容），採用 創用 CC 姓名標示 4.0 國際 (Creative Commons Attribution 4.0 International, CC BY 4.0) 授權釋出。
+
+        轉載、改作或引用時，必須載明出處為「世大福智科技股份有限公司 (SEDA G-Tech Co., Ltd.)」並提供原文件連結：
+        https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro/
+
+        https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro/：https://docusaurus.seda-gtech.com.tw/docs/whiztoys/intro/
+
+        ## 3. 商標與專利保留聲明 (Trademarks & Patents Notice)
+        - 商標保留：本開源授權不包含任何商標使用權利。「世大福智」、「SEDA G-Tech」、「WhizToys」之文字、標誌及相關商業識別均為世大福智科技股份有限公司之專屬商標，未經書面許可不得作為競品推廣、官方背書或營利使用。
+    - header: 元智大學老人福祉科技研究中心｜研究計畫｜2013年 (1/2)
+      text: |-
+        智慧型安全照護爬梯機研發計畫
+        Research and development plan of intelligent safety care ladder machine
+        委託單位：天群醫療企業股份有限公司 EZ-Care Solution CO., LTD.
+        執行期間：2013/12/01～2014/05/31
+        金額：新台幣 280,000 元
+
+        升降桅杆結構應力分析
+        Stress analysis of elevating mast structure
+        委託單位：中興電工機械股份有限公司 Chung-Hsin Electric and Machinery Manufacturing Corp.
+        執行期間：2013/11/20～2013/12/31
+        金額：新台幣 50,000 元
+
+        以床為核心實現居家環境智慧生活應用
+        Realize smart living applications in home environment with bed as the core
+        委託單位：國科會/世大化成股份有限公司 National Science Council/SEDA Chemical Co. Ltd.
+        執行期間：2013/11/01～2015/10/31
+        金額：新台幣 2,188,340 元
+
+        結合超寬頻生理訊號感測技術與身體活動感測床墊建立適用於居家環境之非察覺式睡眠品質監測系統
+        Combining ultra-wideband physiological signal sensing technology and physical activity sensing mattress to establish a non-perceived sleep quality monitoring system suitable for home environment
+        委託單位：國科會 National Science and Technology Council
+        執行期間：2013/08/01～2016/07/31
+        金額：新台幣 2,650,000 元
+
+        Connecting homes─次世代高齡者互動式溝通平台之發展與應用
+        Connecting homes─Development and application of an interactive communication platform for the next generation of senior citizens
+        委託單位：國科會 National Science and Technology Council
+        執行期間：2013/08/01～2014/07/31
+        金額：新台幣 4,071,000 元
+
+        第九屆國際老人福祉科技學會世界年會
+        The Ninth World Conference of the International Society for Gerontechnology
+        委託單位：國科會 National Science and Technology Council
+        執行期間：2013/06/10～2014/08/21
+        金額：新台幣 600,000 元
+
+        推動國際會議及展覽在臺辦理計畫
+        Promoting the plan for handling international conferences and exhibitions in Taiwan
+        委託單位：經濟部國際貿易局 The Bureau of Foreign Trade, MOEA
+        執行期間：2013/06/01～2013/07/20
+        金額：新台幣 263,900 元
+
+        WhizPAD於iOS系統使用者操作介面客製化開發與移轉
+        Customized development and transfer of WhizPAD in iOS system user interface
+        委託單位：世大化成股份有限公司 Seda Chemical Co. Ltd.
+        執行期間：2013/05/01～2014/07/31
+        金額：新台幣 150,000 元
+    - header: WhizToys 技術文件 › 授權條款與開源聲明 (License Agreement) (2/2)
+      text: '- 專利防禦：本 SDK 涉及之任何相關硬體機構與感測技術專利，僅授權用於與世大福智正版 WhizToys 地墊設備搭配運作之合法用途。'
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 4 頁 (1/2)
+      text: |-
+        頁面文字（原文）：
+        國內醫學中心加護病房招募254名
+        壓傷高危險病患
+        分為醫院標準床墊組與活動感知床墊（WhizPad）組，
+        追蹤病患至出院或轉出加護病房。
+        歷經一年的試驗，壓傷發生率下降88%
+        ，延緩壓傷發生時間近一倍
+        （結果具有統計學顯著意義）
+        D. L. Bai, T. W. Liu, H. L. Chou, Y. L. Hsu (In press). Relationship between a
+        pressure redistributing foam mattress and pressure injuries: An observational
+        prospective cohort study. PLoS ONE 15(11)
+        研究結果經嚴格審查，發表於知名國際生物醫學期刊
+        臥床壓力均勻分布 經實驗證實有效預防壓傷
+        防水 透濕
+        抗菌 耐燃
+        減壓材質
+        強大的形塑能力連微小的指紋都能掌握
+        ，凹凸的人體身形包覆完全沒問題！
+        雙層式結構設計，利於身體支撐，維
+        持脊椎自然彎曲，提升睡眠品質。
+        醫療級防水外布套，採用抗菌、防霉、透氣材質，
+        可直接以濕布擦拭，安心好清潔。另也有居家款式
+        的LYOCELL（萊賽爾）天絲布套，透氣又涼爽。
+        溫感釋壓記憶泡綿材質
+        高分子溫感釋壓材質可依環境溫度變化，改變材質表面
+        軟硬度，當材質接觸到人體溫度時，可由點至面降低皮
+        膚因單點所產生的壓力，連細微的指紋都可掌握。
+        高密度支撐層
+        感測層
+        （智慧床墊才有！）
+
+        溫感釋壓層
+        醫療級防水外布套及
+        居家舒適透氣布套
+    - header: 世大智科 G-Tech › WhizPad 線上型錄 › 第 2 頁
+      text: |-
+        模型描述：圖片是一片空白的白色畫面。沒有可見的文字、數字、圖表或物件。
+
+        PDF：https://drive.google.com/file/d/12iXIUEfVvVvPHPo468QpZXyP2DVOKE_X/view#page=2
+    - header: 世大智科 G-Tech › WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋
+      text: |-
+        模型描述：圖片右側是一名手持裝置的護理人員，旁邊的電腦螢幕顯示長條圖、區域圖及警示符號。文字提示臥床時間比兩週平均多出約3.2小時，需密切注意；左側是一大片沒有文字的藍色圓角區塊。
+
+        圖中文字（模型轉錄）：
+        ▲3.2hr
+        比兩週平均臥床時間多出約
+        3.2小時，需密切注意！
+
+        數值（模型讀取）：
+        - 臥床時間增加：3.2 hr
+        - 平均臥床時間比較期間：兩週
+        - 比兩週平均臥床時間多出約：3.2小時
+
+        圖示關係（模型說明）：
+        - 螢幕上方的橘色上三角形與「3.2hr」並列，表示時間增加。
+        - 螢幕右下方的黃色三角形驚嘆號表示警示。
+        - 下方對話框指向護理人員手中的裝置，說明臥床時間比兩週平均多出約3.2小時。
+
+        原圖：https://static.wixstatic.com/media/2927b2_d5627e656b3540ffb23d972c10e5f316~mv2.png
+    records:
+    - type: product
+      product_name: WhizPad 安心臥智慧床墊
+      company_name: 世大智科股份有限公司
+      company_address: 新北市鶯歌區八德路56號3樓
+      contact_phone: +886-2-8978-3018
+      product_url: https://www.seda-gtech.com.tw/whizpad
+      category_l2_label: 臥床監測、離床預警、壓傷防護
+      features_text: WhizPad 安心臥智慧床墊結合AI與物聯網技術，提供離床預警、壓瘡防護及睡眠管理等功能。床墊內建30個感測區塊，透過類神經網路機器學習，精準判斷使用者的臥床狀態，並提供三階段離床提醒，有效預防跌倒。此外，床墊採用溫感釋壓記憶泡綿材質，提供舒適的睡眠體驗，並可與生理量測裝置連接，實現遠距照護。
+      usage_text: 使用者只需將WhizPad智慧床墊鋪設於病床上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測使用者的臥床狀態。透過主機上的控制面板，醫護人員可設定翻身角度、翻身方向和翻身停留時間等參數。當發現異常情況時，系統會即時發送通知至照護人員，並提供實時的健康建議。
+      summary_text: WhizPad 安心臥智慧床墊結合AI與物聯網技術，提供離床預警、壓瘡防護及睡眠管理等功能。床墊內建30個感測區塊，透過類神經網路機器學習，精準判斷使用者的臥床狀態，並提供三階段離床提醒，有效預防跌倒。此外，床墊採用溫感釋壓記憶泡綿材質，提供舒適的睡眠體驗，並可與生理量測裝置連接，實現遠距照護。
+  KN-017:
+    passages:
+    - header: 產品目錄｜長者日常照顧輔助/安全監測科技產品 › 人員狀態判讀、跌倒偵測、安全防護
+      text: |-
+        產品名稱：OGA雷達毫米波生理感測裝置
+        公司：尚茂智能科技股份有限公司
+        主要功能：OGA 雷達毫米波生理感測裝置可非接觸式感測人體呼吸與心跳等生理訊號，並具隱私保護優勢，不使用影像偵測。配備毫米波雷達技術，可進行睡眠狀態偵測、跌倒檢測與區域動能分析，其自動告警機制能即時發送 LINE 訊息。此外，所有量測數據均雲端紀錄，支援後續追蹤與分析。此裝置顯著提升照護施設與居家看護的安全管理功能，並以科技取代傳統監控，兼顧隱私與智慧化監護
+        使用方式：使用者將 OGA 裝置安置於照護場域如臥床區域或公共空間，接上電源並連結 Wi‑Fi（2.4／5GHz），可在 0–40°C 環境下運作。系統即時感測呼吸與心跳變化，自動識別跌倒與異常動態，當異常觸發即透過 LINE 傳送警示訊息給照護人員。所有數據同步至雲端平台，可隨時回查歷史紀錄以監測身體狀況變化。其零接觸設計使使用時無需改動現場佈置，且具備隱私保護元素，適合居家、醫療與長照場域應用
+        簡介：OGA 雷達毫米波生理感測裝置採非接觸毫米波雷達技術，感測呼吸、心跳、睡眠與跌倒狀態，具隱私保護與自動告警功能，並雲端儲存數據。安裝於居家或照護區域後，透過 Wi‑Fi 運作，異常即 LINE 通報，同時可隨時回查雲端紀錄，實現全天候智慧監控。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 穿戴式生理資訊量測裝置
+      text: |-
+        產品名稱：oCare Pro 100 歐凱腕式血氧飽和測定儀
+        公司：臺醫光電科技股份有限公司
+        主要功能：居家OSA檢測系統是專為睡眠呼吸中止症（OSA）患者設計的健康監測工具，旨在提供便捷、非侵入式的居家檢測方案。該系統採用先進的生物光子技術，能夠準確監測睡眠過程中的呼吸頻率、血氧飽和度及其他生理指標，並可自動生成檢測報告，幫助醫療人員診斷睡眠障礙。該裝置支援藍牙連接，並可與智慧型手機應用程式同步數據，進行即時健康管理。
+        使用方式：使用者需佩戴居家OSA檢測裝置，將其固定在指定部位，並確保裝置與皮膚緊密接觸。啟動裝置後，數據將通過藍牙或無線方式傳送至智慧型手機應用程式，並開始監測睡眠過程中的生理數據。裝置會持續記錄使用者的呼吸狀況、血氧飽和度等，並將結果上傳至應用程式。完成檢測後，使用者可查看詳細的報告，並可將數據分享給醫生進行後續分析與建議。
+        簡介：居家OSA檢測系統採用生物光子技術，專為監測睡眠呼吸中止症（OSA）患者設計，能夠準確測量呼吸頻率、血氧等生理數據。數據通過藍牙連接至手機應用程式，使用者可實時查看報告並進行健康管理。檢測結果有助於醫生進行診斷和治療規劃，並支援居家使用。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：RD-545 十二合一藍牙八點式體組成計
+        公司：昌豐國際股份有限公司
+        主要功能：採用先進的雙頻量測技術，提供高達 26 項身體組成數據，包括體重、體脂率、體水分率、內臟脂肪、肌肉量、肌肉質量、推定骨量、基礎代謝、體內年齡、體型判定、BMI 及 MBA 判定等。其八點式量測設計，能精確分析全身、左右手臂、左右腿部及軀幹的數據，特別適合健身愛好者、運動員及健康管理者使用。設備支援藍牙連接，可將數據同步至手機應用程式「Health Planet」，方便用戶追蹤健康狀況。
+        使用方式：使用者需先在體組成計上設定個人基本資料，包括性別、身高、出生日期等。開機後，選擇對應的使用者編號（最多可設定四位使用者），並確認是否開啟心率測量功能。站上體組成計，手握握把，保持靜止，設備將自動進行測量。測量完成後，數據將顯示於螢幕上，並可透過藍牙同步至手機應用程式「Health Planet」，進行詳細分析與追蹤。建議在相同時間、相同狀態下進行測量，以確保數據的準確性。
+        簡介：RD-545 採用雙頻量測技術，提供高達 26 項身體組成數據，並支援藍牙連接手機應用程式「Health Planet」，方便用戶追蹤健康狀況。其八點式量測設計，能精確分析全身、左右手臂、左右腿部及軀幹的數據，特別適合健身愛好者、運動員及健康管理者使用。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：物聯網穿戴式聽診器
+        公司：矽響先創科技股份有限公司
+        主要功能：是一款結合穿戴式裝置與物聯網技術的智慧健康產品。透過內建高靈敏度麥克風與感測器，該聽診器可實時收集心肺音訊，並將資料傳輸至雲端平台進行分析。系統可自動識別異常音訊，並提供即時警示，協助醫療人員進行早期診斷。此外，裝置輕巧舒適，適合長時間佩戴，並具備防水設計，適用於多種醫療環境。此產品特別適用於老年人、慢性病患者及高風險族群，協助提升健康管理效率。
+        使用方式：使用者只需將物聯網穿戴式聽診器佩戴於胸前，確保裝置與智慧型手機或其他智慧設備連接。開啟配套的應用程式後，系統會自動偵測並記錄心肺音訊。使用者可透過應用程式查看即時數據與歷史紀錄，並根據系統提供的建議進行調整。此外，系統亦可設定提醒功能，當偵測到異常音訊時，會即時通知使用者或相關醫療人員。此裝置亦可與其他健康監測設備整合，提供全面的健康管理方案。
+        簡介：物聯網穿戴式聽診器透過內建感測器實時監測心肺音訊，並將數據傳輸至雲端進行分析。使用者只需將裝置佩戴於胸前，並透過配套應用程式查看數據與建議。系統亦可設定提醒功能，協助早期發現異常音訊，特別適用於老年人與慢性病患者。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 穿戴式生理資訊量測裝置
+      text: |-
+        產品名稱：安麗莎守護天使體溫模組
+        公司：台灣安麗莎醫療器材科技股份有限公司
+        主要功能：體溫模組提供連續式體溫監測與異常警報通知功能，可應用於全年齡的醫療及居家照護。搭配貼片於腋下持續偵測體溫，並透過無線傳輸技術每秒即時回報數據。當生理訊號超過預設上限或下限時，系統會發出聲音與文字警報，提醒照護者。該模組亦可與血氧模組一起使用，於同一畫面顯示多項生理參數，提供完整健康監控，有效降低感染風險。
+        使用方式：安裝流程僅五步驟：先將主機安裝於貼片支架，再撕除貼片背紙，將感測器貼於腋下中央，並以手臂將貼片固定。接著配對手機 App，即可開始測量。模組使用鈕扣電池，可持續監測長達168小時；可調整警報上、下限值，當體溫異常會自動發出警報。搭配可選購之 2 代貼片，具備防水功能，適合多種使用場景，方便易操作，適合居家長期監測。
+        簡介：安麗莎守護天使體溫模組可持續監測體溫並於異常時發出聲音與文字警報，適用於各年齡層家庭與醫療照護。使用者將主機與貼片裝配後貼於腋下，並配對 App，即可即時查看溫度變化。鈕扣電池可連續使用168小時，警報設定彈性高，使用流程簡便，是居家健康監控的可靠工具。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 穿戴式生理資訊量測裝置
+      text: |-
+        產品名稱：健康天使智慧手環
+        公司：蓋德科技股份有限公司
+        主要功能：健康天使智慧手環是一款智能健康監測設備，具備體溫、心率、血壓、血氧飽和度等多項生理數據監測功能。此手環支援即時數據同步至手機或雲端平台，方便用戶與醫療服務提供者隨時追蹤健康狀況。設備內建AI智能分析，能提供健康建議與預警，對異常數據進行提醒。手環具備長效電池，適合長時間佩戴，並適用於日常運動與健康管理。
+        使用方式：使用者可將健康天使智慧手環佩戴在手腕，並進行即時監測。開啟手環後，使用者可選擇測量體溫、心率、血壓、血氧等多項健康指標。數據會通過藍牙同步至手機應用程式或雲端平台，供使用者查看詳細健康報告。手環具有智能預警功能，若檢測到異常數據，會發送提醒通知給使用者。設備適合日常佩戴與健康管理，並可定期檢視測量結果，以便進行生活習慣調整。
+        簡介：健康天使智慧手環具備體溫、心率、血壓、血氧等多項健康監測功能。數據即時同步至手機或雲端平台，並可提供健康建議與預警。手環適合日常佩戴，並適用於運動與健康管理。它具備智能預警功能，能提醒使用者注意異常數據。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：uLife Plus 身心檢測儀
+        公司：以明科技股份有限公司
+        主要功能：uLife Plus 身心檢測儀是一款可攜式醫用心律儀，專為自律神經分析設計。其主要功能包括單導程心電圖量測、心跳變異（HRV）分析，並可在2.5分鐘內完成測量。產品支援藍牙傳輸，能即時呈現報告，並可採取坐姿或臥姿進行測量。此外，uLife Plus 由台灣研發製造，並獲得衛部醫器製字第006983號認證，確保產品品質與安全性。
+        使用方式：使用者可於坐姿或臥姿下，將手指放置於測量區域，啟動設備後，系統將進行約2.5分鐘的測量。測量過程中，設備會自動進行心電圖記錄與心跳變異分析，並透過藍牙將數據傳輸至配套的應用程式。完成測量後，使用者可即時查看分析報告，並根據結果進行後續的健康管理。此設備適用於日常健康監測及自律神經狀態評估。
+        簡介：uLife Plus 身心檢測儀是一款可攜式醫用心律儀，專為自律神經分析設計，具單導程心電圖量測與心跳變異（HRV）分析功能。產品支援藍牙傳輸，能即時呈現報告，並可採取坐姿或臥姿進行測量。由台灣研發製造，並獲得衛部醫器製字第006983號認證，確保產品品質與安全性。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：FaceHeart Vitals™ SDK
+        公司：鉅怡智慧股份有限公司
+        主要功能：FaceHeart Vitals™ SDK 是一款非接觸式生理資訊量測軟體，透過一般智慧型手機、平板電腦、電腦、智慧電視等裝置的鏡頭，進行約40至60秒的臉部掃描，即可量測心率、心率變異度、血壓、血氧、呼吸頻率、壓力指數等生理數值。
+        使用方式：使用者需在適當光線下，將臉部置於裝置鏡頭前，保持靜止約40至60秒。系統將自動進行臉部掃描，並透過AI演算法分析臉部微血管的顏色變化，計算出多項生理數據。量測結果可即時顯示於裝置上，並可儲存或分享給醫療人員作為參考。
+        簡介：FaceHeart Vitals™ SDK 是一款非接觸式生理資訊量測軟體，透過一般智慧型手機、平板電腦、電腦、智慧電視等裝置的鏡頭，進行約40至60秒的臉部掃描，即可量測心率、心率變異度、血壓、血氧、呼吸頻率、壓力指數等生理數值。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：TD-8255 指尖脈搏血氧計
+        公司：泰博科技股份有限公司
+        主要功能：TD-8255 測量血氧飽和度（SpO₂）與脈搏速率（BPM），具藍牙功能，可同步數據至健康追蹤App。配備LCD顯示與五段血流指數（PI）指示，採用雙波長LED技術，測量範圍為 SpO₂ 0% 至 100%、心率 30 至 250 次/分鐘，準確度高，適用於日常健康監控。
+        使用方式：將食指、中指或無名指放入設備測量槽，開機後約 10 至 15 秒即可測量血氧與脈搏。測量結果會顯示在LCD螢幕上，藍牙型號可將數據同步至App進行長期監控。使用完後，裝置會自動關機。
+        簡介：福爾 TD-8255 手指型血氧濃度計測量血氧與脈搏，並具藍牙同步功能，數據可送至App進行健康追蹤。具備LCD顯示、血流指數指示與高準確度，適用於居家監測。操作簡單，並自動關機以節省電力。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 穿戴式生理資訊量測裝置
+      text: |-
+        產品名稱：DOCTER Watch
+        公司：霍恩實業有限公司
+        主要功能：DOCTER Watch 是一款專為長者與慢性病患者設計的智慧穿戴裝置，結合多項健康監測功能，提供心率、血壓、血氧、體溫等數據的即時監測。其還具備跌倒偵測、定位追蹤、緊急求救等安全功能，能即時將警報發送給家屬或照護者。此裝置可與手機應用程式連接，實現數據同步與遠程監控，幫助照護者隨時掌握使用者的健康狀況，有效提升居家照護品質。
+        使用方式：使用者可將 DOCTER Watch 佩戴於手腕，並確保裝置與皮膚良好接觸。開啟後，裝置會透過藍牙與手機應用程式連接，實現數據同步。使用者可在應用程式中查看心率、血壓、血氧、體溫等生理數據，並設置健康目標。若設備偵測到異常情況，如跌倒或生理數據異常，會自動發送警報至指定聯絡人或照護者，確保使用者安全。裝置設計簡便，適合日常佩戴及長期監測。
+        簡介：DOCTER Watch 是一款智慧穿戴裝置，結合心率、血壓、血氧、體溫等健康監測功能，並具備跌倒偵測、定位追蹤、緊急求救等安全功能。透過藍牙與手機應用程式連接，使用者可查看健康數據並進行健康管理。當偵測到異常情況，系統會發送警報至指定聯絡人或照護者，確保使用者的安全。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 穿戴式生理資訊量測裝置
+      text: |-
+        產品名稱：FORA TM10 穿戴式電子體溫計
+        公司：FORA Taiwan 台灣福爾
+        主要功能：FORA TM10 是一款專為嬰幼兒設計的穿戴式電子體溫計，具備即時體溫監測功能。使用者只需將溫度感應器固定於寶寶的腋下，透過藍牙連線至 iFORA BM App，即可隨時查看寶寶的體溫變化。該裝置可持續測量體溫，並在體溫異常時發送警示通知，協助家長及時掌握寶寶的健康狀況。
+        使用方式：使用者需先將溫度感應器固定於寶寶的腋下，並確保感應器緊貼皮膚。接著，透過藍牙將裝置與 iFORA BM App 連線，開始即時監測體溫。家長可在 App 上查看寶寶的體溫數據，並設定體溫異常警示，以便及時採取措施。建議定期檢查裝置的電池狀況，並保持裝置的清潔，以確保測量準確性。
+        簡介：FORA TM10 是一款專為嬰幼兒設計的穿戴式電子體溫計，具備即時體溫監測功能。使用者只需將溫度感應器固定於寶寶的腋下，透過藍牙連線至 iFORA BM App，即可隨時查看寶寶的體溫變化。該裝置可持續測量體溫，並在體溫異常時發送警示通知，協助家長及時掌握寶寶的健康狀況。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：COMGO心血管AI量測儀
+        公司：昌泰科醫股份有限公司
+        主要功能：提供非侵入式的心血管健康監測服務。使用者僅需透過 App 進行 2 分鐘的量測，即可獲得醫療級（TFDA 送審中）SPO2、PPG、ECG 等數據，並透過雲端 AI 引擎進行分析。系統會將分析結果以易於理解的評級模式呈現，讓使用者能直觀了解自身的心血管健康狀況，實現隨時隨地的健康管理。
+        使用方式：使用者需下載並安裝 COMGO 雲健康 App，並透過 App 註冊帳號。開啟 App 後，按照指示進行 2 分鐘的量測，系統將自動收集 SPO2、PPG、ECG 等數據。量測完成後，數據會透過雲端 AI 引擎進行分析，並以評級模式呈現結果。使用者可隨時查看自己的健康狀況，並根據建議進行相應的健康管理。
+        簡介：提供非侵入式的心血管健康監測服務，使用者僅需透過 App 進行 2 分鐘的量測，即可獲得醫療級數據，並透過雲端 AI 引擎進行分析。系統會將分析結果以易於理解的評級模式呈現，讓使用者能直觀了解自身的心血管健康狀況，實現隨時隨地的健康管理。
+    - header: 產品目錄｜遠距生理訊號監測/健康管理平台 › 生理資訊量測設備
+      text: |-
+        產品名稱：語音臂式血壓計
+        公司：福達康科技有限公司
+        主要功能：此藍牙傳輸血壓計具備多項先進功能，包括藍牙連接、雙人記憶儲存、最近三次測量平均值、WHO指標顯示、不規則心跳檢測、以及自動關機以延長電池壽命。其設計符合人體工學，操作簡便，適用於家庭與醫療機構使用。藉由藍牙功能，使用者可將測量數據傳輸至智能裝置，方便進行健康管理與記錄。
+        使用方式：使用者將血壓計臂帶正確佩戴於上臂，確保臂帶與心臟處於同一水平線。開啟設備後，按下啟動鍵開始測量。測量過程中，請保持靜止並避免交談。完成測量後，裝置會顯示血壓數值，並可透過藍牙將數據傳輸至配對的智能裝置，進行進一步分析與記錄。建議定期進行測量，以監控血壓變化，並依據結果調整生活習慣。
+        簡介：此藍牙傳輸血壓計具備藍牙連接、雙人記憶儲存、最近三次測量平均值、WHO指標顯示、不規則心跳檢測等功能。使用者可將測量數據傳輸至智能裝置，方便進行健康管理與記錄。建議定期測量，以監控血壓變化，並依據結果調整生活習慣。
+    - header: 產品目錄｜長者日常照顧輔助/安全監測科技產品 › 人員狀態判讀、跌倒偵測、安全防護
+      text: |-
+        產品名稱：人臉辨識溫度感測系統
+        公司：萬博實業股份有限公司
+        主要功能：人臉辨識溫度感測系統結合人臉辨識與額溫感測功能。能透過非接觸方式測量體溫並即時辨識身分，適用於門禁與考勤應用。系統提供自動體溫提醒與身份資料比對，強化防疫與安全防控需求。適配多種場域使用，如企業、醫療與公共空間，提高人員進出時的健康監測效率與便利性。
+        使用方式：使用者將裝置安裝於進出口或入口處後，系統接通電源並連網。當人經過時，系統自動進行人臉掃描與溫度測量，配合非接觸操作方式，提升人員通過速度與安全感。若偵測到超標體溫或身份異常，系統會即時警示。裝置設計易於整合門禁或考勤系統，並可搭配後端管理平台進行人員進出與體溫資料記錄與分析。
+        簡介：人臉辨識溫度感測系統結合人臉辨識與額溫測量，提供非接觸體溫及身份辨識功能，強化防疫與安全管理。安裝後自動偵測通過者，遇異常體溫或身份不符即警示，並可整合門禁/考勤系統，適用於企業、醫療及公共場域，提高健康與通行效率。
