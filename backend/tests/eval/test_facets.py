@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from tests.eval.test_gold import FACETS as GOLD
@@ -6,7 +8,8 @@ from wobot.eval.corpus import Corpus, Item
 from wobot.eval.dataset import Case, Dataset
 from wobot.eval.facets import Product, compare_models, labelled_products
 from wobot.eval.metrics import FacetScore
-from wobot.eval.report import facets_markdown
+from wobot.eval.report import facets_markdown, to_json, write_facets_report
+from wobot.eval.runner import CaseResult, RunResult
 from wobot.knowledge.extraction import Answer
 from wobot.knowledge.facets import FACETS
 
@@ -85,3 +88,17 @@ def test_labelled_products_are_the_split_s_matched_to_their_records(tmp_path):
     assert found.text.features == FIELDS["features_text"]
     with pytest.raises(Exception, match="matches no single product"):
         labelled_products([dataset], Corpus(1, "c", {}, []), "dev", gold_dir=tmp_path)
+
+
+def test_the_reports_write_facet_counts_as_json(tmp_path):
+    score = FacetScore()
+    score.add("TM-1", {"functions": {"離床偵測": "離床提醒"}}, {"form": {"bed": "床墊下"}})
+    result = CaseResult("d", "F-1", "dev", "facets", "scored", facets=score)
+    run = RunResult(1, 3, [result], {})
+
+    case = json.loads(json.dumps(to_json(run, {}), default=str))["cases"][0]
+
+    assert case["facets"]["matched"] == {facet: 0 for facet in FACETS}
+    assert case["facets"]["missed"]["functions"] == 1
+    path = write_facets_report([], {"products": 0}, tmp_path, "r")
+    assert json.loads(path.with_suffix(".json").read_text())["models"] == []

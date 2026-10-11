@@ -244,7 +244,12 @@ def facet_result(score: FacetScore) -> str:
 
 
 def facet_json(score: FacetScore) -> dict[str, Any]:
-    return asdict(score) | {
+    # Not asdict: it rebuilds a Counter from its items, counting the pairs as keys.
+    return {
+        "products": score.products,
+        "matched": dict(score.matched),
+        "extra": dict(score.extra),
+        "missed": dict(score.missed),
         "precision": score.precision(),
         "recall": score.recall(),
         "f1": score.f1(),
@@ -252,6 +257,7 @@ def facet_json(score: FacetScore) -> dict[str, Any]:
             facet: {"precision": score.precision(facet), "recall": score.recall(facet)}
             for facet in FACETS
         },
+        "differences": score.differences,
     }
 
 
@@ -408,7 +414,16 @@ def write_facets_report(
     data = {
         "meta": dict(meta),
         "models": [
-            asdict(r) | facet_json(r.score) | {"cost_per_thousand": r.cost_per_thousand}
+            {
+                "model": r.model,
+                "score": facet_json(r.score),
+                "failures": r.failures,
+                "dropped": r.dropped,
+                "calls": r.calls,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+                "cost_per_thousand": r.cost_per_thousand,
+            }
             for r in results
         ],
     }
