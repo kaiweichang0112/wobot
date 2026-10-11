@@ -35,6 +35,7 @@ from wobot.knowledge.hashing import content_hash
 # schema or the request settings, bump PROMPT_VERSION and record the new fingerprint here.
 PROMPT_FINGERPRINTS = {
     1: "575e341c11187fc48d374ca717c1b991428533e35f892d9c141f8dc93e2e6fa9",
+    2: "ab9fa4a5bfa55ea5f2d319384378226474617d0cbc624061b2e4ffadb1febf15",
 }
 
 EVIDENCE = {
