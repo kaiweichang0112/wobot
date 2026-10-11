@@ -4,9 +4,9 @@ The agent turns what the user said into a query in the facet vocabulary; code do
 rest. A product fits when its catalog states every function and contradicts no
 condition, judged by `knowledge.facets.judge`, the rules `wobot-eval facets` measures.
 Those that fit are ranked: 世大智科's first, then those whose catalog states more of the
-conditions, then the closest in meaning. When more fit than the user asked for, code
-names the facets that split them, for the agent to ask about; when none fits, how many
-each need leaves.
+conditions, then the closest in meaning. When the user has named only what the product
+must do, and more than one fits, code names the facets that split them, for the agent to
+ask about; when none fits, how many each need leaves.
 
 A version never changes, so its products and facets are read once and kept.
 """
@@ -53,6 +53,8 @@ MOST_DECISIVE = 2
 KEPT_VERSIONS = 2
 # What a card shows of a product.
 CARD_FIELDS = ("product_name", "company_name", "contact_phone", "product_url")
+# The catalog text the agent reads when a need has no word in the vocabulary.
+TEXT_FIELDS = ("features_text", "usage_text", "summary_text")
 
 
 # --- The version's products ---------------------------------------------------------------
@@ -62,7 +64,7 @@ CARD_FIELDS = ("product_name", "company_name", "contact_phone", "product_url")
 class CatalogProduct:
     handle: str  # r-…, as the evidence names records
     key: str  # the logical key
-    fields: dict[str, str]  # the card fields the record has
+    fields: dict[str, str]  # the card and text fields the record has
     facets: dict[str, dict[str, str]]  # facet → value → span
 
     @property
@@ -84,7 +86,7 @@ async def product_catalog(db: Database, version_id: int) -> list[CatalogProduct]
                 select(
                     IndexVersionRecord.record_id,
                     IndexVersionRecord.logical_key,
-                    *(getattr(ProductRecord, name) for name in CARD_FIELDS),
+                    *(getattr(ProductRecord, name) for name in CARD_FIELDS + TEXT_FIELDS),
                     ProductFacet.facet,
                     ProductFacet.value,
                     ProductFacet.span,
@@ -97,7 +99,8 @@ async def product_catalog(db: Database, version_id: int) -> list[CatalogProduct]
             for row in rows:
                 product = products.get(row.record_id)
                 if product is None:
-                    fields = {name: v for name in CARD_FIELDS if (v := getattr(row, name))}
+                    names = CARD_FIELDS + TEXT_FIELDS
+                    fields = {name: v for name in names if (v := getattr(row, name))}
                     product = CatalogProduct(
                         record_handle(row.record_id), row.logical_key, fields, {}
                     )
@@ -162,8 +165,9 @@ class FindProducts(BaseModel):
         max_length=MOST_NEEDS,
         description="needs the vocabulary has no word for, in the user's words",
     )
-    count: Annotated[int, Field(ge=1)] | Literal["all"] = Field(
-        default=1, description="how many products the user asked for"
+    count: Annotated[int, Field(ge=1)] | Literal["all"] | None = Field(
+        default=None,
+        description="how many products the user asked for; left out when they named none",
     )
 
     @model_validator(mode="after")
@@ -236,7 +240,7 @@ class Gap:
 @dataclass(frozen=True)
 class Found:
     fitting: list[Ranked]  # best first
-    decisive: list[Split]  # only when more fit than the user asked for
+    decisive: list[Split]  # only for a need named by its functions alone
     gaps: list[Gap]  # only when none fits
     recommended_before: int  # fitting products left out: shown earlier in the conversation
 
@@ -244,12 +248,16 @@ class Found:
 def find(
     catalog: Sequence[CatalogProduct],
     query: FacetQuery,
-    count: int | Literal["all"],
+    count: int | Literal["all"] | None,
     similarity: Mapping[str, float],
     shown: Collection[str] = (),
 ) -> Found:
     """The products that fit the query, ranked. No database: pytest runs it on the gold
-    facets. `similarity` is by handle; `shown` names products recommended earlier."""
+    facets. `similarity` is by handle; `shown` names products recommended earlier.
+
+    Decisive facets are named only when the user has said neither a condition nor how
+    many they want: then the products may differ in what the user cares about. Once the
+    user has said either, a question would only delay what they asked for."""
     shown_keys = {key_text(name) for name in shown}
     fresh: list[CatalogProduct] = []
     before = 0
@@ -266,10 +274,10 @@ def find(
         ),
         key=Ranked.order,
     )
-    many = count != "all" and len(fitting) > count
+    open_need = count is None and not query.must and not query.must_not
     return Found(
         fitting,
-        decisive(fitting, query) if many else [],
+        decisive(fitting, query) if open_need and len(fitting) > 1 else [],
         [] if fitting else gaps(fresh, query),
         before,
     )

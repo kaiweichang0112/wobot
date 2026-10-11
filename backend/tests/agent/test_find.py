@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -23,13 +25,16 @@ from wobot.knowledge.facets import FacetQuery
 from wobot.knowledge.records.text import key_text
 
 
-def product(name: str, company: str = "Co", **facets: dict[str, str]) -> CatalogProduct:
-    return CatalogProduct(
-        f"r-{name}", f"product:{name}", {"product_name": name, "company_name": company}, facets
-    )
+def product(
+    name: str, company: str = "Co", *, text: str = "", **facets: dict[str, str]
+) -> CatalogProduct:
+    fields = {"product_name": name, "company_name": company}
+    if text:
+        fields["features_text"] = text
+    return CatalogProduct(f"r-{name}", f"product:{name}", fields, facets)
 
 
-def bed_exit(name: str, company: str = "Co", **facets: dict[str, str]) -> CatalogProduct:
+def bed_exit(name: str, company: str = "Co", **facets: Any) -> CatalogProduct:
     return product(name, company, functions={"離床偵測": "離床提醒"}, **facets)
 
 
@@ -106,14 +111,16 @@ def test_a_facet_the_user_left_open_that_splits_the_fitting_products_is_decisive
         bed_exit("E", viewing={"app": "App", "computer": "電腦"}),
     ]
 
-    found = find(catalog, BED_EXIT, 1, {})
+    found = find(catalog, BED_EXIT, None, {})
 
     # power is stated alike by all that state it, and viewing by one product alone.
     assert found.decisive == [Split("places", {"home": 3, "institution": 2}, 1)]
-    assert find(catalog, BED_EXIT, 5, {}).decisive == []  # all can be shown
+    # Once the user said how many, or any condition, code asks nothing.
+    assert find(catalog, BED_EXIT, 1, {}).decisive == []
     assert find(catalog, BED_EXIT, "all", {}).decisive == []
-    settled = FacetQuery(("離床偵測",), {"places": ("home",)})
-    assert find(catalog, settled, 1, {}).decisive == []  # the user said where
+    unworn = FacetQuery(("離床偵測",), must_not={"form": ("worn",)})
+    assert find(catalog, unworn, None, {}).decisive == []
+    assert find(catalog[:1], BED_EXIT, None, {}).decisive == []  # one fits: nothing to ask
 
 
 def test_when_nothing_fits_each_need_says_how_many_it_leaves():
@@ -176,7 +183,7 @@ def test_the_arguments_become_a_query_and_a_text_without_the_conditions():
 
     assert args.query == FacetQuery(("離床偵測",), {"places": ("home",)}, {"form": ("worn",)})
     assert args.text == "離床偵測、安靜"
-    assert args.count == 1
+    assert args.count is None  # the user named no number
 
 
 @pytest.mark.parametrize(
@@ -209,6 +216,7 @@ async def test_a_version_s_products_come_with_their_facets_and_card_fields(knowl
     bed = by_name["測試床墊 TM-1"]
     assert bed.handle.startswith("r-") and bed.key.startswith("product:")
     assert bed.fields["contact_phone"] == "02-0000-0000"
+    assert bed.fields["features_text"] == "離床偵測，即時提醒照護者。"
     assert bed.facets == {"functions": {"離床偵測": "離床偵測"}, "form": {"bed": "床墊下"}}
 
 

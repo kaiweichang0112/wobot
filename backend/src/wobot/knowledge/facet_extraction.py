@@ -20,8 +20,8 @@ from wobot.knowledge.facets import (
     FACET_VALUES,
     FACETS,
     FUNCTION_NAMES,
-    FUNCTIONS,
     FacetValue,
+    vocabulary,
 )
 
 PRODUCT_FACETS = "product_facets"
@@ -33,16 +33,6 @@ PROMPT_VERSION = 3
 REASONING_EFFORT = "low"
 # Reasoning counts against the cap; a product states fifteen values at most so far.
 MAX_OUTPUT_TOKENS = 3000
-
-
-def _vocabulary() -> str:
-    """The functions, each with how a text may say it and the nearby ones it is not."""
-    lines = []
-    for function in FUNCTIONS:
-        words = f"（{'、'.join(function.aliases)}）" if function.aliases else ""
-        unlike = f"; not {'、'.join(function.unlike)}" if function.unlike else ""
-        lines.append(f"- {function.name}{words}{unlike}")
-    return "\n".join(lines)
 
 
 INSTRUCTIONS = f"""\
@@ -72,7 +62,7 @@ for help, by a button or a call; an alert the product sends by itself is not. �
 is a person's activity in a room or in daily life; body movement in bed (體動) or \
 posture is not. The words in brackets are how a text may say it; "not" names a function \
 it is not.
-{_vocabulary()}
+{vocabulary()}
 
 form: what the product is.
 - worn: on the person cared for: a wristband, watch, pendant, patch, insole or \

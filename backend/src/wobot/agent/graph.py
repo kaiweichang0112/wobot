@@ -3,8 +3,8 @@
 Every turn starts at `classify`, which only names the kind of question. Small talk goes
 to `chat_reply`; facts go through `rewrite_query` and `retrieve` to `answer`; lists loop
 between `list_agent` and `list_tools` before `write_list`; recommendations loop between
-`rec_agent` and `rec_tools` until the agent replies or a recommendation passes code's
-guards (DEC-066). A database or provider failure on any path ends at `report_failure`.
+`rec_agent` and `rec_tools` until the agent replies or code shows the products that fit
+(DEC-066, DEC-069). A database or provider failure on any path ends at `report_failure`.
 
 Nodes that call a model are made inside `build_graph`, so they hold the model they were
 given; the rest are stubs until their path is built. The edges are final, and a test
@@ -26,6 +26,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from wobot.agent.answer import answer_prompt
 from wobot.agent.chat import chat_prompt
+from wobot.agent.find import FindProducts, ProductCatalogs, find_products
 from wobot.agent.list_agent import (
     LIST_TOOLS,
     list_agent_prompt,
@@ -36,20 +37,22 @@ from wobot.agent.list_agent import (
 from wobot.agent.models import openai_model
 from wobot.agent.rec_agent import (
     REC_TOOLS,
-    RecommendProducts,
-    SearchProducts,
+    ShowProducts,
     answered,
+    found_content,
+    found_evidence,
     own_words,
     read_call,
     rec_agent_prompt,
-    search_products,
+    refused,
 )
 from wobot.agent.recommend import (
     fallback_reply,
+    first_fitting,
+    picked,
     recommended_before,
     recommended_reply,
-    refusal,
-    review,
+    shows_at_once,
 )
 from wobot.agent.retrieval import UNAVAILABLE, LookupFailed, records_named, search_knowledge
 from wobot.agent.rewrite import SearchPlan, read_plan, rewrite_prompt, writes_chinese
@@ -218,6 +221,8 @@ def build_graph(
     list_writer = models.write_list.with_structured_output(ListIntro, method="json_schema")
     # Not made to call a tool: the agent may ask what the user needs first (DEC-066).
     rec_model = models.rec_agent.bind_tools(REC_TOOLS)
+    # Each version's products and facets, read on the first find and kept (DEC-069).
+    catalogs = ProductCatalogs(db)
 
     async def classify(state: ChatState) -> dict[str, Any]:
         """Names the kind of question: chat, knowledge, list or recommend. The last turn's
@@ -366,8 +371,10 @@ def build_graph(
         }
 
     async def rec_tools(state: ChatState) -> dict[str, Any]:
-        """Runs the agent's tool calls in turn: a search adds the products it found to the
-        evidence; a recommendation is held to the guards and, once passed, is the reply."""
+        """Runs the agent's tool calls in turn. A find judges every product and keeps what
+        fits as the turn's evidence; when nothing is left to ask, code shows the products
+        at once. Showing takes products the find found. A shown recommendation is the
+        reply, and ends the turn."""
         scratch = state["rec_messages"]
         evidence = state["evidence"]
         chinese = writes_chinese(latest_user_text(state["messages"]))
@@ -375,24 +382,38 @@ def build_graph(
         reply: dict[str, Any] = {}
         for call in scratch[-1].tool_calls:
             args = read_call(call)
-            if isinstance(args, SearchProducts):
+            if isinstance(args, FindProducts):
+                earlier = (m.text for m in state["messages"] if isinstance(m, AIMessage))
                 try:
-                    answer, evidence = await search_products(
-                        db, embedder, state["index_version"], call, args, evidence
+                    found = await find_products(
+                        catalogs,
+                        db,
+                        embedder,
+                        state["index_version"],
+                        args,
+                        recommended_before(earlier),
                     )
                 except LookupFailed:
                     return {"status": "failed"}
-            elif isinstance(args, RecommendProducts):
-                earlier = (m.text for m in state["messages"] if isinstance(m, AIMessage))
-                found = review(args, evidence, frozenset(recommended_before(earlier)))
-                if found.shown:
-                    reply = recommended_reply(args, found.shown, evidence, chinese)
-                    answer = answered(call, {"shown": [p.product_id for p in found.shown]})
+                evidence = {"found": found_evidence(found, args)}
+                if shows_at_once(found, args):
+                    shown = first_fitting(evidence["found"])
+                    reply = recommended_reply(evidence["found"], shown, chinese)
+                    answer = answered(call, {"shown": shown})
                 else:
-                    answer = answered(call, {"refused": refusal(found.problems)})
+                    answer = answered(call, found_content(found, args))
+            elif isinstance(args, ShowProducts):
+                shown, problem = picked(args, evidence.get("found"))
+                if problem:
+                    answer = refused(call, problem)
+                else:
+                    reply = recommended_reply(evidence["found"], shown, chinese, args.intro)
+                    answer = answered(call, {"shown": shown})
             else:  # the call was refused: the agent reads why
                 answer = args
             answers.append(answer)
+            if reply:  # the turn ends here; later calls are not run
+                break
         update: dict[str, Any] = {
             "rec_messages": [*scratch, *answers],
             "evidence": evidence,

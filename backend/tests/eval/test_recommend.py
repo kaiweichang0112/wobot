@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage
 
 from tests.agent.conftest import knowledge  # noqa: F401  # a small published version
 from tests.agent.fakes import FakeToolModel, calls
-from tests.agent.test_graph import bed_product, recommending
+from tests.agent.test_graph import bed_product
 from wobot.eval.candidates import Candidate
 from wobot.eval.dataset import Case, load_dataset
 from wobot.eval.recommend import (
@@ -90,20 +90,22 @@ def test_the_preferred_product_is_judged_only_where_a_product_was_shown():
     assert preferred(rec_case(), "recommend", [FIT]) is None
 
 
-SEARCH = calls(("search_products", {"functions": ["離床偵測"]}))
+FIND = calls(("find_products", {"functions": ["離床偵測"], "count": 1}))
+FIND_NONE = calls(("find_products", {"functions": ["翻身監測"]}))  # the fixture has none
 
 
 async def test_a_play_keeps_the_flow_and_scores_the_card(knowledge):  # noqa: F811
     bed = await bed_product(knowledge)
-    agent = FakeToolModel(SEARCH, recommending(bed, "supported", "unknown"))
+    agent = FakeToolModel(FIND)  # code shows what fits at once
     app = rec_path(agent, knowledge.db, knowledge.embedder)
     item = rec_case(recommends=frozenset({"測試床墊 TM-1"}))
 
     played = await play(app, item, knowledge.version_id, run=0)
 
     assert played.right and played.action == "recommend" and played.shown == ("測試床墊 TM-1",)
-    assert [step.node for step in played.flow] == ["rec_agent", "rec_tools"] * 2
-    assert played.flow[0].note == 'search_products {"functions": ["離床偵測"]}'
+    assert [step.node for step in played.flow] == ["rec_agent", "rec_tools"]
+    assert played.flow[0].note == 'find_products {"functions": ["離床偵測"], "count": 1}'
+    assert bed in played.flow[-1].note
     assert played.flow[-1].note.endswith("recommend: 測試床墊 TM-1")
     assert played.searches == 1 and set(played.nodes) == {"rec_agent", "rec_tools"}
     assert played.seconds == pytest.approx(sum(step.seconds for step in played.flow))
@@ -121,7 +123,7 @@ async def test_agents_take_turns_and_the_report_shows_each_flow(knowledge):  # n
     asks = AIMessage("請問是在家裡用嗎？")
     agents = [
         (Candidate("asks", "none"), FakeToolModel(asks)),
-        (Candidate("searches", "none"), FakeToolModel(SEARCH, asks)),
+        (Candidate("searches", "none"), FakeToolModel(FIND_NONE, asks)),
     ]
     item = rec_case(actions=("replied",), searches=False)
 

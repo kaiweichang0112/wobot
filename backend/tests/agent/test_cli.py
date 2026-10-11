@@ -47,48 +47,46 @@ async def test_a_turn_prints_its_path_then_the_reply(capsys):
 
 
 def test_the_recommendation_nodes_are_described_too():
-    searched = calls(("search_products", {"functions": ["離床預警"]}))
-    recommended = calls(
+    found_call = calls(
         (
-            "recommend_products",
+            "find_products",
             {
-                "needs": [
-                    {"text": "離床預警", "kind": "function"},
-                    {"text": "居家使用", "kind": "constraint"},
-                ],
-                "products": [
-                    {
-                        "product_id": "r-1",
-                        "checks": [
-                            {"need": 1, "status": "supported"},
-                            {"need": 2, "status": "unknown"},
-                        ],
-                    }
-                ],
-                "count": 1,
+                "functions": ["離床偵測"],
+                "must": {"places": ["home"], "form": []},
+                "must_not": {},
+                "other": [],
+                "count": None,
             },
         )
     )
-    product = {"id": "r-1", "category": "產品目錄", "text": "產品名稱：WhizPad\n公司：世大智科"}
-    found = ToolMessage(json.dumps({"products": [product]}), tool_call_id="call-1")
-    shown = ToolMessage('{"shown": ["r-1"]}', tool_call_id="call-2")
-    refused = ToolMessage('{"refused": "Not shown: r-1: function 1 is unknown."}', tool_call_id="c")
+    product = {"id": "r-1", "name": "WhizPad", "company": "世大智科", "needs": {}}
+    split = {"facet": "places", "values": {"home": 3, "institution": 2}, "unstated": 0}
+    asking = {"matched": 5, "products": [product], "decisive": [split], "gaps": []}
+    nothing = {
+        "matched": 0,
+        "products": [],
+        "decisive": [],
+        "gaps": [{"need": "places=home", "products": 2}],
+    }
+    found = ToolMessage(json.dumps(asking), tool_call_id="call-1")
+    none = ToolMessage(json.dumps(nothing), tool_call_id="call-1")
+    shown = ToolMessage('{"shown": ["r-1"]}', tool_call_id="call-1")
+    refused = ToolMessage(
+        "Not done: r-9 not among the products found.", tool_call_id="c", status="error"
+    )
     asked = {"text": "請問是在家裡用嗎？\n還是在機構？", "action": "replied", "products": []}
     card = {"action": "recommend", "products": [{"name": "WhizPad"}]}
 
-    assert describe("rec_agent", {"rec_messages": [searched]}) == (
-        'search_products {"functions": ["離床預警"]}'
-    )
-    assert describe("rec_agent", {"rec_messages": [recommended]}) == (
-        "recommend_products needs [1 離床預警 (f), 2 居家使用 (c)] count 1: "
-        "r-1 1=supported 2=unknown"
+    assert describe("rec_agent", {"rec_messages": [found_call]}) == (
+        'find_products {"functions": ["離床偵測"], "must": {"places": ["home"]}}'
     )
     assert describe("rec_agent", {"reply": asked}) == "replied: 請問是在家裡用嗎？"
     assert describe("rec_agent", {"status": "failed"}) == "failed"
-    assert describe("rec_tools", {"rec_messages": [searched, found]}) == "1 products: WhizPad"
-    assert describe("rec_tools", {"rec_messages": [recommended, refused]}) == (
-        "Not shown: r-1: function 1 is unknown."
+    assert describe("rec_tools", {"rec_messages": [found_call, found]}) == (
+        "5 fit: WhizPad, decisive places {'home': 3, 'institution': 2}"
     )
-    assert describe("rec_tools", {"rec_messages": [recommended, shown], "reply": card}) == (
+    assert describe("rec_tools", {"rec_messages": [found_call, none]}) == "0 fit, gap places=home 2"
+    assert describe("rec_tools", {"rec_messages": [found_call, refused]}) == refused.text
+    assert describe("rec_tools", {"rec_messages": [found_call, shown], "reply": card}) == (
         "shown r-1; recommend: WhizPad"
     )

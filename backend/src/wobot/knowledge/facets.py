@@ -114,6 +114,60 @@ FUNCTION_GROUPS: dict[str, tuple[str, ...]] = {
     "復健訓練": ("上肢復健", "手部復健", "下肢復健", "吞嚥訓練", "綜合復健"),
 }
 
+# What an English reply calls each function and group.
+ENGLISH_NAMES: dict[str, str] = {
+    "跌倒偵測": "Fall detection",
+    "跌倒預防": "Fall prevention",
+    "離床偵測": "Bed-exit detection",
+    "翻身監測": "Repositioning monitoring",
+    "壓瘡預防": "Pressure injury prevention",
+    "呼吸監測": "Breathing monitoring",
+    "心率監測": "Heart rate monitoring",
+    "睡眠監測": "Sleep monitoring",
+    "滯留偵測": "Prolonged stay detection",
+    "活動監測": "Activity monitoring",
+    "緊急求助": "Emergency call",
+    "定位": "Location tracking",
+    "防走失": "Wandering prevention",
+    "雙向通話": "Two-way calling",
+    "環境安全": "Home safety alerts",
+    "空氣品質監測": "Air quality monitoring",
+    "空氣淨化": "Air purification",
+    "門禁": "Access control",
+    "醫療廢棄物處理": "Medical waste handling",
+    "血壓量測": "Blood pressure measurement",
+    "血糖量測": "Blood glucose measurement",
+    "血氧量測": "Blood oxygen measurement",
+    "體溫量測": "Body temperature measurement",
+    "心電圖": "ECG",
+    "體組成": "Body composition",
+    "血脂量測": "Blood lipid measurement",
+    "心血管檢測": "Cardiovascular screening",
+    "遠距健康管理": "Remote health management",
+    "遠距醫療": "Telemedicine",
+    "用藥提醒": "Medication reminders",
+    "照顧服務媒合": "Care service matching",
+    "交通接送": "Transport service",
+    "送餐": "Meal delivery",
+    "機構管理": "Care facility management",
+    "運動訓練": "Exercise training",
+    "上肢復健": "Upper-limb rehabilitation",
+    "手部復健": "Hand rehabilitation",
+    "下肢復健": "Lower-limb rehabilitation",
+    "吞嚥訓練": "Swallowing training",
+    "綜合復健": "General rehabilitation",
+    "認知訓練": "Cognitive training",
+    "認知評估": "Cognitive assessment",
+    "體適能檢測": "Fitness assessment",
+    "步態分析": "Gait analysis",
+    "情緒紓壓": "Stress relief",
+    "失禁照護": "Incontinence care",
+    "配送機器人": "Delivery robot",
+    "巡邏機器人": "Patrol robot",
+    "陪伴互動": "Companionship",
+    "復健訓練": "Rehabilitation",
+}
+
 FACETS = ("functions", *FACET_VALUES)
 
 # The catalog text a value's span may be read from, in the order it is looked for.
@@ -128,6 +182,17 @@ class FacetValue:
     value: str
     span: str
     source_field: str
+
+
+def vocabulary() -> str:
+    """The functions, each with how a text may say it and the nearby ones it is not: what
+    the extraction and the recommendation agent both read."""
+    lines = []
+    for function in FUNCTIONS:
+        words = f"（{'、'.join(function.aliases)}）" if function.aliases else ""
+        unlike = f"; not {'、'.join(function.unlike)}" if function.unlike else ""
+        lines.append(f"- {function.name}{words}{unlike}")
+    return "\n".join(lines)
 
 
 def allowed_values(facet: str) -> tuple[str, ...]:

@@ -3,9 +3,10 @@ the need, whether every product it showed fits and none it may never show, how m
 showed, and at what latency and cost.
 
 Each case is played through the chat graph's recommendation path with the candidate as
-rec_agent: the agent asks, searches, judges and recommends, and code checks and shows, as
-in the app. Every message is routed there, so the router's mistakes are not counted
-against the agent; a case that checks the route itself is the router's, and left out.
+rec_agent: the agent asks or turns the need into a query, and code judges, ranks and
+shows (DEC-069), as in the app. Every message is routed there, so the router's mistakes
+are not counted against the agent; a case that checks the route itself is the router's,
+and left out.
 Each play keeps its flow, node by node, with seconds and what each node did.
 """
 
@@ -215,7 +216,7 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
     action = reply.get("action", "")
     shown = tuple(p["name"] for p in reply.get("products", []))
     asked = [m for m in final.get("rec_messages", []) if isinstance(m, AIMessage)]
-    searches = sum(c["name"] == "search_products" for m in asked for c in m.tool_calls)
+    searches = sum(c["name"] == "find_products" for m in asked for c in m.tool_calls)
     text = reply.get("text", "")
     nodes: dict[str, float] = defaultdict(float)
     for step in flow:

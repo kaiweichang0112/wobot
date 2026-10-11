@@ -301,7 +301,11 @@ async def test_a_failed_list_model_is_reported_as_retryable(broken):
 # --- The recommendation path ------------------------------------------------------------
 
 
-SEARCH = calls(("search_products", {"functions": ["離床偵測"]}))
+BED_EXIT = {"functions": ["離床偵測"], "count": 1}
+
+
+def finding(**args) -> AIMessage:
+    return calls(("find_products", args))
 
 
 async def bed_product(knowledge) -> str:
@@ -314,27 +318,6 @@ async def bed_product(knowledge) -> str:
         record_handle(item.record_id)
         for item in beds.items
         if item.fields["product_name"] == "測試床墊 TM-1"
-    )
-
-
-def recommending(product_id: str, *statuses: str) -> AIMessage:
-    """The agent recommending the product, judged on a function and a constraint."""
-    checks = [{"need": n, "status": status} for n, status in enumerate(statuses, start=1)]
-    return calls(
-        (
-            "recommend_products",
-            {
-                "needs": [
-                    {"text": "離床偵測", "kind": "function"},
-                    {"text": "居家使用", "kind": "constraint"},
-                ],
-                "products": [
-                    {"product_id": product_id, "checks": checks, "reason": "床墊下感測。"}
-                ],
-                "count": 1,
-                "intro": "這項產品符合你的需求。",
-            },
-        )
     )
 
 
@@ -368,10 +351,9 @@ async def test_the_agent_asks_what_the_user_needs_without_searching():
     assert prompt[-1].text == "推薦一個智慧照護產品給我"
 
 
-async def test_a_recommendation_the_guards_pass_ends_the_turn_as_a_card(knowledge):
+async def test_what_fits_is_shown_at_once_when_nothing_is_left_to_ask(knowledge):
     bed = await bed_product(knowledge)
-    rounds = [SEARCH, recommending(bed, "supported", "unknown")]
-    models = fake_models("recommend", rec_calls=rounds)
+    models = fake_models("recommend", rec_calls=[finding(**BED_EXIT)])
     app = build_graph(models, knowledge.db, knowledge.embedder)
     answering = {
         **turn("在家裡用，要能偵測離床", knowledge.version_id),
@@ -380,50 +362,82 @@ async def test_a_recommendation_the_guards_pass_ends_the_turn_as_a_card(knowledg
 
     path, state = await played(app, answering)
 
-    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent", "rec_tools"]
+    assert path == ["classify", "rec_agent", "rec_tools"]
+    assert len(models.rec_agent.prompts) == 1  # code showed it: no second model call
     assert state["reply"]["action"] == "recommend"
     assert [p["id"] for p in state["reply"]["products"]] == [bed]
-    assert state["reply"]["text"].startswith("這項產品符合你的需求。\n\n推薦：測試床墊 TM-1")
-    assert "- 居家使用：目錄未註明" in state["reply"]["text"]
+    assert state["reply"]["text"].startswith(
+        "這是符合你需求的產品：\n\n推薦：測試床墊 TM-1（範例科技股份有限公司）\n"
+        "- 離床偵測：符合（目錄：「離床偵測」）"
+    )
     assert state["messages"][-1].text == state["reply"]["text"]
     assert state["pending_question"] is None
-    # The agent read the products found before it recommended.
-    _, second = models.rec_agent.prompts[1]
-    assert "測試床墊 TM-1" in second[-1].content
+    assert state["evidence"]["found"]["products"][0]["id"] == bed
 
 
-async def test_a_refused_recommendation_goes_back_to_the_agent(knowledge):
+async def test_when_nothing_fits_the_agent_reads_why_and_says_so(knowledge):
+    rounds = [finding(functions=["翻身監測"]), AIMessage("目錄裡沒有能偵測翻身的產品。")]
+    models = fake_models("recommend", rec_calls=rounds)
+    app = build_graph(models, knowledge.db, knowledge.embedder)
+
+    path, state = await played(app, turn("要能偵測翻身", knowledge.version_id))
+
+    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent"]
+    read = json.loads(state["rec_messages"][-1].content)
+    assert read["matched"] == 0 and read["gaps"] == [{"need": "翻身監測", "products": 0}]
+    assert state["reply"]["text"] == "目錄裡沒有能偵測翻身的產品。"
+
+
+async def test_for_a_need_outside_the_vocabulary_the_agent_shows_what_it_read(knowledge):
     bed = await bed_product(knowledge)
     rounds = [
-        SEARCH,
-        recommending(bed, "unknown", "supported"),
-        AIMessage("目錄沒有寫到離床偵測。"),
+        finding(functions=["離床偵測"], other=["夜間不會發出聲音"]),
+        calls(("show_products", {"products": [bed], "intro": "這項在夜裡很安靜。"})),
     ]
     models = fake_models("recommend", rec_calls=rounds)
     app = build_graph(models, knowledge.db, knowledge.embedder)
 
-    path, state = await played(app, turn("要能偵測離床", knowledge.version_id))
+    path, state = await played(app, turn("要偵測離床，晚上不能有聲音", knowledge.version_id))
 
-    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent", "rec_tools", "rec_agent"]
-    refused = json.loads(state["rec_messages"][-1].content)["refused"]
-    assert "function 1 (離床偵測) is unknown" in refused
-    assert state["reply"]["text"] == "目錄沒有寫到離床偵測。"
+    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent", "rec_tools"]
+    _, second = models.rec_agent.prompts[1]
+    [product] = json.loads(second[-1].content)["products"]
+    assert product["id"] == bed and product["text"].startswith("離床偵測，即時提醒照護者。")
+    assert state["reply"]["text"].startswith("這項在夜裡很安靜。\n\n推薦：測試床墊 TM-1")
+
+
+async def test_showing_without_a_find_goes_back_to_the_agent():
+    rounds = [
+        calls(("show_products", {"products": ["r-1a2b3c4d"], "intro": "這項符合。"})),
+        AIMessage("請問需要哪些功能？"),
+    ]
+    models = fake_models("recommend", rec_calls=rounds)
+    app = build_graph(models, db=None, embedder=None)
+
+    path, state = await played(app, turn("推薦一個"))
+
+    assert path == ["classify", "rec_agent", "rec_tools", "rec_agent"]
+    refused = state["rec_messages"][-1]
+    assert refused.status == "error" and "call find_products first" in refused.content
+    assert state["reply"]["action"] == "replied"
 
 
 async def test_code_names_what_was_found_when_the_rounds_run_out(knowledge):
-    models = fake_models("recommend", rec_calls=[SEARCH] * MAX_REC_ROUNDS)
+    reading = finding(functions=["離床偵測"], other=["夜間不會發出聲音"])
+    models = fake_models("recommend", rec_calls=[reading] * MAX_REC_ROUNDS)
     app = build_graph(models, knowledge.db, knowledge.embedder)
 
-    path, state = await played(app, turn("要能偵測離床", knowledge.version_id))
+    path, state = await played(app, turn("要偵測離床，晚上不能有聲音", knowledge.version_id))
 
     assert path.count("rec_tools") == MAX_REC_ROUNDS and path[-1] == "rec_agent"
     assert len(models.rec_agent.prompts) == MAX_REC_ROUNDS  # the last turn asks no model
+    # Only the agent could judge the quiet nights from the text: named, unconfirmed.
     assert state["reply"]["action"] == "unverified"
     assert "- 測試床墊 TM-1（範例科技股份有限公司）" in state["reply"]["text"]
 
 
 async def test_a_failed_product_search_is_reported_as_retryable(knowledge):
-    models = fake_models("recommend", rec_calls=[SEARCH])
+    models = fake_models("recommend", rec_calls=[finding(**BED_EXIT)])
     app = build_graph(models, Unreachable(), knowledge.embedder)
 
     path, state = await played(app, turn("想找偵測離床的"))
