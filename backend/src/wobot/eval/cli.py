@@ -419,7 +419,8 @@ async def _facets(args: argparse.Namespace, settings: Settings) -> int:
     for r in results:
         s = r.score
         print(
-            f"{r.model}: {_decided(r.decisions)}; "
+            f"{r.model}: {_decided(r.decisions)}, "
+            f"{len(r.decisions.unlike_labels)} of {r.decisions.compared} unlike labels; "
             f"P {s.precision():.3f} R {s.recall():.3f} F1 {s.f1():.3f}, "
             f"{len(r.dropped)} dropped, {len(r.failures)} without an answer, "
             f"{r.calls} new calls"

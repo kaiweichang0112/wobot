@@ -74,7 +74,7 @@ async def test_each_model_is_scored_on_what_code_keeps_of_its_answer():
     assert (read.calls, read.input_tokens) == (1, 900)
     assert refused.failures == {"TM-1": "refused: no"} and refused.score.recall() == 0.0
     report = facets_markdown([read, refused], {"products": 1})
-    assert "| fake-facets | 0 | 0 | 0.50 | 0.50 | 0.50 | 1.00 | 1 | 0 |" in report
+    assert "| fake-facets | 0 | 0 | 0 of 0 | 0.50 | 0.50 | 0.50 | 1.00 | 1 | 0 |" in report
     assert "- TM-1: + viewing phone 「手機」" in report
 
 
@@ -149,3 +149,19 @@ def test_a_need_leaves_out_what_was_shown_and_names_what_it_decides_wrong():
         "REC-FX-10: 家用緊急救援通報系統 HO-140",
     ]
     assert decisions.fits_filtered == ["CASE-022: iProték 智慧床墊", "REC-FX-10: iProték 智慧床墊"]
+
+
+def test_a_product_no_list_names_is_still_decided_against_its_labels():
+    checks = need_checks([load_dataset("recommendation-v2")])
+    [check] = [c for c in checks if c.case_id == "REC-FX-04"]
+    labels = {"智慧照護解決方案": {"functions": {"離床偵測"}, "viewing": {"device"}}}
+    facets = {"智慧照護解決方案": {"functions": {"離床偵測"}}}  # the device not read
+
+    decisions = decide([check], facets, labels)
+
+    # Neither of the case's lists names it, so only its labels show the miss.
+    assert (decisions.never_passing, decisions.fits_filtered) == ([], [])
+    assert decisions.unlike_labels == [
+        "REC-FX-04: 智慧照護解決方案 passes; on its labels, filtered"
+    ]
+    assert decisions.compared == 1

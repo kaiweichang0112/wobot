@@ -366,17 +366,19 @@ def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]
         "cached, so a model and prompt are read once: one run, no spread. Never passing "
         "counts dev products a person said may never be shown for a recommendation need "
         "that pass it on the model's facets, and must be 0; fits filtered, the fitting ones "
-        "that do not.",
+        "that do not. Unlike labels counts, over every dev product and need, the decisions "
+        "that differ from deciding on a person's labels, listed or not.",
         "",
-        "| Model | Never passing | Fits filtered | Precision | Recall | F1 | Functions F1 "
-        "| Dropped spans | No answer | Tokens in / out | $ per 1,000 products | New calls |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Model | Never passing | Fits filtered | Unlike labels | Precision | Recall | F1 "
+        "| Functions F1 | Dropped spans | No answer | Tokens in / out | $ per 1,000 products "
+        "| New calls |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in results:
-        s, cost = r.score, r.cost_per_thousand
+        s, d, cost = r.score, r.decisions, r.cost_per_thousand
         lines.append(
-            f"| {r.model} | {len(r.decisions.never_passing)} "
-            f"| {len(r.decisions.fits_filtered)} "
+            f"| {r.model} | {len(d.never_passing)} | {len(d.fits_filtered)} "
+            f"| {len(d.unlike_labels)} of {d.compared} "
             f"| {_num(s.precision())} | {_num(s.recall())} | {_num(s.f1())} "
             f"| {_num(s.f1('functions'))} | {len(r.dropped)} | {len(r.failures)} "
             f"| {r.input_tokens} / {r.output_tokens} "
@@ -399,6 +401,7 @@ def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]
     for r in results:
         details = [f"- never passing: {line}" for line in r.decisions.never_passing]
         details += [f"- fit filtered: {line}" for line in r.decisions.fits_filtered]
+        details += [f"- unlike labels: {line}" for line in r.decisions.unlike_labels]
         details += [f"- {line}" for line in r.score.differences]
         details += [f"- {line} (dropped)" for line in r.dropped]
         details += [f"- {name}: no answer: {failure}" for name, failure in r.failures.items()]

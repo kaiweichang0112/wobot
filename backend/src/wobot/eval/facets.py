@@ -117,12 +117,19 @@ def need_checks(datasets: Sequence[Dataset]) -> list[NeedCheck]:
 class Decisions:
     never_passing: list[str] = field(default_factory=list)  # "CASE-022: <product>"
     fits_filtered: list[str] = field(default_factory=list)
+    # Every labelled product against every need, decided on the model's facets and on a
+    # person's: the pairs decided differently, whether or not the case lists the product.
+    unlike_labels: list[str] = field(default_factory=list)
+    compared: int = 0  # labelled product and need pairs decided both ways
 
 
 def decide(
-    checks: Sequence[NeedCheck], facets: Mapping[str, Mapping[str, Collection[str]]]
+    checks: Sequence[NeedCheck],
+    facets: Mapping[str, Mapping[str, Collection[str]]],
+    labels: Mapping[str, Mapping[str, Collection[str]]] | None = None,
 ) -> Decisions:
-    """Each need against the products whose facets are given, by product name."""
+    """Each need against the products whose facets are given, by product name, and against
+    a person's labels for those that have them."""
     decisions = Decisions()
     for check in checks:
         for name, product_facets in facets.items():
@@ -134,6 +141,14 @@ def decide(
                 decisions.never_passing.append(f"{check.case_id}: {name}")
             if not fits and key in check.fits:
                 decisions.fits_filtered.append(f"{check.case_id}: {name}")
+            if labels is not None and name in labels:
+                decisions.compared += 1
+                if fits != passes(labels[name], check.query):
+                    on_labels = "filtered" if fits else "passes"
+                    decision = "passes" if fits else "filtered"
+                    decisions.unlike_labels.append(
+                        f"{check.case_id}: {name} {decision}; on its labels, {on_labels}"
+                    )
     return decisions
 
 
@@ -183,7 +198,9 @@ async def compare_models(
             # A product without an answer counts every labelled value as missed.
             kept_by_product[product.name] = as_facets(kept)
             result.score.add(product.name, product.expected, kept_by_product[product.name])
-        result.decisions = decide(checks, kept_by_product)
+        result.decisions = decide(
+            checks, kept_by_product, {product.name: product.expected for product in products}
+        )
         results.append(result)
     return results
 
