@@ -118,6 +118,7 @@ LABELS = {
         "one": "這是符合你需求的產品：",
         "many": "這些是符合你需求的產品：",
         "is": "為{value}",
+        "or": "或",
         "not": "不是{value}",
         "condition": "{facet}{value}",
         "fallback": (
@@ -138,6 +139,7 @@ LABELS = {
         "one": "Here is a product that fits your needs:",
         "many": "Here are products that fit your needs:",
         "is": "is {value}",
+        "or": " or ",
         "not": "is not {value}",
         "condition": "{facet} {value}",
         "fallback": (
@@ -155,14 +157,14 @@ LABELS = {
 
 def need_label(need: str, chinese: bool) -> str:
     """A need as a card names it: a function by its name, a condition such as form!=worn
-    by its facet and value."""
-    match = re.fullmatch(r"(\w+)(!?=)(\w+)", need)
+    or places=home|institution by its facet and values."""
+    match = re.fullmatch(r"(\w+)(!?=)([\w|]+)", need)
     if match is None:  # a function
         return need if chinese else ENGLISH_NAMES.get(need, need)
-    facet, sign, value = match.groups()
+    facet, sign, values = match.groups()
     language = 0 if chinese else 1
     label = LABELS["zh" if chinese else "en"]
-    value_label = VALUE_LABELS[facet][value][language]
+    value_label = label["or"].join(VALUE_LABELS[facet][v][language] for v in values.split("|"))
     words = label["not" if sign == "!=" else "is"].format(value=value_label)
     return label["condition"].format(facet=FACET_LABELS[facet][language], value=words)
 

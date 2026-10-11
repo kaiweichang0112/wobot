@@ -308,18 +308,18 @@ def gaps(catalog: Sequence[CatalogProduct], query: FacetQuery) -> list[Gap]:
         Gap(name, sum(has_function(p.facets.get("functions", {}), name) for p in catalog))
         for name in query.functions
     ]
-    for facet, value, must in conditions_of(query):
-        relaxed = without(query, facet, value, must=must)
+    for facet, values, must in conditions_of(query):
+        relaxed = without(query, facet, values, must=must)
         fit = sum(judge(p.facets, relaxed).passes for p in catalog)
-        found.append(Gap(condition_name(facet, value, must=must), fit))
+        found.append(Gap(condition_name(facet, *values, must=must), fit))
     return found
 
 
-def without(query: FacetQuery, facet: str, value: str, *, must: bool) -> FacetQuery:
+def without(query: FacetQuery, facet: str, values: Collection[str], *, must: bool) -> FacetQuery:
     """The query with one condition dropped."""
 
     def drop(part: Mapping[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
-        kept = {f: tuple(v for v in vs if (f, v) != (facet, value)) for f, vs in part.items()}
+        kept = {f: tuple(v for v in vs if f != facet or v not in values) for f, vs in part.items()}
         return {f: vs for f, vs in kept.items() if vs}
 
     if must:
@@ -335,15 +335,16 @@ def stated(product: CatalogProduct, query: FacetQuery) -> dict[str, str]:
     for name in query.functions:
         member = next((f for f in FUNCTION_GROUPS.get(name, (name,)) if f in functions), None)
         words[name] = "not stated" if member is None else functions[member]
-    for facet, value, must in conditions_of(query):
+    for facet, wanted, must in conditions_of(query):
         values = product.facets.get(facet, {})
+        held = [value for value in wanted if value in values]
         if not values:
             text = "unknown"
-        elif (value in values) != must:
+        elif bool(held) != must:
             text = "contradicted"
-        else:  # a value it must not have: what it is instead
-            text = values[value] if must else next(iter(values.values()))
-        words[condition_name(facet, value, must=must)] = text
+        else:  # the value it has, or for one it must not have, what it is instead
+            text = values[held[0]] if must else next(iter(values.values()))
+        words[condition_name(facet, *wanted, must=must)] = text
     return words
 
 

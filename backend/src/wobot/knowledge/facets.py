@@ -208,7 +208,8 @@ Status = Literal["supported", "contradicted", "unknown"]
 @dataclass(frozen=True)
 class FacetQuery:
     """What a fitting product must have: every function, and per facet the values it must
-    have and must not have. A function may be a group, met by any of its functions."""
+    have, any of them, and must not have. A function may be a group, met by any of its
+    functions."""
 
     functions: tuple[str, ...] = ()
     must: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
@@ -236,32 +237,35 @@ class FacetQuery:
         return cls(functions, conditions["must"], conditions["must_not"])
 
 
-def status(values: Collection[str], value: str, *, must: bool) -> Status:
+def status(values: Collection[str], *wanted: str, must: bool) -> Status:
     """One condition on a facet (DEC-069): a facet the text states nothing of is unknown;
-    else the value it must have is supported when stated and contradicted when not, and
-    the value it must not have the other way round."""
+    else a condition it must meet is supported when the text states any of the values
+    wanted, such as home or a care home, and contradicted when it states none of them,
+    and a value it must not have the other way round."""
     if not values:
         return "unknown"
-    return "supported" if (value in values) == must else "contradicted"
+    return "supported" if any(value in values for value in wanted) == must else "contradicted"
 
 
 def has_function(functions: Collection[str], name: str) -> bool:
     return any(f in functions for f in FUNCTION_GROUPS.get(name, (name,)))
 
 
-def condition_name(facet: str, value: str, *, must: bool) -> str:
-    """How a condition is named to the agent and in gaps: places=home, form!=worn."""
-    return f"{facet}{'=' if must else '!='}{value}"
+def condition_name(facet: str, *values: str, must: bool) -> str:
+    """How a condition is named to the agent and in gaps: places=home|institution,
+    form!=worn."""
+    return f"{facet}{'=' if must else '!='}{'|'.join(values)}"
 
 
-def conditions_of(query: FacetQuery) -> list[tuple[str, str, bool]]:
-    """Each condition of a query as (facet, value, must)."""
-    return [
-        (facet, value, must)
-        for must, part in ((True, query.must), (False, query.must_not))
-        for facet, values in part.items()
-        for value in values
+def conditions_of(query: FacetQuery) -> list[tuple[str, tuple[str, ...], bool]]:
+    """Each condition of a query as (facet, values, must). The values a facet must have
+    are one condition, met by any of them: a user who takes home or a care home wants
+    either, not a product made for both. Each value it must not have is one condition."""
+    must = [(facet, values, True) for facet, values in query.must.items() if values]
+    must_not = [
+        (facet, (value,), False) for facet, values in query.must_not.items() for value in values
     ]
+    return must + must_not
 
 
 @dataclass(frozen=True)
@@ -287,8 +291,10 @@ def judge(facets: Mapping[str, Collection[str]], query: FacetQuery) -> Judgement
     return Judgement(
         {name: has_function(functions, name) for name in query.functions},
         {
-            condition_name(facet, value, must=must): status(facets.get(facet, ()), value, must=must)
-            for facet, value, must in conditions_of(query)
+            condition_name(facet, *values, must=must): status(
+                facets.get(facet, ()), *values, must=must
+            )
+            for facet, values, must in conditions_of(query)
         },
     )
 

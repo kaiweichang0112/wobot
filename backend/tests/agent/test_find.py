@@ -257,3 +257,20 @@ async def test_an_unreachable_database_is_a_failure_not_an_empty_catalog(knowled
         await product_catalog(Unreachable(), 1)
     with pytest.raises(LookupFailed):
         await similarities(Unreachable(), knowledge.embedder, 1, "離床偵測", 3)
+
+
+def test_a_condition_met_by_any_of_its_values_is_quoted_and_dropped_whole():
+    either = FacetQuery(("離床偵測",), {"places": ("home", "institution")}, {"form": ("worn",)})
+    catalog = [
+        bed_exit("A", places={"institution": "長照機構"}),
+        bed_exit("B", places={"hospital": "醫院"}, form={"worn": "手環"}),
+    ]
+
+    assert stated(catalog[0], either)["places=home|institution"] == "長照機構"
+    assert [r.product.name for r in find(catalog, either, 1, {}).fitting] == ["A"]
+    nothing = FacetQuery(("離床偵測",), {"places": ("home", "public")}, {"form": ("worn",)})
+    assert find(catalog, nothing, 1, {}).gaps == [
+        Gap("離床偵測", 2),
+        Gap("places=home|public", 1),  # A, once where it is used no longer counts
+        Gap("form!=worn", 0),
+    ]

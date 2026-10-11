@@ -61,6 +61,21 @@ def test_a_product_fits_with_every_function_and_no_condition_contradicted():
     assert passes({"functions": {"下肢復健"}}, FacetQuery.of({"functions": ["復健訓練"]}))
 
 
+def test_several_values_a_facet_must_have_are_met_by_any_of_them():
+    query = FacetQuery.of({"functions": ["離床偵測"], "must": {"places": ["home", "institution"]}})
+    either = judge({"functions": {"離床偵測"}, "places": {"home"}}, query)
+
+    assert either.conditions == {"places=home|institution": "supported"} and either.passes
+    assert not passes({"functions": {"離床偵測"}, "places": {"hospital"}}, query)
+    assert status({"home"}, "home", "institution", must=True) == "supported"
+    # Each value it must not have stays a condition of its own.
+    unworn = FacetQuery.of({"must_not": {"form": ["worn", "robot"]}})
+    assert judge({"form": {"bed"}}, unworn).conditions == {
+        "form!=worn": "supported",
+        "form!=robot": "supported",
+    }
+
+
 def test_a_judgement_names_each_need_and_counts_what_the_catalog_states():
     query = FacetQuery.of(
         {

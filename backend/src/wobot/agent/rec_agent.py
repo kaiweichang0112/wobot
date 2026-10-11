@@ -27,7 +27,7 @@ from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 7
+PROMPT_VERSION = 8
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -78,7 +78,8 @@ camera.
 (the unit's own screen or a nurse station).
   power: mains (plugged in), battery. 不用插電 is must_not power mains.
   users: group, individual.
-- other: a need none of these can say, in the user's words.
+- other: a need none of these can say, in the user's words; never one a function or \
+condition above already says.
 - count: the number the user asked for, left out when they named none; all when they ask \
 for every product that fits, or answer that any of the choices will do (都可以).
 When the user asks for more, such as 還有其他的嗎, call find_products with the same needs: \
@@ -158,7 +159,7 @@ def reads_text(args: FindProducts) -> bool:
 def needs_of(args: FindProducts) -> list[str]:
     """The query's needs as code names them, functions first: places=home, form!=worn."""
     query = args.query
-    conditions = [condition_name(f, v, must=m) for f, v, m in conditions_of(query)]
+    conditions = [condition_name(f, *vs, must=m) for f, vs, m in conditions_of(query)]
     return [*query.functions, *conditions]
 
 

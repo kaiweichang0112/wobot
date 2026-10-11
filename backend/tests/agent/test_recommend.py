@@ -139,6 +139,10 @@ def test_every_function_and_facet_value_has_its_label():
     }
     assert need_label("復健訓練", chinese=False) == "Rehabilitation"
     assert need_label("viewing=computer", chinese=True) == "查看方式為電腦"
+    assert need_label("places=home|institution", chinese=True) == "使用場所為居家或長照機構"
+    assert need_label("places=home|institution", chinese=False) == (
+        "Place of use is home or care home"
+    )
 
 
 # --- When the rounds run out --------------------------------------------------------------

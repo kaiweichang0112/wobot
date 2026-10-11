@@ -279,7 +279,7 @@ def same_query(asked: FacetQuery, labelled: FacetQuery) -> bool:
 
 
 def query_text(query: FacetQuery) -> str:
-    conditions = [condition_name(f, v, must=m) for f, v, m in conditions_of(query)]
+    conditions = [condition_name(f, *vs, must=m) for f, vs, m in conditions_of(query)]
     return " ".join([*query.functions, *conditions])
 
 
