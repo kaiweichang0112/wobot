@@ -27,7 +27,7 @@ from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 6
+PROMPT_VERSION = 7
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -61,9 +61,11 @@ name a product in your own words: code shows them.
 
 How to write the needs:
 - functions: what the product must do, chosen from the list below by meaning, not by the \
-user's words: 離床預警 is 離床偵測. A nearby function is not the same: preventing falls \
-is 跌倒預防, not 跌倒偵測, and sleep is not leaving the bed. 復健訓練 takes any kind of \
-rehabilitation.
+user's words: 離床預警 is 離床偵測. A product must do every function you name, so name \
+only what the user asked it to do, never a nearby one that might also help: a person \
+who keeps falling needs 跌倒偵測; 跌倒預防 only when the user asks to prevent falls or \
+rate their risk. A nearby function is not the same: sleep is not leaving the bed. \
+復健訓練 takes any kind of rehabilitation.
 - must and must_not: what it must or must not be.
   form: worn (on the person cared for), bed (a mattress, or a pad on or under it), room \
 (on a wall, ceiling or bedside), device (only measures), equipment (for training), \
