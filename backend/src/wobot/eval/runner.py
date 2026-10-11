@@ -1,6 +1,6 @@
 """Run datasets against one index version: each case's check, from labels to scores.
 
-Four checks, all on item identities:
+Five checks, all on item identities:
 - list: the records a structured filter returns against the labelled items. This is the
   query the answer agent will run for "list every …" questions.
 - fields: labelled field values against the matched records' fields.
@@ -9,8 +9,8 @@ Four checks, all on item identities:
 - transcription: what a vision model read in one image or PDF page against what a person
   transcribed from it.
 
-Product facets (DEC-069) are labelled and matched here, and scored once ingestion keeps
-them.
+- facets: the facets a version keeps of each labelled product against what a person
+  read in its catalog text (DEC-069).
 """
 
 import hashlib
@@ -24,7 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from wobot.eval import gold
 from wobot.eval.corpus import Corpus
 from wobot.eval.dataset import Case, Dataset
+from wobot.eval.facets import stored_facets
 from wobot.eval.metrics import (
+    FacetScore,
     FieldScore,
     RetrievalScore,
     SetScore,
@@ -53,6 +55,7 @@ class CaseResult:
     fields: FieldScore | None = None
     retrieval: RetrievalScore | None = None
     transcription: TranscriptionScore | None = None
+    facets: FacetScore | None = None
 
 
 @dataclass
@@ -101,8 +104,7 @@ async def run_datasets(
                 retrieval.append((result, case, resolved))
                 continue
             if result.kind == "facets":
-                # Ingestion keeps no facets yet (DEC-069): labelled, matched, not scored.
-                result.detail = "the version keeps no product facets"
+                await _score_facets(conn, result, resolved, corpus.version_id)
                 continue
             if result.kind == "transcription":
                 await _score_transcription(result, resolved, corpus)
@@ -202,6 +204,28 @@ async def _score_transcription(
     )
     if item.fields["reading"] is None:
         result.detail = "the model gave no reading"
+    result.status = "scored"
+
+
+async def _score_facets(
+    conn: AsyncConnection, result: CaseResult, resolved: list[gold.Resolved], version_id: int
+) -> None:
+    """What the version keeps of each labelled product's facets, against the labels. A
+    product no model read counts every labelled value as missed."""
+    matched = [r for r in resolved if len(r.keys) == 1]
+    stored = await stored_facets(conn, version_id, [r.keys[0] for r in matched])
+    if all(stored.get(r.keys[0]) is None for r in matched):
+        result.detail = "the version keeps no product facets"
+        return
+    score = FacetScore()
+    unread = 0
+    for r in matched:
+        kept = stored.get(r.keys[0])
+        unread += kept is None
+        score.add(r.ref.value["name"], r.ref.expected["facets"], kept or {})
+    result.facets = score
+    if unread:
+        result.detail = f"{unread} products no model read"
     result.status = "scored"
 
 

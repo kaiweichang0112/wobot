@@ -215,13 +215,14 @@ async def test_cases_that_cannot_run_say_why(ingest_db, ingested, gold_dir):
     assert (results["C2"].status, results["C2"].detail) == ("pending", "not labelled yet")
     assert results["C3"].status == "error"
     assert results["C4"].split == "heldout"
+    # The fake reader names 離床偵測 and a bed for TM-1, which the label leaves empty.
     facet_result = results["C5"]
-    assert (facet_result.status, facet_result.labels, facet_result.unresolved) == (
-        "pending",
-        1,
-        [],
-    )
-    assert facet_result.detail == "the version keeps no product facets"
+    assert (facet_result.status, facet_result.unresolved) == ("scored", [])
+    assert facet_result.facets.products == 1 and facet_result.facets.precision() == 0.0
+    assert facet_result.facets.differences == [
+        "測試床墊 TM-1: + functions 離床偵測 「離床偵測」",
+        "測試床墊 TM-1: + form bed 「床墊下」",
+    ]
 
 
 async def test_a_vision_reading_against_a_person_s_transcription(ingest_db, tmp_path, gold_dir):

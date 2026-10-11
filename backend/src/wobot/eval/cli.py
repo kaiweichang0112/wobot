@@ -4,8 +4,9 @@ Reads only, so it runs as the API's read-only role. Retrieval checks embed each 
 once with the version's embedding model; every other check is computed from records.
 Scores come from RAGAS, a dev dependency: this runs from a checkout, not in the API image.
 
-`vision` is the exception: it asks vision models to read the dev pictures and keeps their
-answers where ingestion does, so it runs as the ingestion role. `route` and `chat` compare
+`vision` and `facets` are the exceptions: they ask models to read the dev pictures, or
+the dev products' catalog text, and keep the answers where ingestion does, so they run as
+the ingestion role. `route` and `chat` compare
 models for the chat graph's nodes on the route dataset; they call the models alone and
 read no database. `rewrite` compares models for rewrite_query by what the retrieve node
 then finds, so it reads the index as `run` does; `answer` compares models for the answer on
@@ -49,6 +50,8 @@ from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
+from wobot.eval.facets import compare_models as compare_facet_models
+from wobot.eval.facets import labelled_products
 from wobot.eval.lists import DATASET as LIST_DATASET
 from wobot.eval.lists import (
     ModelWriter,
@@ -65,6 +68,7 @@ from wobot.eval.report import (
     summary,
     write_answer_report,
     write_chat_report,
+    write_facets_report,
     write_list_agent_report,
     write_recommend_report,
     write_report,
@@ -90,6 +94,9 @@ from wobot.eval.turns import play_all, turn_cases
 from wobot.eval.vision import compare_models, dev_transcriptions, fetch_pictures
 from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import DbAnswerCache
+from wobot.knowledge.facet_extraction import PROMPT_VERSION as FACETS_PROMPT_VERSION
+from wobot.knowledge.facet_extraction import REASONING_EFFORT as FACETS_REASONING_EFFORT
+from wobot.knowledge.facet_extraction import OpenAIFacetReader
 from wobot.knowledge.sources.documents import document_files
 from wobot.knowledge.sources.http import new_client
 from wobot.knowledge.vision import PROMPT_VERSION as VISION_PROMPT_VERSION
@@ -143,6 +150,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     vision.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     vision.set_defaults(handler=_vision)
+
+    facets = commands.add_parser(
+        "facets", help="compare models reading the dev products' facets (paid calls)"
+    )
+    facets.add_argument(
+        "--model", action="append", required=True, help="a model to compare; repeat for more"
+    )
+    facets.add_argument(
+        "--index-version", type=int, help="read the products of this version, not the active one"
+    )
+    facets.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    facets.set_defaults(handler=_facets)
 
     route = commands.add_parser(
         "route", help="compare the chat graph's routers on the route dataset (paid calls)"
@@ -353,6 +372,52 @@ async def _vision(args: argparse.Namespace, settings: Settings) -> int:
             f"{r.model}: text recall {r.mean('text_recall')}, values P {r.mean('value_precision')}"
             f" R {r.mean('value_recall')}, {r.input_tokens} + {r.output_tokens} tokens,"
             f" {r.calls} new calls"
+        )
+    print(f"report: {path}")
+    return 0
+
+
+async def _facets(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    started = datetime.now().astimezone()
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(),
+        timeout=settings.openai_timeout_seconds,
+        max_retries=3,
+    )
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+        datasets = [load_dataset(name) for name in dataset_names()]
+        products = labelled_products(datasets, corpus, "dev")
+        readers = [OpenAIFacetReader(client, model) for model in args.model]
+        results = await compare_facet_models(readers, products, DbAnswerCache(engine))
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "index_version": version_id,
+        "prompt_version": FACETS_PROMPT_VERSION,
+        "reasoning_effort": FACETS_REASONING_EFFORT,
+        "products": len(products),
+    }
+    path = write_facets_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-facets")
+    for r in results:
+        s = r.score
+        print(
+            f"{r.model}: P {s.precision():.3f} R {s.recall():.3f} F1 {s.f1():.3f}, "
+            f"{len(r.dropped)} dropped, {len(r.failures)} without an answer, "
+            f"{r.calls} new calls"
         )
     print(f"report: {path}")
     return 0

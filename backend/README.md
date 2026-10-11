@@ -148,17 +148,20 @@ DB_USER=wobot_ingest_user uv run wobot-ingest rollback <version>
 ## Evaluation
 
 `wobot-eval` scores an index version against labelled datasets with RAGAS: complete lists,
-exact fields, retrieval, and vision readings against a person's transcriptions, all from
-item identities. RAGAS is a dev dependency, so this runs from a checkout. Labels are
-written by a person from the sources, never from system output. See `eval/README.md`.
+exact fields, retrieval, product facets, and vision readings against a person's
+transcriptions, all from item identities. RAGAS is a dev dependency, so this runs from a
+checkout. Labels are written by a person from the sources, never from system output. See
+`eval/README.md`.
 
 ```bash
 uv run wobot-eval check-gold
 uv run wobot-eval run
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
+DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
 ```
 
-`vision` compares vision models on the dev transcriptions (paid calls); see
+`vision` compares vision models on the dev transcriptions, and `facets` models reading
+the dev products' facets; both make paid calls, except for answers already cached. See
 `eval/gold/README.md`.
 
 ## Migrations

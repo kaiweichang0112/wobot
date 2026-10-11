@@ -13,6 +13,7 @@ from wobot.eval.answer import rule_pick as answer_rule_pick
 from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
+from wobot.eval.facets import ModelResult as FacetModelResult
 from wobot.eval.lists import (
     AgentResult,
     Call,
@@ -25,7 +26,14 @@ from wobot.eval.lists import (
     list_f1,
     writer_rule_pick,
 )
-from wobot.eval.metrics import FieldScore, RetrievalScore, SetScore, TranscriptionScore, mean
+from wobot.eval.metrics import (
+    FacetScore,
+    FieldScore,
+    RetrievalScore,
+    SetScore,
+    TranscriptionScore,
+    mean,
+)
 from wobot.eval.recommend import NODES as REC_NODES
 from wobot.eval.recommend import RecCase, RecPlay, RecResult
 from wobot.eval.recommend import rule_pick as rec_rule_pick
@@ -35,6 +43,7 @@ from wobot.eval.route import CandidateResult, rule_pick
 from wobot.eval.runner import CaseResult, RunResult
 from wobot.eval.turns import Played, TurnCase, TurnsResult
 from wobot.eval.vision import ModelResult
+from wobot.knowledge.facets import FACETS
 
 
 def to_json(run: RunResult, meta: Mapping[str, Any]) -> dict[str, Any]:
@@ -59,6 +68,8 @@ def _case_json(case: CaseResult) -> dict[str, Any]:
             "value_precision": t.value_precision,
             "value_recall": t.value_recall,
         }
+    if case.facets:
+        data["facets"] = facet_json(case.facets)
     if case.retrieval:
         r = case.retrieval
         data["retrieval"] |= {
@@ -85,6 +96,7 @@ def summary(run: RunResult) -> dict[str, Any]:
         retrievals = [c.retrieval for c in cases if c.retrieval]
         fields = [c.fields for c in cases if c.fields]
         transcriptions = [c.transcription for c in cases if c.transcription]
+        facets = [c.facets for c in cases if c.facets]
         group: dict[str, Any] = {"cases": len(cases)}
         if sets:
             group |= {
@@ -109,6 +121,13 @@ def summary(run: RunResult) -> dict[str, Any]:
                 "text_recall": mean([t.text_recall for t in transcriptions]),
                 "value_precision": mean([t.value_precision for t in transcriptions]),
                 "value_recall": mean([t.value_recall for t in transcriptions]),
+            }
+        if facets:
+            pooled = pooled_facets(facets)
+            group |= {
+                "facet_precision": pooled.precision(),
+                "facet_recall": pooled.recall(),
+                "facet_f1": pooled.f1(),
             }
         out[f"{kind}/{split}"] = group
     return out
@@ -173,6 +192,8 @@ def _result(case: CaseResult) -> str:
         )
     if case.transcription:
         parts.append(transcription_result(case.transcription))
+    if case.facets:
+        parts.append(facet_result(case.facets))
     if case.detail:
         parts.append(case.detail)
     return "; ".join(parts)
@@ -202,6 +223,8 @@ def _details(case: CaseResult) -> list[str]:
         lines += [f"- {case.case_id} not retrieved: {key}" for key in case.retrieval.missing]
     if case.transcription:
         lines += transcription_details(case.case_id, case.transcription)
+    if case.facets:
+        lines += [f"- {case.case_id} {line}" for line in case.facets.differences]
     return lines
 
 
@@ -211,6 +234,35 @@ def transcription_details(case_id: str, t: TranscriptionScore) -> list[str]:
         *(f"- {case_id} value not read: {value!r}" for value in t.missing_values),
         *(f"- {case_id} value read but not transcribed: {value!r}" for value in t.extra_values),
     ]
+
+
+def facet_result(score: FacetScore) -> str:
+    return (
+        f"P {_num(score.precision())} R {_num(score.recall())} F1 {_num(score.f1())} "
+        f"over {score.products} products"
+    )
+
+
+def facet_json(score: FacetScore) -> dict[str, Any]:
+    return asdict(score) | {
+        "precision": score.precision(),
+        "recall": score.recall(),
+        "f1": score.f1(),
+        "by_facet": {
+            facet: {"precision": score.precision(facet), "recall": score.recall(facet)}
+            for facet in FACETS
+        },
+    }
+
+
+def pooled_facets(scores: Sequence[FacetScore]) -> FacetScore:
+    pooled = FacetScore()
+    for score in scores:
+        pooled.matched += score.matched
+        pooled.extra += score.extra
+        pooled.missed += score.missed
+        pooled.products += score.products
+    return pooled
 
 
 def _num(value: float | None) -> str:
@@ -288,6 +340,83 @@ def write_vision_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(vision_markdown(results, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Facet model comparison -------------------------------------------------------------
+
+
+def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]) -> str:
+    lines = [
+        "# Facet models on the dev products",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Models",
+        "",
+        "Each value is a label from the vocabulary: precision counts the values the model "
+        "kept that a person labelled, recall the labelled values it kept. A value whose span "
+        "is not in the text is dropped before scoring, as ingestion drops it. Answers are "
+        "cached, so a model and prompt are read once: one run, no spread.",
+        "",
+        "| Model | Precision | Recall | F1 | Functions F1 | Dropped spans | No answer "
+        "| Tokens in / out | $ per 1,000 products | New calls |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        s, cost = r.score, r.cost_per_thousand
+        lines.append(
+            f"| {r.model} | {_num(s.precision())} | {_num(s.recall())} | {_num(s.f1())} "
+            f"| {_num(s.f1('functions'))} | {len(r.dropped)} | {len(r.failures)} "
+            f"| {r.input_tokens} / {r.output_tokens} "
+            f"| {'?' if cost is None else f'{cost:.3f}'} | {r.calls} |"
+        )
+    lines += [
+        "",
+        "## Each facet",
+        "",
+        "Precision / recall.",
+        "",
+        "| Facet | " + " | ".join(r.model for r in results) + " |",
+        "| --- |" + " --- |" * len(results),
+    ]
+    for facet in FACETS:
+        cells = [
+            f"{_num(r.score.precision(facet))} / {_num(r.score.recall(facet))}" for r in results
+        ]
+        lines.append(f"| {facet} | " + " | ".join(cells) + " |")
+    for r in results:
+        details = [f"- {line}" for line in r.score.differences]
+        details += [f"- {line} (dropped)" for line in r.dropped]
+        details += [f"- {name}: no answer: {failure}" for name, failure in r.failures.items()]
+        if details:
+            lines += [
+                "",
+                f"## {r.model}",
+                "",
+                "`+` kept but not labelled, `-` labelled but not kept, each with its span.",
+                "",
+                *details,
+            ]
+    return "\n".join(lines) + "\n"
+
+
+def write_facets_report(
+    results: Sequence[FacetModelResult], meta: Mapping[str, Any], directory: Path, stem: str
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "models": [
+            asdict(r) | facet_json(r.score) | {"cost_per_thousand": r.cost_per_thousand}
+            for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(facets_markdown(results, meta), encoding="utf-8")
     return markdown
 
 
