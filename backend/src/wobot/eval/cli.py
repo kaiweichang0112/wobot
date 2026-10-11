@@ -14,11 +14,14 @@ what the knowledge path finds. `list-agent` and `write-list` compare models for 
 path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
 turns-v1's conversations through the configured graph and scores each last turn.
 `recommend` compares models for rec_agent on recommendation-v2, finding products by their
-facets as the recommendation path does.
+facets as the recommendation path does. `judge` grades the replies an `answer` run kept,
+by a rubric and by faithfulness, with a model none of those comparisons tried; it reads
+the run's version only to match the labels to records.
 """
 
 import argparse
 import asyncio
+import json
 import subprocess
 from collections.abc import Sequence
 from datetime import datetime
@@ -52,6 +55,8 @@ from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
 from wobot.eval.facets import Decisions, decide, labelled_products, need_checks
 from wobot.eval.facets import compare_models as compare_facet_models
+from wobot.eval.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
+from wobot.eval.judge import OpenAIJudge, by_candidate, gold_keys, judge_inputs, judge_replies
 from wobot.eval.lists import DATASET as LIST_DATASET
 from wobot.eval.lists import (
     ModelWriter,
@@ -69,6 +74,7 @@ from wobot.eval.report import (
     write_answer_report,
     write_chat_report,
     write_facets_report,
+    write_judge_report,
     write_list_agent_report,
     write_recommend_report,
     write_report,
@@ -230,6 +236,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     answer.add_argument("--index-version", type=int, help="a version other than the active one")
     answer.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     answer.set_defaults(handler=_answer)
+
+    judge = commands.add_parser(
+        "judge", help="judge the replies a saved answer run kept (paid calls)"
+    )
+    judge.add_argument("run", type=Path, help="the JSON report of a wobot-eval answer run")
+    judge.add_argument(
+        "--judge",
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="the judge (default: JUDGE_MODEL and JUDGE_EFFORT)",
+    )
+    judge.add_argument(
+        "--candidate",
+        action="append",
+        default=[],
+        help="a candidate of the run, as labelled there; repeat for more (default: all)",
+    )
+    judge.add_argument(
+        "--index-version", type=int, help="the version the run searched, if it does not say"
+    )
+    judge.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    judge.set_defaults(handler=_judge)
 
     agent = commands.add_parser(
         "list-agent", help="compare models for list_agent by the calls they make (paid calls)"
@@ -591,6 +619,7 @@ async def _answer(args: argparse.Namespace, settings: Settings) -> int:
             f"rewrite {rewrite.label} prompt {rewriting.PROMPT_VERSION}, index version "
             f"{version_id}, depth {retrieval.FUSION_DEPTH}, k {retrieval.SEARCHED_CHUNKS}"
         ),
+        "index_version": version_id,
         "dataset": f"{dataset.name} {dataset.sha256[:12]}",
         "splits": list(splits),
         "cases": len(cases),
@@ -603,6 +632,64 @@ async def _answer(args: argparse.Namespace, settings: Settings) -> int:
             f"{r.candidate.label}: correct {r.mean_correct:.1f}, first words p50 "
             f"{r.first_token(0.5):.2f}s, total p50 {r.total(0.5):.2f}s p95 "
             f"{r.total(0.95):.2f}s, {r.errors} errors"
+        )
+    print(f"report: {path}")
+    return 0
+
+
+async def _judge(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    run = json.loads(args.run.read_text(encoding="utf-8"))
+    version_id = args.index_version or run["meta"].get("index_version")
+    if version_id is None:
+        print(f"{args.run.name} does not say which version it searched; pass --index-version")
+        return 1
+    if unknown := set(args.candidate) - {c["candidate"] for c in run["candidates"]}:
+        print(f"{sorted(unknown)}: not candidates of {args.run.name}")
+        return 1
+    # The labels as they are now: a case's expected behaviour may have changed since.
+    dataset = load_dataset(run["meta"]["dataset"].split()[0])
+    judge_with = args.judge or Candidate(settings.judge_model, settings.judge_effort)
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            corpus = await load_corpus(conn, version_id)
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    items = judge_inputs(run, dataset, gold_keys(dataset, corpus), args.candidate)
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(),
+        timeout=settings.openai_timeout_seconds,
+        max_retries=3,
+    )
+    judge = OpenAIJudge(client, judge_with.model, judge_with.effort)
+    started = datetime.now().astimezone()
+    results = by_candidate(await judge_replies(judge, items, progress=print))
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "judge": judge.label,
+        "prompt_version": JUDGE_PROMPT_VERSION,
+        "run": args.run.name,
+        "index_version": version_id,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]} (the run read {run['meta']['dataset']})",
+        "replies": len(items),
+        "prices": "spec 07, checked 2026-10-01",
+    }
+    path = write_judge_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-judge")
+    for r in results:
+        judged = len(r.verdicts)
+        cost = r.cost(judge_with.model)
+        print(
+            f"{r.candidate}: expected {r.passes('expected')}/{judged} "
+            f"(missed by answer {r.causes('answer')}, retrieval {r.causes('retrieval')}), "
+            f"supported {r.passes('supported')}/{judged}, grounded {r.grounded}/{r.stated}, "
+            f"{len(r.unlike_mentions)} unlike mentions, {r.errors} errors, "
+            f"judge ${'?' if cost is None else f'{cost:.2f}'}"
         )
     print(f"report: {path}")
     return 0

@@ -49,6 +49,7 @@ uv run --env-file .env wobot-eval write-list --model gpt-6-luna:none
 uv run --env-file .env wobot-eval recommend --model gpt-6-luna:low
 uv run --env-file .env wobot-eval turns
 DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
+DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge eval/runs/<stamp>-answer.json --candidate gpt-6-luna:none
 ```
 
 - A candidate is `model:effort`; Jev takes no effort.
@@ -60,6 +61,15 @@ DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6
 - `recommend` also checks each turn's `find_products` call against the case's labelled
   query, and `facets` counts product and need pairs decided unlike a person's labels:
   a value can be right while the decision it feeds is wrong.
+- `judge` grades the replies an `answer` run kept, without asking for them again, with
+  `JUDGE_MODEL`, a model no comparison tried. A rubric passes or fails three criteria,
+  each with a reason first: the reply does what the case's expected behaviour says, every
+  fact it states is in what the search found, and it answers in the user's language.
+  Faithfulness follows RAGAS's method, written here because RAGAS sends `gpt-6.1-sol`
+  parameters it refuses: the reply broken into statements, each judged against the
+  passages; the report gives the share supported and whether all are. A miss is put down
+  to retrieval when the search found none of the case's labelled items. The judge is
+  trusted only as far as a person's labels of its verdicts agree with it.
 
 ## Checks
 
@@ -84,8 +94,9 @@ ragas is a dev dependency: `uv sync` installs it, the API image does not. Two of
 dependencies need pins in `[tool.uv]` of `pyproject.toml`. ragas 0.4.3 imports
 `langchain_community.chat_models.vertexai`, which `langchain-community` 0.4 removed; and its
 `instructor` caps `jiter` below 0.15, which `openai` 3.4 and later exceed, so `jiter` is
-overridden. The metrics that need no model do not use `instructor`; a judge metric in
-phase B will first be checked under that override.
+overridden. The metrics that need no model do not use `instructor`; RAGAS's
+Faithfulness ran under that override in V8's spike, once given the parameters a
+reasoning model takes, and `judge` does not use it.
 
 - RAGAS posts a usage event to its maker for every score unless `RAGAS_DO_NOT_TRACK` is
   `true`. `wobot.eval` sets it on import, and a test keeps it set.
