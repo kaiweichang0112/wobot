@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     # Reads the parts of list entries, such as a speech's title, during ingestion.
     extraction_model: str = "gpt-5.6-luna"
-    # Reads each product's facets (DEC-069): the user's choice for ingestion, until
-    # wobot-eval facets compares models on the labelled products.
+    # Reads each product's facets. Chosen by wobot-eval facets (DEC-070): F1 0.95 on the
+    # dev products like gpt-6.1-sol, at 1/17 its cost.
     facets_model: str = "gpt-6-luna"
     # A source losing more than this share of its records holds the version for review.
     publish_max_drop: float = 0.2
@@ -75,8 +75,8 @@ class Settings(BaseSettings):
     # a mixed request's other part from memory.
     write_list_model: str = "gpt-6-luna"
     write_list_effort: str = "none"
-    # Chosen for accuracy (DEC-068): 11.7 of 14 dev against 9.7 at none and 11.3 for
-    # gpt-5.6-luna:low, the fewest products shown that may never be, at half the latter's cost.
+    # Chosen for accuracy (DEC-071): 13.7-14.0 of 14 dev with no product shown that may
+    # never be, at 2.07s p50 and $0.45 per 1,000 turns.
     rec_agent_model: str = "gpt-6-luna"
     rec_agent_effort: str = "low"
     # For Jev; in the cloud it comes from Secret Manager.

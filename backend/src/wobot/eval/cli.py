@@ -13,8 +13,8 @@ then finds, so it reads the index as `run` does; `answer` compares models for th
 what the knowledge path finds. `list-agent` and `write-list` compare models for the list
 path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
 turns-v1's conversations through the configured graph and scores each last turn.
-`recommend` compares models for rec_agent on recommendation-v2, searching the index and
-reading the products as the recommendation path does.
+`recommend` compares models for rec_agent on recommendation-v2, finding products by their
+facets as the recommendation path does.
 """
 
 import argparse

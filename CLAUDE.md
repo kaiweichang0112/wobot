@@ -24,6 +24,9 @@ uv run wobot-eval check-gold [--index-version <version>] [--show <case IDs>]
 uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
 DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
+DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>]
+uv run --env-file .env wobot-eval route|chat|rewrite|answer|list-agent|write-list|recommend --model <model:effort> [--model ...]
+uv run --env-file .env wobot-eval turns
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -85,6 +88,14 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   `LANGSMITH_TRACING_V2=false`, which the SDK reads before `LANGSMITH_TRACING`, so a
   `LANGCHAIN_TRACING_V2=true` left in the shell cannot turn tracing back on; a test
   checks it. Settings ignores `LANGSMITH_*`: trace locally with `uv run --env-file .env`.
+- **Each model node of the chat graph has its own model**, chosen by its `wobot-eval`
+  comparison (cases right, then p95, then cost) and recorded in a decision; change one
+  only with new numbers. Every prompt's `PROMPT_VERSION` is pinned by a test, so a
+  changed prompt fails until the version moves.
+- **Code judges recommendations.** `rec_agent` only turns a need into a facet query;
+  `agent/find.py` decides which products fit, from the facets ingestion read. A need the
+  vocabulary cannot say means a new word in `knowledge/facets.py`, which changes the
+  facets prompt and its version.
 - **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
   pgvector asyncpg codec: it rejects the text the type sends.
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the

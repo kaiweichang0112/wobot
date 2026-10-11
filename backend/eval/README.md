@@ -2,14 +2,21 @@
 
 `wobot-eval` scores an index version against labelled datasets with RAGAS metrics that
 need no model, computed on item identities, so no judge runs and every number repeats.
-RAGAS's judge metrics need the answer agent and come in phase B.
+Model comparisons for the chat graph's nodes play their datasets with the candidate
+models (paid calls). Judge metrics come in V8.
 
 | Path | Holds |
 | --- | --- |
 | `datasets/seed-v1.yaml` | The 29 seed questions, split 20 dev / 9 held out by scenario |
 | `datasets/fixtures-v1.yaml` | Engineering checks of ingestion outside the 30 questions |
 | `datasets/items-v1.yaml` | Questions about one item, for comparing chunk strategies |
+| `datasets/route-v1.yaml` | Messages and every acceptable path: 24 dev / 12 held out |
+| `datasets/knowledge-v1.yaml` | Questions for the knowledge path, with the items that answer them and what the reply must hold: 18 / 4 |
+| `datasets/lists-v1.yaml` | Requests for lists, with the calls accepted and the items shown: 17 / 4 |
+| `datasets/recommendation-v2.yaml` | Needs, with the products that fit, those never to show and the facet query that finds them: 15 / 3 |
+| `datasets/turns-v1.yaml` | Conversations whose last turn is scored: 8 / 2 |
 | `gold/` | Labels a person wrote from the sources; see `gold/README.md` |
+| `comparisons/` | Write-ups that compare versions, such as [v1 against v2](comparisons/agent-v1-v2.md) |
 | `runs/` | Reports, gitignored |
 
 ## Commands
@@ -26,6 +33,33 @@ uv run wobot-eval run --dataset items-v1 --split dev --index-version <version>
 version, its embedding space and strategies, the extraction model and prompt, and the
 hash of every dataset and gold file it read. Retrieval embeds each question once with the
 version's embedding model; without `OPENAI_API_KEY` those cases stay pending.
+
+## Model comparisons
+
+Each model node of the chat graph gets its own model (DV11), compared on its dataset
+with every candidate playing every dev case, three times by default:
+
+```bash
+uv run --env-file .env wobot-eval route --model jev-latest --model gpt-6-luna:none
+uv run --env-file .env wobot-eval chat --model gpt-5.6-luna:none --model gpt-6-luna:none
+uv run --env-file .env wobot-eval rewrite --model gpt-6-luna:none
+uv run --env-file .env wobot-eval answer --model gpt-6-luna:none
+uv run --env-file .env wobot-eval list-agent --model gpt-6-luna:none
+uv run --env-file .env wobot-eval write-list --model gpt-6-luna:none
+uv run --env-file .env wobot-eval recommend --model gpt-6-luna:low
+uv run --env-file .env wobot-eval turns
+DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
+```
+
+- A candidate is `model:effort`; Jev takes no effort.
+- Reports show cases right per run, p50 and p95 of the node or path, tokens and cost,
+  and every play's node flow: each node, its seconds and what it did.
+- The rule: keep the candidates within one case of the best, then take the lowest p95,
+  then the cheapest among those close to it. A person reads the failures and the flows
+  before choosing, and the choice is recorded in a decision.
+- `recommend` also checks each turn's `find_products` call against the case's labelled
+  query, and `facets` counts product and need pairs decided unlike a person's labels:
+  a value can be right while the decision it feeds is wrong.
 
 ## Checks
 
