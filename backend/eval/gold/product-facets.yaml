@@ -1,7 +1,9 @@
 # Product facets (DEC-069): what a person read in each product's catalog text, by the
 # rules in README.md. Every facet is listed; [] says the catalog states none of it.
 # Proposed by Claude from the catalog of index version 788 and confirmed value by value by
-# a person on 2026-10-11, who added 上肢復健 and 下肢復健 to HappyGoGo. The dev products
+# a person on 2026-10-11, who added 上肢復健 and 下肢復健 to HappyGoGo, then, reading the
+# catalog again where gpt-6-luna disagreed, 雙向通話 to AI-Care and AI照護感知系統,
+# 遠距健康管理 to Care U and individual to Stampede. The dev products
 # choose the extraction model; the held-out ones are read only by `wobot-eval run`.
 - product: 'AI-Care 日夜照護安全系統'
   company: '百一電子股份有限公司'
@@ -11,6 +13,7 @@
     - {value: 離床偵測, span: '離床偵測'}
     - {value: 活動監測, span: '房內動態監控'}
     - {value: 滯留偵測, span: '異常駐留'}
+    - {value: 雙向通話, span: '雙向通話'}
   form:
     - {value: room, span: '安裝於居家或照護場域的相關房間'}
   places:
@@ -136,6 +139,7 @@
     - {value: 定位, span: '定位守護'}
     - {value: 用藥提醒, span: '自動用藥提醒'}
     - {value: 雙向通話, span: '雙向通話'}
+    - {value: 遠距健康管理, span: '遠距健康管理'}
   form:
     - {value: worn, span: '佩戴手環或項掛式緊急按鈕'}
     - {value: room, span: '系統安裝遠距照護主機'}
@@ -227,6 +231,7 @@
     - {value: 心率監測, span: '心跳與呼吸偵測'}
     - {value: 呼吸監測, span: '心跳與呼吸偵測'}
     - {value: 門禁, span: '門禁辨識'}
+    - {value: 雙向通話, span: '影像式對講機'}
   form:
     - {value: room, span: '安裝於病房內'}
   places:
@@ -553,6 +558,7 @@
   power: []
   users:
     - {value: group, span: '團隊競賽'}
+    - {value: individual, span: '單人訓練'}
 - product: 'HappyGoGo團體運動軟體'
   company: '龍骨王科技股份有限公司'
   split: dev
