@@ -14,6 +14,7 @@ from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
 from wobot.eval.facets import ModelResult as FacetModelResult
+from wobot.eval.judge import CRITERIA, Judged, JudgeResult
 from wobot.eval.lists import (
     AgentResult,
     Call,
@@ -1556,4 +1557,105 @@ def write_recommend_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(recommend_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Judging saved replies ----------------------------------------------------------------
+
+
+def judge_markdown(results: Sequence[JudgeResult], meta: Mapping[str, Any]) -> str:
+    judge_model = str(meta["judge"]).partition(":")[0]
+    lines = [
+        "# Judged replies",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+        "Each criterion counts the replies the judge passed, of those it judged. Expected "
+        "is whether the reply does what a person says it should; a miss is put down to "
+        "retrieval when the search found none of the items labelled for the case, and to "
+        "the answer otherwise. Supported is whether every fact the reply states is in what "
+        "the search found, and language whether it answers in the user's language. "
+        "Grounded counts the replies all of whose statements the passages support; "
+        "faithfulness is RAGAS's share of supported statements, averaged. Unlike mentions "
+        "counts the replies where the text check and expected disagree.",
+        "",
+        "| Candidate | Expected | Missed by answer / retrieval | Supported | Language "
+        "| Grounded | Faithfulness | Unlike mentions | Judge $ | Errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in results:
+        judged = len(r.verdicts)
+        cost = r.cost(judge_model)
+        lines.append(
+            f"| {r.candidate} | {r.passes('expected')} / {judged} "
+            f"| {r.causes('answer')} / {r.causes('retrieval')} "
+            f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+            f"| {r.grounded} / {r.stated} | {_num(r.faithfulness)} "
+            f"| {len(r.unlike_mentions)} | {'?' if cost is None else f'{cost:.2f}'} "
+            f"| {r.errors} |"
+        )
+    lines += [
+        "",
+        "## Unlike mentions",
+        "",
+        "Replies the text check and the judge's expected decide differently: where the "
+        "check is blind, as to a negation, or the judge is wrong.",
+    ]
+    for r in results:
+        for j in r.unlike_mentions:
+            check = "passes" if j.mentions_passed else "fails"
+            lines += [
+                "",
+                f"- **{j.case_id} {j.candidate} run {j.run}**: the text check {check}; "
+                f"{_criterion(j, 'expected')}",
+                f"  > {' '.join(j.reply.split())}",
+            ]
+    lines += [
+        "",
+        "## Failures",
+        "",
+        "Each reply that failed a criterion or stated something unsupported, with the "
+        "judge's reasons.",
+    ]
+    for r in results:
+        for j in r.verdicts:
+            failed = [name for name in CRITERIA if j.passed(name) is False]
+            unsupported = [s for s in j.statements if not s["supported"]]
+            if not failed and not unsupported:
+                continue
+            cause = f" (missed by {j.cause})" if j.cause else ""
+            lines += ["", f"### {j.case_id} {j.candidate} run {j.run}{cause}", ""]
+            lines.append(f"> {' '.join(j.reply.split())}")
+            lines.append("")
+            lines += [f"- {_criterion(j, name)}" for name in failed]
+            lines += [f"- unsupported: {s['statement']} ({s['reason']})" for s in unsupported]
+    errors = [j for r in results for j in r.judged if j.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {j.case_id} {j.candidate} run {j.run}: {j.error}" for j in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _criterion(judged: Judged, name: str) -> str:
+    verdict = "passes" if judged.passed(name) else "FAILS"
+    return f"{name} {verdict}: {judged.criteria[name]['reason']}"
+
+
+def write_judge_report(
+    results: Sequence[JudgeResult], meta: Mapping[str, Any], directory: Path, stem: str
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "candidates": [
+            {"candidate": r.candidate, "judged": [asdict(j) for j in r.judged]} for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(judge_markdown(results, meta), encoding="utf-8")
     return markdown
