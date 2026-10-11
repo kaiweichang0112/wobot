@@ -2,6 +2,10 @@
 products' catalog text, and the values code keeps of its answer are scored value by
 value against what a person read in that text.
 
+Each model is also judged by what its facets decide: every recommendation-v2 need with a
+query is matched against the dev products as DEC-069 says, and a product a person said
+may never be shown that passes is the worst miss, whatever the value counts say.
+
 Only dev products are read here. The model and the prompt are chosen on them, so the
 held-out products still measure the choice on products it never saw; `wobot-eval run`
 scores those on what ingestion kept.
@@ -12,7 +16,7 @@ at ingestion. Writing there takes the ingestion role: DB_USER=wobot_ingest_user.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,6 +24,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from wobot.agent.recommend import recommended_before
 from wobot.eval import gold
 from wobot.eval.candidates import cost_per_thousand
 from wobot.eval.corpus import Corpus
@@ -27,8 +32,9 @@ from wobot.eval.dataset import Dataset
 from wobot.eval.metrics import Facets, FacetScore
 from wobot.knowledge.extraction import AnswerCache, CachedReader, FieldReader
 from wobot.knowledge.facet_extraction import ProductText, facet_input, grounded_facets
-from wobot.knowledge.facets import FacetValue
+from wobot.knowledge.facets import FacetQuery, FacetValue, passes
 from wobot.knowledge.models import IndexVersionRecord, ProductFacet, ProductRecord
+from wobot.knowledge.records.text import key_text
 
 # What a facet case's check names.
 FACET_CHECK = "facets"
@@ -75,10 +81,67 @@ def as_facets(values: Sequence[FacetValue]) -> dict[str, dict[str, str]]:
     return facets
 
 
+@dataclass(frozen=True)
+class NeedCheck:
+    """A recommendation case's need, with the products a person said fit it and those that
+    may never be shown, by name as compared."""
+
+    case_id: str
+    query: FacetQuery
+    fits: frozenset[str]
+    never: frozenset[str]
+    shown: frozenset[str]  # recommended earlier in the conversation: left out, as at runtime
+
+
+def need_checks(datasets: Sequence[Dataset]) -> list[NeedCheck]:
+    checks = []
+    for dataset in datasets:
+        for case in dataset.cases:
+            check = case.check or {}
+            if check.get("kind") != "recommendation" or "query" not in check:
+                continue
+            answers = (turn["answer"] for turn in case.history if turn.get("answer"))
+            checks.append(
+                NeedCheck(
+                    case.case_id,
+                    FacetQuery.of(check["query"]),
+                    frozenset(map(key_text, check.get("recommends") or ())),
+                    frozenset(map(key_text, check.get("never") or ())),
+                    frozenset(map(key_text, recommended_before(answers))),
+                )
+            )
+    return checks
+
+
+@dataclass
+class Decisions:
+    never_passing: list[str] = field(default_factory=list)  # "CASE-022: <product>"
+    fits_filtered: list[str] = field(default_factory=list)
+
+
+def decide(
+    checks: Sequence[NeedCheck], facets: Mapping[str, Mapping[str, Collection[str]]]
+) -> Decisions:
+    """Each need against the products whose facets are given, by product name."""
+    decisions = Decisions()
+    for check in checks:
+        for name, product_facets in facets.items():
+            key = key_text(name)
+            if key in check.shown:
+                continue
+            fits = passes(product_facets, check.query)
+            if fits and key in check.never:
+                decisions.never_passing.append(f"{check.case_id}: {name}")
+            if not fits and key in check.fits:
+                decisions.fits_filtered.append(f"{check.case_id}: {name}")
+    return decisions
+
+
 @dataclass
 class ModelResult:
     model: str
     score: FacetScore = field(default_factory=FacetScore)
+    decisions: Decisions = field(default_factory=Decisions)
     failures: dict[str, str] = field(default_factory=dict)  # by product: why no answer
     dropped: list[str] = field(default_factory=list)  # values whose span is not the text's
     calls: int = 0  # paid for in this run; the rest were kept from earlier runs
@@ -99,12 +162,14 @@ async def compare_models(
     readers: Sequence[FieldReader[ProductText]],
     products: Sequence[Product],
     cache: AnswerCache,
+    checks: Sequence[NeedCheck] = (),
 ) -> list[ModelResult]:
     results = []
     for reader in readers:
         cached = CachedReader(reader, cache, cache_input=facet_input)
         answers, stats = await cached.read_all([product.text for product in products])
         result = ModelResult(reader.question.model, calls=stats.calls)
+        kept_by_product = {}
         for product in products:
             answer = answers[product.text]
             result.input_tokens += answer.input_tokens
@@ -116,7 +181,9 @@ async def compare_models(
                 kept, dropped = grounded_facets(answer.output, product.fields)
                 result.dropped += [f"{product.name}: {note}" for note in dropped]
             # A product without an answer counts every labelled value as missed.
-            result.score.add(product.name, product.expected, as_facets(kept))
+            kept_by_product[product.name] = as_facets(kept)
+            result.score.add(product.name, product.expected, kept_by_product[product.name])
+        result.decisions = decide(checks, kept_by_product)
         results.append(result)
     return results
 

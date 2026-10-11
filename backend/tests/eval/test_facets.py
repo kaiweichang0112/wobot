@@ -4,14 +4,22 @@ import pytest
 
 from tests.eval.test_gold import FACETS as GOLD
 from tests.knowledge.fakes import FakeFacetReader, MemoryAnswerCache
+from wobot.eval import gold
 from wobot.eval.corpus import Corpus, Item
-from wobot.eval.dataset import Case, Dataset
-from wobot.eval.facets import Product, compare_models, labelled_products
+from wobot.eval.dataset import Case, Dataset, load_dataset
+from wobot.eval.facets import (
+    Product,
+    compare_models,
+    decide,
+    labelled_products,
+    need_checks,
+)
 from wobot.eval.metrics import FacetScore
 from wobot.eval.report import facets_markdown, to_json, write_facets_report
 from wobot.eval.runner import CaseResult, RunResult
 from wobot.knowledge.extraction import Answer
 from wobot.knowledge.facets import FACETS
+from wobot.knowledge.records.text import key_text
 
 FIELDS = {
     "product_name": "TM-1",
@@ -66,7 +74,7 @@ async def test_each_model_is_scored_on_what_code_keeps_of_its_answer():
     assert (read.calls, read.input_tokens) == (1, 900)
     assert refused.failures == {"TM-1": "refused: no"} and refused.score.recall() == 0.0
     report = facets_markdown([read, refused], {"products": 1})
-    assert "| fake-facets | 0.50 | 0.50 | 0.50 | 1.00 | 1 | 0 |" in report
+    assert "| fake-facets | 0 | 0 | 0.50 | 0.50 | 0.50 | 1.00 | 1 | 0 |" in report
     assert "- TM-1: + viewing phone 「手機」" in report
 
 
@@ -102,3 +110,42 @@ def test_the_reports_write_facet_counts_as_json(tmp_path):
     assert case["facets"]["missed"]["functions"] == 1
     path = write_facets_report([], {"products": 0}, tmp_path, "r")
     assert json.loads(path.with_suffix(".json").read_text())["models"] == []
+
+
+def test_on_the_labels_every_recommendation_need_is_decided_as_a_person_decided():
+    """The labels, the dataset's queries and DEC-069's rules agree: no product a person
+    said may never be shown passes, and none said to fit is filtered out."""
+    checks = need_checks([load_dataset("recommendation-v2")])
+    path = gold.GOLD_DIR / "product-facets.yaml"
+    labels = {
+        ref.value["name"]: ref.expected["facets"]
+        for split in ("dev", "heldout")
+        for ref in gold.product_facet_refs(path, split)
+    }
+
+    decisions = decide(checks, labels)
+
+    assert len(checks) == 16  # every case but the one asking and the one routed to chat
+    assert (decisions.never_passing, decisions.fits_filtered) == ([], [])
+
+
+def test_a_need_leaves_out_what_was_shown_and_names_what_it_decides_wrong():
+    checks = need_checks([load_dataset("recommendation-v2")])
+    by_case = {check.case_id: check for check in checks}
+    worn_bed = {"functions": {"離床偵測"}, "form": {"worn"}}
+    facets = {
+        "WhizPad 安心臥智慧床墊": {"functions": {"離床偵測"}, "form": {"bed"}},
+        "家用緊急救援通報系統 HO-140": {"functions": {"離床偵測"}},  # worn unstated
+        "iProték 智慧床墊": worn_bed,
+    }
+
+    decisions = decide([by_case["CASE-022"], by_case["REC-FX-10"]], facets)
+
+    # WhizPad fits and was shown in REC-FX-10's history, where it is labelled never: left
+    # out as the runtime guard leaves it out, so it is no miss.
+    assert by_case["REC-FX-10"].shown == {key_text("WhizPad 安心臥智慧床墊")}
+    assert decisions.never_passing == [
+        "CASE-022: 家用緊急救援通報系統 HO-140",
+        "REC-FX-10: 家用緊急救援通報系統 HO-140",
+    ]
+    assert decisions.fits_filtered == ["CASE-022: iProték 智慧床墊", "REC-FX-10: iProték 智慧床墊"]

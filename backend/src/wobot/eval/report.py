@@ -363,16 +363,21 @@ def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]
         "Each value is a label from the vocabulary: precision counts the values the model "
         "kept that a person labelled, recall the labelled values it kept. A value whose span "
         "is not in the text is dropped before scoring, as ingestion drops it. Answers are "
-        "cached, so a model and prompt are read once: one run, no spread.",
+        "cached, so a model and prompt are read once: one run, no spread. Never passing "
+        "counts dev products a person said may never be shown for a recommendation need "
+        "that pass it on the model's facets, and must be 0; fits filtered, the fitting ones "
+        "that do not.",
         "",
-        "| Model | Precision | Recall | F1 | Functions F1 | Dropped spans | No answer "
-        "| Tokens in / out | $ per 1,000 products | New calls |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Model | Never passing | Fits filtered | Precision | Recall | F1 | Functions F1 "
+        "| Dropped spans | No answer | Tokens in / out | $ per 1,000 products | New calls |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in results:
         s, cost = r.score, r.cost_per_thousand
         lines.append(
-            f"| {r.model} | {_num(s.precision())} | {_num(s.recall())} | {_num(s.f1())} "
+            f"| {r.model} | {len(r.decisions.never_passing)} "
+            f"| {len(r.decisions.fits_filtered)} "
+            f"| {_num(s.precision())} | {_num(s.recall())} | {_num(s.f1())} "
             f"| {_num(s.f1('functions'))} | {len(r.dropped)} | {len(r.failures)} "
             f"| {r.input_tokens} / {r.output_tokens} "
             f"| {'?' if cost is None else f'{cost:.3f}'} | {r.calls} |"
@@ -392,7 +397,9 @@ def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]
         ]
         lines.append(f"| {facet} | " + " | ".join(cells) + " |")
     for r in results:
-        details = [f"- {line}" for line in r.score.differences]
+        details = [f"- never passing: {line}" for line in r.decisions.never_passing]
+        details += [f"- fit filtered: {line}" for line in r.decisions.fits_filtered]
+        details += [f"- {line}" for line in r.score.differences]
         details += [f"- {line} (dropped)" for line in r.dropped]
         details += [f"- {name}: no answer: {failure}" for name, failure in r.failures.items()]
         if details:
@@ -417,6 +424,7 @@ def write_facets_report(
             {
                 "model": r.model,
                 "score": facet_json(r.score),
+                "decisions": asdict(r.decisions),
                 "failures": r.failures,
                 "dropped": r.dropped,
                 "calls": r.calls,

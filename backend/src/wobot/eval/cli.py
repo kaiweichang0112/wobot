@@ -50,8 +50,8 @@ from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import dataset_names, load_dataset
+from wobot.eval.facets import Decisions, decide, labelled_products, need_checks
 from wobot.eval.facets import compare_models as compare_facet_models
-from wobot.eval.facets import labelled_products
 from wobot.eval.lists import DATASET as LIST_DATASET
 from wobot.eval.lists import (
     ModelWriter,
@@ -397,8 +397,9 @@ async def _facets(args: argparse.Namespace, settings: Settings) -> int:
             corpus = await load_corpus(conn, version_id)
         datasets = [load_dataset(name) for name in dataset_names()]
         products = labelled_products(datasets, corpus, "dev")
+        checks = need_checks(datasets)
         readers = [OpenAIFacetReader(client, model) for model in args.model]
-        results = await compare_facet_models(readers, products, DbAnswerCache(engine))
+        results = await compare_facet_models(readers, products, DbAnswerCache(engine), checks)
     finally:
         await engine.dispose()
         if connector is not None:
@@ -410,17 +411,28 @@ async def _facets(args: argparse.Namespace, settings: Settings) -> int:
         "prompt_version": FACETS_PROMPT_VERSION,
         "reasoning_effort": FACETS_REASONING_EFFORT,
         "products": len(products),
+        "needs": len(checks),
+        # The check itself: on the labels, no product may be decided wrong.
+        "decided_by_labels": _decided(decide(checks, {p.name: p.expected for p in products})),
     }
     path = write_facets_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-facets")
     for r in results:
         s = r.score
         print(
-            f"{r.model}: P {s.precision():.3f} R {s.recall():.3f} F1 {s.f1():.3f}, "
+            f"{r.model}: {_decided(r.decisions)}; "
+            f"P {s.precision():.3f} R {s.recall():.3f} F1 {s.f1():.3f}, "
             f"{len(r.dropped)} dropped, {len(r.failures)} without an answer, "
             f"{r.calls} new calls"
         )
     print(f"report: {path}")
     return 0
+
+
+def _decided(decisions: Decisions) -> str:
+    return (
+        f"{len(decisions.never_passing)} never passing, "
+        f"{len(decisions.fits_filtered)} fits filtered"
+    )
 
 
 async def _route(args: argparse.Namespace, settings: Settings) -> int:
