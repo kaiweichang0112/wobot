@@ -184,15 +184,50 @@ def has_function(functions: Collection[str], name: str) -> bool:
     return any(f in functions for f in FUNCTION_GROUPS.get(name, (name,)))
 
 
-def passes(facets: Mapping[str, Collection[str]], query: FacetQuery) -> bool:
-    """Whether a product fits: every function stated, and no condition contradicted."""
-    functions = facets.get("functions", ())
-    if not all(has_function(functions, name) for name in query.functions):
-        return False
-    conditions = [
-        status(facets.get(facet, ()), value, must=must)
+def condition_name(facet: str, value: str, *, must: bool) -> str:
+    """How a condition is named to the agent and in gaps: places=home, form!=worn."""
+    return f"{facet}{'=' if must else '!='}{value}"
+
+
+def conditions_of(query: FacetQuery) -> list[tuple[str, str, bool]]:
+    """Each condition of a query as (facet, value, must)."""
+    return [
+        (facet, value, must)
         for must, part in ((True, query.must), (False, query.must_not))
         for facet, values in part.items()
         for value in values
     ]
-    return "contradicted" not in conditions
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """A product against a need: each function stated or not, each condition's status."""
+
+    functions: dict[str, bool]
+    conditions: dict[str, Status]
+
+    @property
+    def passes(self) -> bool:
+        """Every function stated, and no condition contradicted (DEC-065)."""
+        return all(self.functions.values()) and "contradicted" not in self.conditions.values()
+
+    @property
+    def supported(self) -> int:
+        """The conditions the catalog states: a product stating more ranks higher."""
+        return sum(status == "supported" for status in self.conditions.values())
+
+
+def judge(facets: Mapping[str, Collection[str]], query: FacetQuery) -> Judgement:
+    functions = facets.get("functions", ())
+    return Judgement(
+        {name: has_function(functions, name) for name in query.functions},
+        {
+            condition_name(facet, value, must=must): status(facets.get(facet, ()), value, must=must)
+            for facet, value, must in conditions_of(query)
+        },
+    )
+
+
+def passes(facets: Mapping[str, Collection[str]], query: FacetQuery) -> bool:
+    """Whether a product fits: every function stated, and no condition contradicted."""
+    return judge(facets, query).passes

@@ -8,6 +8,7 @@ from wobot.knowledge.facets import (
     FUNCTIONS,
     FacetQuery,
     allowed_values,
+    judge,
     passes,
     status,
 )
@@ -58,6 +59,26 @@ def test_a_product_fits_with_every_function_and_no_condition_contradicted():
     assert not passes({"functions": {"離床偵測"}, "form": {"worn"}}, query)
     assert not passes({"functions": {"睡眠監測"}, "form": {"bed"}}, query)
     assert passes({"functions": {"下肢復健"}}, FacetQuery.of({"functions": ["復健訓練"]}))
+
+
+def test_a_judgement_names_each_need_and_counts_what_the_catalog_states():
+    query = FacetQuery.of(
+        {
+            "functions": ["離床偵測", "翻身監測"],
+            "must": {"places": ["home"], "viewing": ["computer"]},
+            "must_not": {"form": ["worn"]},
+        }
+    )
+
+    judgement = judge({"functions": {"離床偵測"}, "form": {"bed"}, "places": {"home"}}, query)
+
+    assert judgement.functions == {"離床偵測": True, "翻身監測": False}
+    assert judgement.conditions == {
+        "places=home": "supported",
+        "viewing=computer": "unknown",
+        "form!=worn": "supported",
+    }
+    assert (judgement.passes, judgement.supported) == (False, 2)
 
 
 @pytest.mark.parametrize(

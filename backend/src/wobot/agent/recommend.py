@@ -14,10 +14,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from wobot.agent.find import PREFERRED_COMPANY
 from wobot.agent.rec_agent import Pick, RecommendProducts
 
-# Products of this company come first among those that pass (DEC-065).
-PREFERRED_COMPANY = "世大智科"
 # A recommendation names one product unless the user asks for more; "all" stops here too.
 MOST_PRODUCTS = 5
 
