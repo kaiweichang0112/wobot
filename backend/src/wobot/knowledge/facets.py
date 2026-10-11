@@ -46,7 +46,9 @@ FUNCTIONS: tuple[Function, ...] = (
     # Safety and monitoring
     Function("跌倒偵測", ("偵測跌倒", "跌倒警報", "跌倒檢測", "跌倒自動感測"), ("跌倒預防",)),
     Function("跌倒預防", ("預防跌倒", "跌倒風險", "跌倒風險評估"), ("跌倒偵測",)),
-    Function("離床偵測", ("離床預警", "離床警示", "離床提醒", "離床通知"), ("睡眠監測",)),
+    Function(
+        "離床偵測", ("離床預警", "離床警示", "離床提醒", "離床通知", "在床狀態"), ("睡眠監測",)
+    ),
     Function("翻身監測", ("翻身提醒", "久臥提醒", "翻身次數")),
     Function("壓瘡預防", ("壓瘡", "壓傷", "褥瘡", "均壓")),
     Function("呼吸監測", ("呼吸偵測", "呼吸頻率")),
@@ -111,6 +113,19 @@ FUNCTION_GROUPS: dict[str, tuple[str, ...]] = {
 }
 
 FACETS = ("functions", *FACET_VALUES)
+
+# The catalog text a value's span may be read from, in the order it is looked for.
+FACET_SOURCE_FIELDS = ("features_text", "usage_text", "summary_text")
+
+
+@dataclass(frozen=True)
+class FacetValue:
+    """One value a product's text states, with the span that states it and its field."""
+
+    facet: str
+    value: str
+    span: str
+    source_field: str
 
 
 def allowed_values(facet: str) -> tuple[str, ...]:

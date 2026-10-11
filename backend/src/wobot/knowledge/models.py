@@ -26,11 +26,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from wobot.knowledge.facets import FACETS
+from wobot.knowledge.facets import FACET_SOURCE_FIELDS, FACETS
 from wobot.models import Base
-
-# The catalog text a product facet's span is read from.
-FACET_SOURCE_FIELDS = ("features_text", "usage_text", "summary_text")
 
 RECORD_TYPES = (
     "product",

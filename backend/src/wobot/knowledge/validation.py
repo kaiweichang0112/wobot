@@ -24,6 +24,8 @@ class ValidationReport:
     counts: dict[str, int] = field(default_factory=dict)
     blocking: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Not wrong enough to fail, but not to publish by itself: a person accepts or not.
+    holds: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -35,6 +37,7 @@ class ValidationReport:
             "counts": self.counts,
             "blocking": self.blocking,
             "warnings": self.warnings,
+            "holds": self.holds,
         }
 
 
@@ -61,6 +64,9 @@ def check_products(
         if l1:
             labels[l1].add(fields["category_l1_label"])
         report.warnings += [f"{row}: {warning}" for warning in draft.warnings]
+    # A product without facets is never found by them: publishing would lose it quietly.
+    if unread := [d.locator["row"] for d in drafts if d.fields.get("facets_model") is None]:
+        report.holds.append(f"{len(unread)} products have no facets: rows {unread}")
     for code, names in sorted(labels.items()):
         if len(names) > 1:
             report.warnings.append(f"category {code} has several labels: {sorted(names)}")

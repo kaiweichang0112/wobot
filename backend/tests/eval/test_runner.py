@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import select
 
-from tests.knowledge.fakes import FakeEmbedder
+from tests.knowledge.fakes import FakeEmbedder, fake_facets
 from tests.knowledge.grc_site import grc_source
 from tests.knowledge.gtech_site import documents_source
 from tests.knowledge.workbooks import catalog_workbook, product_row
@@ -32,7 +32,7 @@ async def ingested(ingest_db, tmp_path):
         ingest_db,
         LocalBlobStore(tmp_path / "blobs"),
         FakeEmbedder(),
-        [ProductCatalogSource(fetch), grc_source([])],
+        [ProductCatalogSource(fetch, fake_facets()), grc_source([])],
     )
     async with ingest_db.begin() as conn:
         return await load_corpus(conn, result.index_version_id)

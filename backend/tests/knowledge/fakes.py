@@ -15,6 +15,9 @@ from wobot.knowledge.extraction import (
     CachedReader,
     Question,
 )
+from wobot.knowledge.facet_extraction import PRODUCT_FACETS, ProductText, facet_input
+from wobot.knowledge.facet_extraction import PROMPT_VERSION as FACETS_PROMPT_VERSION
+from wobot.knowledge.facets import FACETS, FUNCTION_NAMES
 from wobot.knowledge.models import EMBEDDING_DIMENSIONS
 from wobot.knowledge.vision import PROMPT_VERSION as VISION_PROMPT_VERSION
 from wobot.knowledge.vision import VISUAL_CONTENT, VisualInput, visual_input
@@ -86,6 +89,38 @@ class MemoryAnswerCache:
 
 def fake_lectures(reader: FakeLectureReader | None = None) -> CachedReader:
     return CachedReader(reader or FakeLectureReader(), MemoryAnswerCache())
+
+
+def named_functions(text: ProductText) -> dict[str, Any]:
+    """A stand-in reading: every function the text names word for word, and a bed when it
+    says the product lies under the mattress."""
+    whole = f"{text.features}{text.usage}{text.summary}"
+    answer: dict[str, Any] = {facet: [] for facet in FACETS}
+    answer["functions"] = [{"value": n, "span": n} for n in FUNCTION_NAMES if n in whole]
+    if "床墊下" in whole:
+        answer["form"] = [{"value": "bed", "span": "床墊下"}]
+    return answer
+
+
+class FakeFacetReader:
+    question = Question(PRODUCT_FACETS, "fake-facets", FACETS_PROMPT_VERSION)
+
+    def __init__(
+        self, answer: Callable[[ProductText], Answer | dict[str, Any]] = named_functions
+    ) -> None:
+        self._answer = answer
+        self.calls: list[ProductText] = []
+
+    async def read(self, text: ProductText) -> Answer:
+        self.calls.append(text)
+        answer = self._answer(text)
+        if isinstance(answer, Answer):
+            return answer
+        return Answer(answer, None, "fake-facets-2026-01-01", 900, 80)
+
+
+def fake_facets(reader: FakeFacetReader | None = None) -> CachedReader[ProductText]:
+    return CachedReader(reader or FakeFacetReader(), MemoryAnswerCache(), cache_input=facet_input)
 
 
 def labelled_picture(item: VisualInput) -> dict[str, Any]:
