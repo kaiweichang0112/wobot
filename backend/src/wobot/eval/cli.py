@@ -850,6 +850,10 @@ async def _check_gold(args: argparse.Namespace, settings: Settings) -> int:
             for r in unresolved:
                 problem = f" ({r.problem})" if r.problem else ""
                 print(f"    {r.ref.where}: {r.ref.kind} {gold.label_value(r.ref)!r}{problem}")
+            for r in resolved:
+                for problem in gold.facet_span_problems(r, corpus):
+                    problems += 1
+                    print(f"    {r.ref.where}: {problem}")
             if case.case_id in args.show:
                 for r in resolved:
                     for key in r.keys:

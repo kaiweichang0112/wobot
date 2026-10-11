@@ -271,3 +271,76 @@ def test_an_image_is_found_by_the_address_a_browser_copies():
     )
 
     assert [r.keys for r in resolved] == [["image:a"], ["document_page:catalog:2"], []]
+
+
+FACETS = """\
+- product: TM-1
+  company: Co
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '離床提醒'}
+  form:
+    - {value: bed, span: '鋪於床墊下'}
+  places: []
+  sensing: []
+  viewing: []
+  power: []
+  users: []
+- product: TM-2
+  company: Co
+  split: heldout
+  functions: []
+  form: []
+  places: []
+  sensing: []
+  viewing: []
+  power: []
+  users: []
+"""
+
+
+def test_product_facets_name_the_split_s_products_with_each_value_s_span(tmp_path):
+    path = write(tmp_path, "f.yaml", FACETS)
+
+    [ref] = gold.product_facet_refs(path, "dev")
+
+    assert (ref.kind, ref.value) == ("product", {"name": "TM-1", "company": "Co"})
+    assert ref.expected["facets"]["functions"] == {"離床偵測": "離床提醒"}
+    assert ref.expected["facets"]["places"] == {}
+    assert [r.value["name"] for r in gold.product_facet_refs(path, "heldout")] == ["TM-2"]
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (("  users: []\n", ""), "users is missing"),
+        (("離床偵測", "離床感應"), "'離床感應' is not a functions value"),
+        (("{value: bed, span: '鋪於床墊下'}", "{value: bed}"), "bed needs the span"),
+        (("  places: []\n", "  places: []\n  colour: []\n"), "no facet colour"),
+        (("split: dev", "split: test"), "split is dev or heldout"),
+        (("  form:\n", "  form:\n    - {value: bed, span: '床墊'}\n"), "bed is listed twice"),
+    ],
+)
+def test_a_facet_label_that_cannot_be_scored_is_an_error(tmp_path, change, problem):
+    path = write(tmp_path, "f.yaml", FACETS.replace(*change, 1))
+
+    with pytest.raises(gold.GoldError, match=problem):
+        gold.product_facet_refs(path, "dev")
+
+
+def test_a_facet_span_its_product_s_text_lacks_is_reported(tmp_path):
+    product = {
+        "product_name": "TM-1",
+        "company_name": "Co",
+        "features_text": "提供離床提醒。",
+        "usage_text": "感測墊鋪於床墊下。",
+        "summary_text": None,
+    }
+    items = corpus(Item("product:co:tm-1", "product", product))
+    path = write(tmp_path, "f.yaml", FACETS.replace("離床提醒", "離床預警"))
+
+    [resolved] = gold.resolve(gold.product_facet_refs(path, "dev"), items)
+
+    assert gold.facet_span_problems(resolved, items) == [
+        "functions 離床偵測: '離床預警' is not in the catalog text"
+    ]

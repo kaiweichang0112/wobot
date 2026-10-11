@@ -186,6 +186,19 @@ async def test_cases_that_cannot_run_say_why(ingest_db, ingested, gold_dir):
     (gold_dir / "empty.txt").write_text("# nothing pasted yet\n", encoding="utf-8")
     retrieval = {"kind": "retrieval", "gold": {"file": "empty.txt", "as": "speech"}}
     missing = {"kind": "list", "records": "lecture", "gold": {"file": "none.txt", "as": "speech"}}
+    facets = "".join(
+        f"  {facet}: []\n" for facet in ("functions", "form", "places", "sensing", "viewing")
+    )
+    (gold_dir / "facets.yaml").write_text(
+        "- product: 測試床墊 TM-1\n  company: 範例科技股份有限公司\n  split: dev\n"
+        f"{facets}  power: []\n  users: []\n",
+        encoding="utf-8",
+    )
+    facet_check = {
+        "kind": "facets",
+        "records": "product",
+        "gold": {"file": "facets.yaml", "as": "product_facets"},
+    }
 
     results = await score(
         ingest_db,
@@ -195,12 +208,20 @@ async def test_cases_that_cannot_run_say_why(ingest_db, ingested, gold_dir):
         case("C2", retrieval),
         case("C3", missing),
         case("C4", pending="held out", split="heldout"),
+        case("C5", facet_check),
     )
 
     assert (results["C1"].status, results["C1"].detail) == ("pending", "needs phase B")
     assert (results["C2"].status, results["C2"].detail) == ("pending", "not labelled yet")
     assert results["C3"].status == "error"
     assert results["C4"].split == "heldout"
+    facet_result = results["C5"]
+    assert (facet_result.status, facet_result.labels, facet_result.unresolved) == (
+        "pending",
+        1,
+        [],
+    )
+    assert facet_result.detail == "the version keeps no product facets"
 
 
 async def test_a_vision_reading_against_a_person_s_transcription(ingest_db, tmp_path, gold_dir):

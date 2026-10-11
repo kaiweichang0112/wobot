@@ -8,6 +8,9 @@ Four checks, all on item identities:
   labelled relevant items.
 - transcription: what a vision model read in one image or PDF page against what a person
   transcribed from it.
+
+Product facets (DEC-069) are labelled and matched here, and scored once ingestion keeps
+them.
 """
 
 import hashlib
@@ -97,6 +100,10 @@ async def run_datasets(
             if result.kind == "retrieval":
                 retrieval.append((result, case, resolved))
                 continue
+            if result.kind == "facets":
+                # Ingestion keeps no facets yet (DEC-069): labelled, matched, not scored.
+                result.detail = "the version keeps no product facets"
+                continue
             if result.kind == "transcription":
                 await _score_transcription(result, resolved, corpus)
                 continue
@@ -136,6 +143,8 @@ def case_refs(case: Case, gold_dir: Path, used: dict[str, str]) -> list[gold.Ref
             return gold.speech_field_refs(path)
         case "transcription":
             return gold.transcription_refs(path, case.case_id)
+        case "product_facets":
+            return gold.product_facet_refs(path, case.split)
         case None:
             return gold.named_refs(path, case.case_id, spec.get("key", "relevant"))
     raise gold.GoldError(f"{case.case_id}: unknown gold format {spec.get('as')!r}")
