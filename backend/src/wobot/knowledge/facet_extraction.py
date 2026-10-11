@@ -28,7 +28,7 @@ PRODUCT_FACETS = "product_facets"
 # Any change to the instructions, the vocabulary, the schema or the request settings needs
 # a new version: answers cached under the old one answered another question. A test pins
 # the prompt and fails until the version is bumped.
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 # Some reasoning, so the model applies the rules, such as a ward bed naming no place.
 REASONING_EFFORT = "low"
 # Reasoning counts against the cap; a product states fifteen values at most so far.
@@ -61,8 +61,14 @@ One span may state several values.
 functions: what the product itself does, named by the vocabulary below, not by the \
 text's words: 離床預警 in the text is 離床偵測. A function of an accessory the text says \
 can be added counts. A nearby function is not the same: preventing falls or rating their \
-risk is 跌倒預防, not 跌倒偵測; sleep is not leaving the bed. The words in brackets are \
-how a text may say it; "not" names a function it is not.
+risk is 跌倒預防, not 跌倒偵測; sleep is not leaving the bed. A measurement (血壓量測, \
+血糖量測, 血氧量測, 體溫量測, 心率監測) counts only when the product itself measures it: a \
+product that records, tracks or shows what other devices measure has 遠距健康管理 \
+instead, and uploading data to a cloud alone is neither. 緊急求助 is the person asking \
+for help, by a button or a call; an alert the product sends by itself is not. 活動監測 \
+is a person's activity in a room or in daily life; body movement in bed (體動) or \
+posture is not. The words in brackets are how a text may say it; "not" names a function \
+it is not.
 {_vocabulary()}
 
 form: what the product is.
@@ -72,28 +78,37 @@ exoskeleton. Not something staff wear, such as smart glasses for nurses.
 bedside or on the wall above the bed is room.
 - room: mounted on a ceiling or wall, placed at the bedside or in a room, or a base unit.
 - device: used only to measure, such as a blood-pressure monitor or a kiosk.
-- equipment: training equipment, mats or projection systems. software: an app, web \
-system or platform. service: a service people provide, or one that matches them. robot.
+- equipment: training equipment, mats or projection systems.
+- software: the product itself is software: an app, web system or platform with no \
+device of its own. A device's app, cloud platform or monitoring software is how it is \
+viewed, not its form.
+- service: a service people provide, or a platform that matches people to one (媒合).
+- robot: a robot, including a powered exoskeleton, which is also worn.
 A product may have several, such as a worn button and a base unit.
 
 places: where the text says the product is used.
 - home: 居家, 家中, 在家, 家庭. institution: long-term care, nursing homes, 養老機構, \
-day care, community centres. hospital: hospitals, clinics, 醫療院所, 醫療機構, wards \
-(病房). public: schools, companies, gyms, public spaces.
-- A ward bed (病床), nurses, carers or residents alone name no place.
+day care, community centres. hospital: hospitals, clinics, 醫療院所, 醫療機構, \
+醫療照護機構, wards (病房), and 醫療 in a list of places, such as 居家、醫療與長照場域. \
+public: schools, companies, gyms, public spaces.
+- A ward bed (病床), staff such as nurses, carers or medical staff (醫療人員), or \
+residents alone name no place, nor does a place the product reports to or connects \
+with, such as 整合至醫療機構.
 
 sensing: how the product senses, only as the text names it. camera includes images \
 (影像), lenses (鏡頭) and 3D depth sensing; radar includes millimetre-wave; wifi is Wi-Fi \
 sensing, not a Wi-Fi connection; pressure, fiber (光纖), infrared (紅外線). A sensor, pad \
 or mat whose kind the text does not name has no value.
 
-viewing: where a carer sees the data or the alert. app: a phone or tablet app, or the \
-phone. computer: a PC, desktop, web page, website or central monitoring software. line: \
-LINE. sms: text messages. phone: a phone call. device: the unit's own panel or screen, a \
+viewing: where a carer sees the data or the alert. app: a phone, tablet or other mobile \
+device (手機, 平板, 行動裝置, 智能裝置), or its app. computer: a PC, desktop, web page, \
+website or central monitoring software. line: LINE. sms: text messages. phone: a voice \
+call to a number (撥打電話); 手機 alone is app. device: the unit's own panel or screen, a \
 nurse station or a call system. A platform, cloud or remote monitoring alone has no value.
 
-power: mains when the text says it is plugged in, connected to power or backed up during \
-a power cut; battery when it charges or runs on a battery.
+power: mains when the text says it is plugged in or connected to power; battery when it \
+charges, runs on a battery or warns of a low battery (低電量). A battery that only bridges \
+a power cut (停電備電) means it is plugged in: mains.
 
 users: only for activities such as exercise or cognitive training: group when several \
 take part at once or compete, individual when the text says one person at a time."""
