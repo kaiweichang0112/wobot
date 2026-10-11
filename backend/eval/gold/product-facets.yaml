@@ -3,7 +3,7 @@
 # Proposed by Claude from the catalog of index version 788 and confirmed value by value by
 # a person on 2026-10-11, who added 上肢復健 and 下肢復健 to HappyGoGo, then, reading the
 # catalog again where gpt-6-luna disagreed, 雙向通話 to AI-Care and AI照護感知系統,
-# 遠距健康管理 to Care U and individual to Stampede. The dev products
+# 遠距健康管理 and 活動監測 to Care U and individual to Stampede. The dev products
 # choose the extraction model; the held-out ones are read only by `wobot-eval run`.
 - product: 'AI-Care 日夜照護安全系統'
   company: '百一電子股份有限公司'
@@ -140,6 +140,7 @@
     - {value: 用藥提醒, span: '自動用藥提醒'}
     - {value: 雙向通話, span: '雙向通話'}
     - {value: 遠距健康管理, span: '遠距健康管理'}
+    - {value: 活動監測, span: '即時監控宅內老人的活動及健康狀況'}
   form:
     - {value: worn, span: '佩戴手環或項掛式緊急按鈕'}
     - {value: room, span: '系統安裝遠距照護主機'}
