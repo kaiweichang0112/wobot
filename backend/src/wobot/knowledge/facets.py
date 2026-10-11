@@ -11,7 +11,9 @@ added or renamed changes what the extraction asks, so it bumps that prompt's ver
 rather than needing a migration.
 """
 
-from dataclasses import dataclass
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 # The facets besides `functions`, each with the values a product may have; one product may
 # have several, such as a worn pendant and a base unit in the room.
@@ -131,3 +133,66 @@ class FacetValue:
 def allowed_values(facet: str) -> tuple[str, ...]:
     """The values a facet may have; KeyError for a facet there is not."""
     return FUNCTION_NAMES if facet == "functions" else FACET_VALUES[facet]
+
+
+# --- Judging a product against a need ---------------------------------------------------
+
+Status = Literal["supported", "contradicted", "unknown"]
+
+
+@dataclass(frozen=True)
+class FacetQuery:
+    """What a fitting product must have: every function, and per facet the values it must
+    have and must not have. A function may be a group, met by any of its functions."""
+
+    functions: tuple[str, ...] = ()
+    must: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    must_not: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    @classmethod
+    def of(cls, data: Mapping[str, Any]) -> "FacetQuery":
+        """A query as a dataset writes it; ValueError for a word outside the vocabulary."""
+        if unknown := sorted(set(data) - {"functions", "must", "must_not"}):
+            raise ValueError(f"no query part {', '.join(unknown)}")
+        functions = tuple(data.get("functions") or ())
+        if outside := [
+            f for f in functions if f not in FUNCTION_NAMES and f not in FUNCTION_GROUPS
+        ]:
+            raise ValueError(f"not functions: {outside}")
+        conditions = {}
+        for part in ("must", "must_not"):
+            conditions[part] = {}
+            for facet, values in (data.get(part) or {}).items():
+                if facet not in FACET_VALUES:
+                    raise ValueError(f"{part}: no facet {facet!r}")
+                if outside := [v for v in values if v not in FACET_VALUES[facet]]:
+                    raise ValueError(f"{part}: not {facet} values: {outside}")
+                conditions[part][facet] = tuple(values)
+        return cls(functions, conditions["must"], conditions["must_not"])
+
+
+def status(values: Collection[str], value: str, *, must: bool) -> Status:
+    """One condition on a facet (DEC-069): a facet the text states nothing of is unknown;
+    else the value it must have is supported when stated and contradicted when not, and
+    the value it must not have the other way round."""
+    if not values:
+        return "unknown"
+    return "supported" if (value in values) == must else "contradicted"
+
+
+def has_function(functions: Collection[str], name: str) -> bool:
+    return any(f in functions for f in FUNCTION_GROUPS.get(name, (name,)))
+
+
+def passes(facets: Mapping[str, Collection[str]], query: FacetQuery) -> bool:
+    """Whether a product fits: every function stated, and no condition contradicted."""
+    functions = facets.get("functions", ())
+    if not all(has_function(functions, name) for name in query.functions):
+        return False
+    conditions = [
+        status(facets.get(facet, ()), value, must=must)
+        for must, part in ((True, query.must), (False, query.must_not))
+        for facet, values in part.items()
+        for value in values
+    ]
+    return "contradicted" not in conditions
