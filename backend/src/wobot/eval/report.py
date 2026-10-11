@@ -15,6 +15,7 @@ from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
 from wobot.eval.facets import ModelResult as FacetModelResult
 from wobot.eval.judge import CRITERIA, Judged, JudgeResult
+from wobot.eval.judge_labels import AgainstLabels
 from wobot.eval.lists import (
     AgentResult,
     Call,
@@ -1563,7 +1564,11 @@ def write_recommend_report(
 # --- Judging saved replies ----------------------------------------------------------------
 
 
-def judge_markdown(results: Sequence[JudgeResult], meta: Mapping[str, Any]) -> str:
+def judge_markdown(
+    results: Sequence[JudgeResult],
+    meta: Mapping[str, Any],
+    against: AgainstLabels | None = None,
+) -> str:
     judge_model = str(meta["judge"]).partition(":")[0]
     lines = [
         "# Judged replies",
@@ -1596,6 +1601,8 @@ def judge_markdown(results: Sequence[JudgeResult], meta: Mapping[str, Any]) -> s
             f"| {len(r.unlike_mentions)} | {'?' if cost is None else f'{cost:.2f}'} "
             f"| {r.errors} |"
         )
+    if against is not None:
+        lines += _against_labels(against)
     lines += [
         "",
         "## Unlike mentions",
@@ -1638,13 +1645,68 @@ def judge_markdown(results: Sequence[JudgeResult], meta: Mapping[str, Any]) -> s
     return "\n".join(lines) + "\n"
 
 
+def _against_labels(against: AgainstLabels) -> list[str]:
+    lines = [
+        "",
+        "## Against a person's labels",
+        "",
+        "Each comparison counts the labelled replies the judge and the person decide alike, "
+        "and Cohen's kappa, which takes out what they would agree on by chance. Grounded is "
+        "faithfulness's verdict that every statement is supported, against the person's "
+        "supported. The judge is trusted when it agrees on 90% or more and fails every "
+        "reply the person fails.",
+        "",
+        "| Compared | Labelled | Agree | Kappa | Judge passes, person fails "
+        "| Judge fails, person passes |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for c in against.comparisons:
+        a = c.agreement
+        share = "–" if a.share is None else f"{a.share:.0%}"
+        lines.append(
+            f"| {c.name} | {a.labelled} | {share} | {_num(a.kappa)} | {a.judge_passes} "
+            f"| {a.judge_fails} |"
+        )
+    if against.blank:
+        lines += ["", f"{against.blank} verdicts are not labelled yet."]
+    if against.stale:
+        lines += [
+            "",
+            f"Not compared, their reply changed or this run lacks it: {', '.join(against.stale)}.",
+        ]
+    for c in against.comparisons:
+        for judged, label in c.unlike:
+            person = (
+                "passes"
+                if getattr(label, "supported" if c.name == "grounded" else c.name)
+                else "fails"
+            )
+            reason = (
+                "; ".join(s["statement"] for s in judged.statements if not s["supported"])
+                if c.name == "grounded"
+                else judged.criteria[c.name]["reason"]
+            )
+            note = f" Note: {label.note}" if label.note else ""
+            lines += [
+                "",
+                f"- **{label.id} {c.name}, {judged.case_id} {judged.candidate} run {judged.run}**: "
+                f"the person {person} it; the judge: {reason}.{note}",
+                f"  > {' '.join(judged.reply.split())}",
+            ]
+    return lines
+
+
 def _criterion(judged: Judged, name: str) -> str:
     verdict = "passes" if judged.passed(name) else "FAILS"
     return f"{name} {verdict}: {judged.criteria[name]['reason']}"
 
 
 def write_judge_report(
-    results: Sequence[JudgeResult], meta: Mapping[str, Any], directory: Path, stem: str
+    results: Sequence[JudgeResult],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+    against: AgainstLabels | None = None,
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     data = {
@@ -1657,5 +1719,5 @@ def write_judge_report(
         json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
     )
     markdown = directory / f"{stem}.md"
-    markdown.write_text(judge_markdown(results, meta), encoding="utf-8")
+    markdown.write_text(judge_markdown(results, meta, against), encoding="utf-8")
     return markdown

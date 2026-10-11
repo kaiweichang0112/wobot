@@ -57,6 +57,16 @@ from wobot.eval.facets import Decisions, decide, labelled_products, need_checks
 from wobot.eval.facets import compare_models as compare_facet_models
 from wobot.eval.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from wobot.eval.judge import OpenAIJudge, by_candidate, gold_keys, judge_inputs, judge_replies
+from wobot.eval.judge_labels import (
+    LABELS,
+    AgainstLabels,
+    against_labels,
+    any_filled,
+    labels_template,
+    load_judged,
+    read_labels,
+    sample,
+)
 from wobot.eval.lists import DATASET as LIST_DATASET
 from wobot.eval.lists import (
     ModelWriter,
@@ -257,7 +267,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--index-version", type=int, help="the version the run searched, if it does not say"
     )
     judge.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    judge.add_argument(
+        "--labels", type=Path, default=LABELS, help="a person's labels to measure the judge by"
+    )
     judge.set_defaults(handler=_judge)
+
+    judge_sample = commands.add_parser(
+        "judge-sample", help="write a sample of a judged run for a person to label blind"
+    )
+    judge_sample.add_argument("report", type=Path, help="the JSON report of a judge run")
+    judge_sample.add_argument("--size", type=int, default=40, help="replies to label")
+    judge_sample.add_argument(
+        "--supported", type=int, default=15, help="of them, replies to label supported for"
+    )
+    judge_sample.add_argument("--seed", type=int, default=0, help="for the sample and its order")
+    judge_sample.add_argument("--out", type=Path, default=LABELS, help="the labels file")
+    judge_sample.set_defaults(handler=_judge_sample)
+
+    judge_agreement = commands.add_parser(
+        "judge-agreement",
+        help="measure a judge run against a person's labels, rewriting its report (no calls)",
+    )
+    judge_agreement.add_argument("report", type=Path, help="the JSON report of a judge run")
+    judge_agreement.add_argument(
+        "--labels", type=Path, default=LABELS, help="a person's labels to measure the judge by"
+    )
+    judge_agreement.set_defaults(handler=_judge_agreement)
 
     agent = commands.add_parser(
         "list-agent", help="compare models for list_agent by the calls they make (paid calls)"
@@ -680,7 +715,8 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
         "replies": len(items),
         "prices": "spec 07, checked 2026-10-01",
     }
-    path = write_judge_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-judge")
+    against = _against(args.labels, args.run.name, [j for r in results for j in r.judged])
+    path = write_judge_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-judge", against)
     for r in results:
         judged = len(r.verdicts)
         cost = r.cost(judge_with.model)
@@ -691,8 +727,64 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
             f"{len(r.unlike_mentions)} unlike mentions, {r.errors} errors, "
             f"judge ${'?' if cost is None else f'{cost:.2f}'}"
         )
+    _print_against(against)
     print(f"report: {path}")
     return 0
+
+
+async def _judge_sample(args: argparse.Namespace, settings: Settings) -> int:
+    if any_filled(args.out):
+        print(f"{args.out} holds a person's labels; move it away to sample again")
+        return 1
+    meta, judged = load_judged(args.report)
+    run = json.loads((args.report.parent / meta["run"]).read_text(encoding="utf-8"))
+    dataset = load_dataset(run["meta"]["dataset"].split()[0])
+    sampled = sample(judged, args.size, args.supported, args.seed)
+    template = labels_template(
+        sampled, run, meta["run"], meta["index_version"], dataset, args.report.name, args.seed
+    )
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(template, encoding="utf-8")
+    asked = [s for s in sampled if s.asks_supported]
+    print(
+        f"{len(sampled)} replies to label, supported asked of {len(asked)}, the evidence of "
+        f"{len({s.judged.case_id for s in asked})} cases: {args.out}"
+    )
+    return 0
+
+
+async def _judge_agreement(args: argparse.Namespace, settings: Settings) -> int:
+    meta, judged = load_judged(args.report)
+    against = _against(args.labels, meta["run"], judged)
+    if against is None:
+        print(f"{args.labels} does not label {meta['run']}")
+        return 1
+    path = write_judge_report(
+        by_candidate(judged), meta, args.report.parent, args.report.stem, against
+    )
+    _print_against(against)
+    print(f"report: {path}")
+    return 0
+
+
+def _against(path: Path, run_name: str, judged: Sequence[Any]) -> AgainstLabels | None:
+    """The judge against a person's labels, when they label this run."""
+    if not path.exists():
+        return None
+    labels = read_labels(path)
+    return against_labels(judged, labels) if labels.run == run_name else None
+
+
+def _print_against(against: AgainstLabels | None) -> None:
+    if against is None:
+        return
+    for c in against.comparisons:
+        a = c.agreement
+        share = "-" if a.share is None else f"{a.share:.0%}"
+        kappa = "-" if a.kappa is None else f"{a.kappa:.2f}"
+        print(f"against labels, {c.name}: {share} of {a.labelled} alike, kappa {kappa}")
+    if against.blank:
+        print(f"{against.blank} verdicts not labelled yet")
 
 
 def _list_meta(

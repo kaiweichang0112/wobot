@@ -153,3 +153,27 @@ It makes paid calls, so ask before running it, and keeps the answers where inges
 does, which takes the ingestion role. The heldout cases are never read by it; `wobot-eval
 run` scores them on the version ingestion built.
 
+## Judge labels
+
+`judge-labels.yaml` holds a person's verdicts on replies a `wobot-eval answer` run kept,
+which the judge is measured against. `wobot-eval judge-sample <judge report>` writes it
+blank: every reply the judge failed or the text check disagreed with, filled up with
+replies it passed, shuffled, without the judge's verdicts. It refuses to write over a file
+that holds a label.
+
+- Read the earlier turns, the message, what the case expects and the reply, and write
+  `pass` or `fail` under `expected`: the reply does what the case expects. Judge the
+  meaning, not the wording or the order, and do not require what the case marks optional
+  ("may").
+- Where an entry has `supported`, also read its case's passages and records under
+  `evidence`: it passes when every fact the reply states is in them. A greeting, advice,
+  encouragement and wording the user asked to be written are not facts, and neither is
+  saying the sources do not state something. True is not enough: a fact the passages do
+  not hold fails.
+- Leave a verdict blank to come back to it; a blank is not a label. Add a `note`, in
+  English, when the call was close.
+- `reply_sha` ties a label to the reply's text: a label is never compared with another
+  reply. Set `labelled_on` when the labels are finished.
+
+`wobot-eval judge-agreement <judge report>` measures a judge run against the labels,
+rewriting its report without a call; `wobot-eval judge` does so for each new run.

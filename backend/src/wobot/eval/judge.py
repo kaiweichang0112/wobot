@@ -137,16 +137,17 @@ class JudgeInput:
     mentions_passed: bool | None = None  # the text check's verdict; None when it had none
 
     def shown(self) -> dict[str, Any]:
-        """The evidence as the answer saw it: passages and records, without handles."""
-        return {
-            "passages": [
-                {"header": p["header"], "text": p["text"]}
-                for p in self.evidence.get("passages", [])
-            ],
-            "records": [
-                {"type": r["type"], **r["fields"]} for r in self.evidence.get("records", [])
-            ],
-        }
+        return shown_evidence(self.evidence)
+
+
+def shown_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    """The evidence as the answer saw it: passages and records, without handles."""
+    return {
+        "passages": [
+            {"header": p["header"], "text": p["text"]} for p in evidence.get("passages", [])
+        ],
+        "records": [{"type": r["type"], **r["fields"]} for r in evidence.get("records", [])],
+    }
 
 
 class Judge(Protocol):
