@@ -36,6 +36,7 @@ from wobot.eval.metrics import (
 )
 from wobot.eval.recommend import NODES as REC_NODES
 from wobot.eval.recommend import RecCase, RecPlay, RecResult
+from wobot.eval.recommend import query_text as rec_query_text
 from wobot.eval.recommend import rule_pick as rec_rule_pick
 from wobot.eval.rewrite import RewriteCase, RewriteResult, Searched
 from wobot.eval.rewrite import rule_pick as rewrite_rule_pick
@@ -1391,21 +1392,25 @@ def recommend_markdown(
         "products labelled to fit, none that may never be shown, and as many as asked, per "
         "run, as the mean and the range. Never shown counts plays that showed a product "
         "that may never be shown. Preferred counts plays whose preferred product came "
-        "first, of those that could. Path runs from rec_agent to the reply, every round; "
-        "cost is every call of the agent's model. An error is wrong and left out of latency.",
+        "first, of those that could. Query right counts plays whose last find asked for "
+        "the case's labelled query, of those that found: a diagnosis, not part of Right. "
+        "Path runs from rec_agent to the reply, every round; cost is every call of the "
+        "agent's model. An error is wrong and left out of latency.",
         "",
-        "| Candidate | Right | Never shown | Preferred | Model calls | Searches "
+        "| Candidate | Right | Never shown | Preferred | Query right | Model calls | Searches "
         "| Path p50 s | Path p95 s | Tokens in / out | $ per 1,000 | Errors |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in results:
         per_run = r.correct_per_run()
         tokens_in, tokens_out = r.mean_tokens
         cost = r.cost_per_thousand
         met, judged = r.preferred_shown()
+        asked_right, asked = r.query_right()
         lines.append(
             f"| {r.candidate.label} | {r.mean_correct:.1f} / {len(cases)} "
             f"({min(per_run)}–{max(per_run)}) | {r.never_shown} | {met} / {judged} "
+            f"| {asked_right} / {asked} "
             f"| {r.mean_model_calls:.2f} | {r.mean_searches:.2f} "
             f"| {r.latency(0.5):.2f} | {r.latency(0.95):.2f} "
             f"| {tokens_in:.0f} / {tokens_out:.0f} "
@@ -1442,6 +1447,22 @@ def recommend_markdown(
     for case_id in sorted({case for r in results for case in r.failures()}):
         cells = [_rec_failure_cell(r.failures().get(case_id, [])) for r in results]
         lines.append(f"| {case_id} | {_expected(by_id[case_id])} | " + " | ".join(cells) + " |")
+    wrong = [(r, p) for r in results for p in r.plays if p.query_right is False and p.run == 0]
+    if wrong:
+        lines += [
+            "",
+            "## Queries",
+            "",
+            "Each first-run find that asked for other than the labelled query.",
+            "",
+            "| Case | Candidate | Labelled | Asked |",
+            "| --- | --- | --- | --- |",
+        ]
+        lines += [
+            f"| {p.case_id} | {r.candidate.label} "
+            f"| {_cell(rec_query_text(by_id[p.case_id].query))} | {_cell(p.asked or '')} |"
+            for r, p in wrong
+        ]
     lines += [
         "",
         "## Flows",
@@ -1507,6 +1528,7 @@ def write_recommend_report(
                 "count": c.count,
                 "searches": c.searches,
                 "language": c.language,
+                "query": None if c.query is None else rec_query_text(c.query),
             }
             for c in cases
         ],
@@ -1516,6 +1538,7 @@ def write_recommend_report(
                 "correct_per_run": r.correct_per_run(),
                 "never_shown": r.never_shown,
                 "preferred_shown": list(r.preferred_shown()),
+                "query_right": list(r.query_right()),
                 "path_p50": r.latency(0.5),
                 "path_p95": r.latency(0.95),
                 "nodes": {

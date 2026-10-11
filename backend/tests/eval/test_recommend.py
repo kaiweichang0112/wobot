@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,7 @@ from wobot.eval.recommend import (
     rule_pick,
 )
 from wobot.eval.report import recommend_markdown
+from wobot.knowledge.facets import FacetQuery
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 FIT, OTHER, NEVER = "WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "Monibed 紅外線離床警示器"
@@ -52,7 +54,8 @@ def test_the_cases_are_recommendation_v2s_less_the_routers():
     assert case_022.actions == ("recommend",) and case_022.prefers == FIT
     assert NEVER in case_022.never and FIT in case_022.recommends
     asking = next(c for c in cases if c.case.case_id == "CASE-021")
-    assert asking.searches is False and asking.recommends is None
+    assert asking.searches is False and asking.recommends is None and asking.query is None
+    assert case_022.query.must_not == {"form": ("worn",)}
 
 
 @pytest.mark.parametrize(
@@ -108,6 +111,7 @@ async def test_a_play_keeps_the_flow_and_scores_the_card(knowledge):  # noqa: F8
     assert bed in played.flow[-1].note
     assert played.flow[-1].note.endswith("recommend: 測試床墊 TM-1")
     assert played.searches == 1 and set(played.nodes) == {"rec_agent", "rec_tools"}
+    assert played.asked == "離床偵測" and played.query_right is None  # the case has no query
     assert played.seconds == pytest.approx(sum(step.seconds for step in played.flow))
 
 
@@ -165,3 +169,37 @@ def test_the_rule_keeps_the_right_then_takes_the_fastest():
     slow_best, fast_close, fast_poor = result("a", 3, 9.0), result("b", 2, 4.0), result("c", 0, 1.0)
 
     assert rule_pick([slow_best, fast_close, fast_poor]) is fast_close
+
+
+@pytest.mark.parametrize(
+    ("args", "right"),
+    [
+        ({"functions": ["跌倒偵測"]}, True),
+        ({"functions": ["跌倒偵測"], "count": 3, "must": {"places": []}}, True),  # same needs
+        ({"functions": ["跌倒偵測", "跌倒預防"]}, False),  # a nearby function added
+        ({"functions": ["跌倒偵測"], "must_not": {"form": ["worn"]}}, False),
+        ({"functions": ["跌倒感應"]}, False),  # no find at all: refused
+    ],
+)
+async def test_a_turn_s_last_find_is_held_to_the_labelled_query(knowledge, args, right):  # noqa: F811
+    asks = AIMessage("請問是在家裡用嗎？")
+    app = rec_path(
+        FakeToolModel(calls(("find_products", args)), asks), knowledge.db, knowledge.embedder
+    )
+    item = rec_case(actions=("replied", "recommend"), query=FacetQuery(("跌倒偵測",)))
+
+    played = await play(app, item, knowledge.version_id, run=0)
+
+    assert played.query_right is right
+
+
+def test_the_report_lists_the_finds_that_asked_for_another_query():
+    wrong = replace(result("a", 3, 1.0).plays[0], asked="跌倒偵測 跌倒預防", query_right=False)
+    item = replace(
+        rec_case(query=FacetQuery(("跌倒偵測",))), case=replace(rec_case().case, case_id="C0")
+    )
+
+    report = recommend_markdown([RecResult(Candidate("a", "none"), 1, [wrong])], [item], {})
+
+    assert "| a:none | 1.0 / 1 (1–1) | 0 | 0 / 0 | 0 / 1 |" in report
+    assert "| C0 | a:none | 跌倒偵測 | 跌倒偵測 跌倒預防 |" in report
