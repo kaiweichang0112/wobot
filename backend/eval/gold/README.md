@@ -61,6 +61,41 @@ piece of the entry, copied as written.
   quotation mark: `“Smart care in practice,” keynote speech, …` has the title
   `Smart care in practice`.
 
+## Product facets
+
+`product-facets.yaml` labels what each product's catalog text states, in the fixed
+vocabulary of `src/wobot/knowledge/facets.py` (DEC-069). Recommendations filter products
+by these facets, so a value the text does not state, or one it states but the label
+lacks, decides what is recommended.
+
+- Read the product's main features, usage and summary as the workbook writes them.
+- List every facet. Each value takes the span that states it: one continuous piece of the
+  text, copied exactly. `[]` says the text states none of that facet; leaving a facet out
+  is an error.
+- `functions`: what the product itself does, named by the vocabulary, not by the text's
+  words: `離床預警` in the text is `離床偵測`. A nearby function is not the same: preventing
+  falls or rating their risk is `跌倒預防`, not `跌倒偵測`; sleep is not bed exit.
+- `form`: `worn` is on the person cared for (a wristband, pendant, patch, insole or
+  exoskeleton), not on staff, such as smart glasses a nurse wears. `bed` is the mattress, or
+  a pad on or under it; a device at the bedside or on the wall above the bed is `room`.
+  `device` is used only to measure, such as a blood-pressure monitor or a kiosk.
+- `places`: home, institution (long-term care, nursing homes, day care, community
+  centres), hospital (hospitals, clinics, wards) or public (schools, companies, gyms,
+  public spaces). A ward bed (`病床`), nurses or residents alone name no place.
+- `sensing`: `camera` includes images and 3D depth sensing. A sensor, pad or mat whose kind
+  the text does not name is no value.
+- `viewing`: where a carer sees the data or the alert. `computer` includes a PC, a desktop,
+  web pages and central monitoring software; a platform or remote monitoring alone is no
+  value. `device` is the unit itself, a nurse station or a call system.
+- `power`: `mains` when the text says it is plugged in or backed up during a power cut;
+  `battery` when it charges or runs on a battery.
+- `users`: for activities only: `group` when several take part at once or compete.
+- `split`: the dev products choose the extraction model; the held-out ones are scored
+  only on what ingestion keeps.
+
+`check-gold` reports a product that matches no record, and a span its record's text does
+not hold.
+
 ## Transcriptions
 
 `transcriptions.yaml` holds what a person reads in one picture: an image a page shows, or

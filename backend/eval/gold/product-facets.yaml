@@ -1,0 +1,852 @@
+# Product facets (DEC-069): what a person read in each product's catalog text, by the
+# rules in README.md. Every facet is listed; [] says the catalog states none of it.
+# Proposed by Claude from the catalog of index version 788 and confirmed value by value by
+# a person on 2026-10-11, who added 上肢復健 and 下肢復健 to HappyGoGo. The dev products
+# choose the extraction model; the held-out ones are read only by `wobot-eval run`.
+- product: 'AI-Care 日夜照護安全系統'
+  company: '百一電子股份有限公司'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 離床偵測, span: '離床偵測'}
+    - {value: 活動監測, span: '房內動態監控'}
+    - {value: 滯留偵測, span: '異常駐留'}
+  form:
+    - {value: room, span: '安裝於居家或照護場域的相關房間'}
+  places:
+    - {value: home, span: '適用於居家、醫療機構與公共場域'}
+    - {value: hospital, span: '適用於居家、醫療機構與公共場域'}
+    - {value: public, span: '適用於居家、醫療機構與公共場域'}
+    - {value: institution, span: '長照機構、日照中心'}
+  sensing:
+    - {value: camera, span: '搭配 NVR 進行影像錄製與回放'}
+  viewing: []
+  power: []
+  users: []
+- product: 'AI智能照護系統'
+  company: '合錦科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 活動監測, span: '家庭行為分析'}
+    - {value: 睡眠監測, span: '睡眠中斷統計'}
+    - {value: 空氣品質監測, span: '空氣品質'}
+  form:
+    - {value: room, span: '放置於長者活動區域天花板或桌面'}
+  places:
+    - {value: home, span: '適合居家與長照場所'}
+    - {value: institution, span: '適合居家與長照場所'}
+  sensing:
+    - {value: camera, span: '採用 AI 影像檢測'}
+  viewing:
+    - {value: app, span: '行動裝置 app 上查看'}
+    - {value: computer, span: '向手機、平板或 PC 發出緊急警報'}
+  power:
+    - {value: mains, span: '接上 110–240VAC 電源'}
+  users: []
+- product: 'FusionCare 毫米波雷達基站'
+  company: 'Fusion智匯網'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '跌倒'}
+    - {value: 離床偵測, span: '離床'}
+    - {value: 滯留偵測, span: '浴廁停留逾時'}
+    - {value: 呼吸監測, span: '呼吸偵測'}
+    - {value: 睡眠監測, span: '捕捉呼吸、睡眠與跌倒資訊'}
+  form:
+    - {value: room, span: '將毫米波雷達基站裝設於天花板'}
+  places:
+    - {value: home, span: '適用於居家、長照與醫療場域'}
+    - {value: institution, span: '適用於居家、長照與醫療場域'}
+    - {value: hospital, span: '適用於居家、長照與醫療場域'}
+  sensing:
+    - {value: radar, span: '採用毫米波雷達技術'}
+  viewing:
+    - {value: app, span: '手機 app 發出推播警報'}
+  power:
+    - {value: mains, span: '接上電源'}
+  users: []
+- product: 'OGA雷達毫米波生理感測裝置'
+  company: '尚茂智能科技股份有限公司'
+  split: heldout
+  functions:
+    - {value: 呼吸監測, span: '感測人體呼吸與心跳'}
+    - {value: 心率監測, span: '感測人體呼吸與心跳'}
+    - {value: 睡眠監測, span: '睡眠狀態偵測'}
+    - {value: 跌倒偵測, span: '跌倒檢測'}
+  form:
+    - {value: room, span: '安置於照護場域如臥床區域或公共空間'}
+  places:
+    - {value: home, span: '適合居家、醫療與長照場域應用'}
+    - {value: hospital, span: '適合居家、醫療與長照場域應用'}
+    - {value: institution, span: '適合居家、醫療與長照場域應用'}
+  sensing:
+    - {value: radar, span: '配備毫米波雷達技術'}
+  viewing:
+    - {value: line, span: '即時發送 LINE 訊息'}
+  power:
+    - {value: mains, span: '接上電源'}
+  users: []
+- product: '毫米波跌倒偵測雷達'
+  company: '邁摩科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '非接觸式跌倒偵測'}
+  form:
+    - {value: room, span: '天花板或牆面安裝'}
+  places:
+    - {value: home, span: '家庭、社區與醫療照護場所'}
+    - {value: institution, span: '家庭、社區與醫療照護場所'}
+    - {value: hospital, span: '家庭、社區與醫療照護場所'}
+  sensing:
+    - {value: radar, span: '採用毫米波技術'}
+  viewing: []
+  power: []
+  users: []
+- product: '長者照護智慧觀測服務'
+  company: '元創電子股份有限公司'
+  split: dev
+  functions:
+    - {value: 呼吸監測, span: '呼吸頻率'}
+    - {value: 活動監測, span: '室內活動'}
+    - {value: 睡眠監測, span: '睡眠品質'}
+    - {value: 滯留偵測, span: '浴廁滯留'}
+    - {value: 跌倒偵測, span: '浴廁滯留與跌倒'}
+  form:
+    - {value: room, span: '將 Wi‑Fi 感測器裝置安置於長者居家常活動區域'}
+  places:
+    - {value: home, span: '適用於居家照護、長照機構與公共場域'}
+    - {value: institution, span: '適用於居家照護、長照機構與公共場域'}
+    - {value: public, span: '適用於居家照護、長照機構與公共場域'}
+  sensing:
+    - {value: wifi, span: '結合全球領先的 Wi‑Fi 感測'}
+  viewing:
+    - {value: line, span: '發送 LINE、簡訊'}
+    - {value: sms, span: '發送 LINE、簡訊'}
+    - {value: app, span: '由手機、平板或電腦查看'}
+    - {value: computer, span: '由手機、平板或電腦查看'}
+  power: []
+  users: []
+- product: 'Care U 雲端居家照護系統'
+  company: '新光保全股份有限公司'
+  split: dev
+  functions:
+    - {value: 緊急求助, span: '緊急通報'}
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 定位, span: '定位守護'}
+    - {value: 用藥提醒, span: '自動用藥提醒'}
+    - {value: 雙向通話, span: '雙向通話'}
+  form:
+    - {value: worn, span: '佩戴手環或項掛式緊急按鈕'}
+    - {value: room, span: '系統安裝遠距照護主機'}
+  places:
+    - {value: home, span: '使用者於居家佩戴手環'}
+  sensing: []
+  viewing:
+    - {value: sms, span: '外出簡訊通知'}
+  power: []
+  users: []
+- product: 'JD‑170G 跌倒偵測腕戴呼叫器'
+  company: '金阿波羅股份有限公司'
+  split: heldout
+  functions:
+    - {value: 跌倒偵測, span: '跌倒自動感測'}
+    - {value: 緊急求助, span: '按求救按鈕主動通話'}
+    - {value: 定位, span: '定位識別'}
+  form:
+    - {value: worn, span: '戴於手腕'}
+  places:
+    - {value: home, span: '提升居家、醫療與長照場所'}
+    - {value: hospital, span: '提升居家、醫療與長照場所'}
+    - {value: institution, span: '提升居家、醫療與長照場所'}
+  sensing: []
+  viewing:
+    - {value: device, span: '與醫護鈴系統或中央平台整合'}
+  power:
+    - {value: battery, span: '長時間電池續航力'}
+  users: []
+- product: '安照小護士MAX XC‑8000 居家型'
+  company: '瀚微科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 活動監測, span: '自動識別日常活動'}
+    - {value: 緊急求助, span: '緊急按鈕'}
+  form:
+    - {value: worn, span: '佩戴項鍊式'}
+    - {value: room, span: '將通信主機置於中央位置'}
+  places:
+    - {value: home, span: '使用者於家中連接'}
+  sensing: []
+  viewing:
+    - {value: app, span: '推送至照護者手機'}
+  power:
+    - {value: battery, span: '低電量通知'}
+  users: []
+- product: '家用緊急救援通報系統 HO-140'
+  company: '樂齡生活事業股份有限公司'
+  split: dev
+  functions:
+    - {value: 緊急求助, span: '緊急呼叫按鈕'}
+    - {value: 雙向通話, span: '雙向對講'}
+    - {value: 離床偵測, span: '離床偵測器'}
+  form:
+    - {value: worn, span: '佩戴隨身呼叫器'}
+    - {value: room, span: '將主機與家用電話線'}
+  places:
+    - {value: home, span: '佩戴隨身呼叫器在家中使用'}
+  sensing: []
+  viewing:
+    - {value: phone, span: '自動撥打預設號碼'}
+  power:
+    - {value: mains, span: '停電2小時備電工作'}
+  users: []
+- product: 'AI 零接觸智能照護系統'
+  company: '緯創醫療科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 呼吸監測, span: '呼吸、心跳、離床'}
+    - {value: 心率監測, span: '呼吸、心跳、離床'}
+    - {value: 離床偵測, span: '呼吸、心跳、離床'}
+    - {value: 睡眠監測, span: '睡眠作息報表'}
+  form:
+    - {value: room, span: '安裝於床頭牆面上方或側牆'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: line, span: '透過 LINE 推播'}
+  power: []
+  users: []
+- product: 'AI照護感知系統'
+  company: '雄欣科技有限公司'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 離床偵測, span: '離床偵測'}
+    - {value: 滯留偵測, span: '廁所久留'}
+    - {value: 心率監測, span: '心跳與呼吸偵測'}
+    - {value: 呼吸監測, span: '心跳與呼吸偵測'}
+    - {value: 門禁, span: '門禁辨識'}
+  form:
+    - {value: room, span: '安裝於病房內'}
+  places:
+    - {value: hospital, span: '專為醫療照護機構設計'}
+  sensing:
+    - {value: camera, span: '結合 3D 深度感測技術'}
+  viewing:
+    - {value: app, span: '透過專用應用程式查看'}
+  power:
+    - {value: mains, span: '確保設備與電源連接'}
+  users: []
+- product: 'Agicare 智能均壓床'
+  company: '醫博科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 壓瘡預防, span: '預防褥瘡'}
+  form:
+    - {value: bed, span: '將床墊鋪設於床架上'}
+  places:
+    - {value: home, span: '適用於居家照護、醫療院所及長照機構'}
+    - {value: hospital, span: '適用於居家照護、醫療院所及長照機構'}
+    - {value: institution, span: '適用於居家照護、醫療院所及長照機構'}
+  sensing: []
+  viewing:
+    - {value: device, span: '透過控制面板或遠距照護系統'}
+  power: []
+  users: []
+- product: 'ForeAider Z 智慧感知墊'
+  company: '輔人科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '離床警示'}
+    - {value: 心率監測, span: '心跳與呼吸量測'}
+    - {value: 呼吸監測, span: '心跳與呼吸量測'}
+  form:
+    - {value: bed, span: '鋪設在床墊下方'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: app, span: '發送警報至照護者的手機'}
+  power:
+    - {value: mains, span: '連接電源'}
+  users: []
+- product: 'Pamorcare智慧臥床照護寶'
+  company: '百醫醫材科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '離床警示'}
+    - {value: 翻身監測, span: '久臥提醒'}
+    - {value: 壓瘡預防, span: '降低壓瘡風險'}
+    - {value: 遠距健康管理, span: '健康數據的紀錄與追蹤'}
+  form:
+    - {value: bed, span: '床墊鋪設於病床上'}
+  places: []
+  sensing:
+    - {value: pressure, span: '112個壓力偵測點'}
+  viewing:
+    - {value: app, span: '透過APP提供離床警示'}
+    - {value: device, span: '透過主機上的控制面板'}
+  power:
+    - {value: mains, span: '確保設備與電源連接'}
+  users: []
+- product: 'WhizPad 安心臥智慧床墊'
+  company: '世大智科股份有限公司'
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '離床預警'}
+    - {value: 壓瘡預防, span: '壓瘡防護'}
+    - {value: 睡眠監測, span: '睡眠管理'}
+    - {value: 跌倒預防, span: '有效預防跌倒'}
+  form:
+    - {value: bed, span: '智慧床墊鋪設於病床上'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: device, span: '透過主機上的控制面板'}
+  power:
+    - {value: mains, span: '確保設備與電源連接'}
+  users: []
+- product: 'iCue智慧照護幫手'
+  company: '維思感創股份有限公司'
+  split: heldout
+  functions:
+    - {value: 翻身監測, span: '如翻身、久臥、呼吸等'}
+    - {value: 呼吸監測, span: '如翻身、久臥、呼吸等'}
+  form:
+    - {value: bed, span: '感測墊鋪設於原有床墊下'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: app, span: '透過手機應用程式查看'}
+  power:
+    - {value: mains, span: '確保裝置與電源連接'}
+  users: []
+- product: 'iProték 智慧床墊'
+  company: '嘉碩生醫電子股份有限公司'
+  split: dev
+  functions:
+    - {value: 心率監測, span: '心率、呼吸與體動'}
+    - {value: 呼吸監測, span: '心率、呼吸與體動'}
+    - {value: 睡眠監測, span: '分析睡眠品質'}
+    - {value: 離床偵測, span: '在床／離床警示'}
+  form:
+    - {value: bed, span: '鋪設於床墊下方'}
+  places:
+    - {value: home, span: '需要居家照護的長者'}
+  sensing:
+    - {value: fiber, span: '非接觸式光纖傳導技術'}
+  viewing:
+    - {value: app, span: '透過配套的應用程式查看'}
+  power:
+    - {value: mains, span: '確保裝置與電源連接'}
+  users: []
+- product: 'nFOPT 非侵入性光纖生理監測技術'
+  company: '滙嘉健康醫療器材股份有限公司'
+  split: dev
+  functions:
+    - {value: 心率監測, span: '心率、呼吸、體動'}
+    - {value: 呼吸監測, span: '心率、呼吸、體動'}
+  form:
+    - {value: bed, span: '光纖感測器鋪設於床墊下方'}
+  places:
+    - {value: home, span: '居家照護、養老機構、醫療院所'}
+    - {value: institution, span: '居家照護、養老機構、醫療院所'}
+    - {value: hospital, span: '居家照護、養老機構、醫療院所'}
+  sensing:
+    - {value: fiber, span: '非侵入性光纖生理監測技術'}
+  viewing: []
+  power:
+    - {value: mains, span: '確保設備與電源連接'}
+  users: []
+- product: '毫米波雷達跌倒偵測系統'
+  company: '群邁通訊股份有限公司'
+  split: dev
+  functions:
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 呼吸監測, span: '呼吸偵測'}
+    - {value: 離床偵測, span: '離床提醒'}
+    - {value: 緊急求助, span: '主動呼救'}
+    - {value: 滯留偵測, span: '浴廁停留逾時偵測'}
+    - {value: 睡眠監測, span: '睡眠型態紀錄'}
+  form:
+    - {value: room, span: '建議安裝於天花板或牆壁上'}
+  places:
+    - {value: hospital, span: '安裝於病房內'}
+    - {value: institution, span: '方便機構進行統一管理'}
+  sensing:
+    - {value: radar, span: '透過毫米波雷達技術'}
+  viewing:
+    - {value: app, span: '透過手機或桌機'}
+    - {value: computer, span: '透過手機或桌機'}
+  power:
+    - {value: mains, span: '確保設備與電源連接'}
+  users: []
+- product: '美思臥床照護系統'
+  company: '美思科技有限公司'
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '病人準備離床'}
+    - {value: 翻身監測, span: '需要翻身時'}
+  form:
+    - {value: bed, span: '感應墊鋪設於病床上'}
+  places:
+    - {value: institution, span: '協助機構優化照護流程'}
+  sensing: []
+  viewing:
+    - {value: computer, span: '提供中央監控軟體'}
+    - {value: device, span: '透過主機上的控制面板'}
+  power:
+    - {value: mains, span: '確保設備與電源連接'}
+  users: []
+- product: '美維智慧照護系統'
+  company: '美維科技股份有限公司'
+  split: heldout
+  functions:
+    - {value: 離床偵測, span: '離床警示'}
+    - {value: 睡眠監測, span: '睡眠品質分析'}
+    - {value: 心率監測, span: '包括心跳、呼吸等'}
+    - {value: 呼吸監測, span: '包括心跳、呼吸等'}
+  form:
+    - {value: bed, span: '感測器安裝在床墊或病床上'}
+  places:
+    - {value: home, span: '適用於居家照護、養老機構及醫療院所'}
+    - {value: institution, span: '適用於居家照護、養老機構及醫療院所'}
+    - {value: hospital, span: '適用於居家照護、養老機構及醫療院所'}
+  sensing: []
+  viewing:
+    - {value: app, span: '通過專用應用程式查看'}
+  power:
+    - {value: mains, span: '確保裝置與電源連接'}
+  users: []
+- product: '南丁格爾智慧照護系統'
+  company: '智宇生醫股份有限公司'
+  split: heldout
+  functions:
+    - {value: 睡眠監測, span: '睡眠狀態'}
+    - {value: 心率監測, span: '心跳、呼吸'}
+    - {value: 呼吸監測, span: '心跳、呼吸'}
+    - {value: 翻身監測, span: '翻身次數'}
+    - {value: 離床偵測, span: '如離床、久臥等異常情況'}
+  form:
+    - {value: bed, span: '床墊鋪設於病床上'}
+  places:
+    - {value: institution, span: '專為長期照護環境設計'}
+  sensing: []
+  viewing:
+    - {value: app, span: '能在手機或電腦端查看'}
+    - {value: computer, span: '能在手機或電腦端查看'}
+  power:
+    - {value: mains, span: '連接至電源和Wi-Fi網絡'}
+  users: []
+- product: '奧比森長照輔助系統'
+  company: '奧比森科技有限公司'
+  split: dev
+  functions:
+    - {value: 心率監測, span: '心跳、呼吸、體溫'}
+    - {value: 呼吸監測, span: '心跳、呼吸、體溫'}
+    - {value: 體溫量測, span: '心跳、呼吸、體溫'}
+    - {value: 離床偵測, span: '使用者離床、翻身'}
+    - {value: 翻身監測, span: '使用者離床、翻身'}
+    - {value: 睡眠監測, span: '睡眠品質分析報告'}
+  form:
+    - {value: room, span: '安裝於床位或照護區域'}
+  places:
+    - {value: institution, span: '專為長期照護環境設計'}
+  sensing:
+    - {value: camera, span: '結合先進的AI影像技術'}
+  viewing:
+    - {value: app, span: '透過專用應用程式查看'}
+  power:
+    - {value: mains, span: '連接至電源與網路'}
+  users: []
+- product: 'Monibed 紅外線離床警示器'
+  company: '司博創意科技有限公司'
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '偵測患者的離床狀況'}
+  form:
+    - {value: room, span: '安裝於床邊'}
+  places:
+    - {value: institution, span: '適用於長照機構'}
+    - {value: hospital, span: '適用於醫療機構和長期照護場所'}
+  sensing:
+    - {value: infrared, span: '紅外線離床警示器'}
+  viewing:
+    - {value: device, span: '護理站警報'}
+  power:
+    - {value: mains, span: '連接電源'}
+  users: []
+- product: 'DOCTER Watch'
+  company: '霍恩實業有限公司'
+  split: dev
+  functions:
+    - {value: 心率監測, span: '心率、血壓、血氧、體溫'}
+    - {value: 血壓量測, span: '心率、血壓、血氧、體溫'}
+    - {value: 血氧量測, span: '心率、血壓、血氧、體溫'}
+    - {value: 體溫量測, span: '心率、血壓、血氧、體溫'}
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 定位, span: '定位追蹤'}
+    - {value: 緊急求助, span: '緊急求救'}
+  form:
+    - {value: worn, span: '佩戴於手腕'}
+  places:
+    - {value: home, span: '提升居家照護品質'}
+  sensing: []
+  viewing:
+    - {value: app, span: '與手機應用程式連接'}
+  power: []
+  users: []
+- product: '安全天使通話定位健康手錶900Zs'
+  company: '蓋德科技股份有限公司'
+  split: heldout
+  functions:
+    - {value: 緊急求助, span: 'SOS 緊急求救'}
+    - {value: 雙向通話, span: '雙向通話'}
+    - {value: 心率監測, span: '心率、壓力、血氧'}
+    - {value: 血氧量測, span: '心率、壓力、血氧'}
+    - {value: 睡眠監測, span: '睡眠及活動量記錄'}
+    - {value: 定位, span: 'GPS/AGPS/LBS'}
+    - {value: 防走失, span: '電子圍籬'}
+    - {value: 跌倒偵測, span: '跌倒偵測'}
+    - {value: 用藥提醒, span: '播報服藥'}
+  form:
+    - {value: worn, span: '佩戴 900Zs 手錶'}
+  places:
+    - {value: home, span: '居家健康與安全管理'}
+  sensing: []
+  viewing:
+    - {value: app, span: '透過 App 查看'}
+    - {value: phone, span: '撥打緊急聯絡人'}
+  power:
+    - {value: battery, span: '磁吸快充'}
+  users: []
+- product: '智慧照護解決方案'
+  company: '佐臻股份有限公司'
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '在床狀態'}
+    - {value: 跌倒偵測, span: '跌倒情況'}
+    - {value: 防走失, span: '設置電子圍籬'}
+  form:
+    - {value: room, span: '安裝於病房、走道等區域'}
+  places:
+    - {value: institution, span: '為長照和醫療機構提供'}
+    - {value: hospital, span: '為長照和醫療機構提供'}
+  sensing:
+    - {value: radar, span: '毫米波雷達'}
+  viewing:
+    - {value: device, span: 'AR智慧眼鏡協助醫護人員實時接收信息'}
+  power: []
+  users: []
+- product: 'Stampede 智能運動地墊'
+  company: '神寶醫資股份有限公司'
+  split: dev
+  functions:
+    - {value: 運動訓練, span: '強化肌耐力'}
+  form:
+    - {value: equipment, span: '地墊上的LED燈光'}
+  places:
+    - {value: public, span: '學校、健身中心及企業'}
+  sensing: []
+  viewing:
+    - {value: app, span: '透過專屬APP查看'}
+  power: []
+  users:
+    - {value: group, span: '團隊競賽'}
+- product: 'HappyGoGo團體運動軟體'
+  company: '龍骨王科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 運動訓練, span: '肌耐力'}
+    - {value: 認知訓練, span: '促進認知與體能改善'}
+    - {value: 上肢復健, span: '上下肢等多元訓練項目'}
+    - {value: 下肢復健, span: '上下肢等多元訓練項目'}
+  form:
+    - {value: software, span: '體感式運動軟體'}
+  places:
+    - {value: hospital, span: '適用於醫療院所、長照機構、社區健康據點與在家持續訓練'}
+    - {value: institution, span: '適用於醫療院所、長照機構、社區健康據點與在家持續訓練'}
+    - {value: home, span: '適用於醫療院所、長照機構、社區健康據點與在家持續訓練'}
+  sensing: []
+  viewing:
+    - {value: device, span: '投影於大螢幕或平板'}
+  power: []
+  users:
+    - {value: group, span: '支援 1–6 人同時使用'}
+- product: 'CogMate™ 腦年齡測驗'
+  company: '衛采製藥股份有限公司'
+  split: dev
+  functions:
+    - {value: 認知評估, span: '線上認知功能評估工具'}
+  form:
+    - {value: software, span: '無需下載APP'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: app, span: '如手機、平板、電腦'}
+    - {value: computer, span: '如手機、平板、電腦'}
+  power: []
+  users: []
+- product: 'Me-TAKA憶萬富翁益智App'
+  company: '樂齡智造有限公司'
+  split: heldout
+  functions:
+    - {value: 認知訓練, span: '認知訓練軟體'}
+  form:
+    - {value: software, span: '認知訓練軟體'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: computer, span: '透過網站連結直接進入'}
+  power: []
+  users: []
+- product: 'WhizToys運動地墊遊戲平台'
+  company: '世大智科'
+  split: dev
+  functions:
+    - {value: 認知訓練, span: '結合認知訓練'}
+    - {value: 運動訓練, span: '進行各項遊戲及運動'}
+  form:
+    - {value: equipment, span: '由9片燈光地墊組成'}
+  places:
+    - {value: institution, span: '樂齡照護相關機構、社區活動據點'}
+    - {value: public, span: '幼兒教育機構'}
+  sensing: []
+  viewing:
+    - {value: app, span: '行動裝置App'}
+  power: []
+  users:
+    - {value: group, span: '互動競爭'}
+- product: '樂復影認知復能系統'
+  company: '緯創醫療科技股份有限公司'
+  split: heldout
+  functions:
+    - {value: 認知訓練, span: '認知復能訓練'}
+    - {value: 運動訓練, span: '達成認知訓練及行動訓練'}
+  form:
+    - {value: equipment, span: '結合雷達投影技術與人機體感互動'}
+  places: []
+  sensing:
+    - {value: radar, span: '雷達投影技術'}
+  viewing:
+    - {value: device, span: '透過系統介面快速選擇個案與課程'}
+  power: []
+  users: []
+- product: 'GaitBEST步態分析軟體'
+  company: '龍骨王科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 步態分析, span: '步態量測'}
+    - {value: 跌倒預防, span: '未來一年內的跌倒風險'}
+  form:
+    - {value: software, span: '步態分析軟體'}
+  places: []
+  sensing:
+    - {value: camera, span: '站在鏡頭前'}
+  viewing: []
+  power: []
+  users: []
+- product: '物聯網智慧鞋墊感測器'
+  company: '矽響先創科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 步態分析, span: '步態監測與分析'}
+    - {value: 跌倒預防, span: '協助預防跌倒'}
+  form:
+    - {value: worn, span: '放入日常穿著的鞋內'}
+  places: []
+  sensing:
+    - {value: pressure, span: '內建壓力感測器'}
+  viewing:
+    - {value: app, span: '透過專屬應用程式'}
+  power: []
+  users: []
+- product: '語音臂式血壓計'
+  company: '福達康科技有限公司'
+  split: dev
+  functions:
+    - {value: 血壓量測, span: '藍牙傳輸血壓計'}
+  form:
+    - {value: device, span: '藍牙傳輸血壓計'}
+  places:
+    - {value: home, span: '適用於家庭與醫療機構使用'}
+    - {value: hospital, span: '適用於家庭與醫療機構使用'}
+  sensing: []
+  viewing:
+    - {value: app, span: '傳輸至智能裝置'}
+  power:
+    - {value: battery, span: '延長電池壽命'}
+  users: []
+- product: '新世代睡眠檢測'
+  company: '大立雲康科技股份有限公司'
+  split: heldout
+  functions:
+    - {value: 睡眠監測, span: '進行睡眠監測'}
+    - {value: 血氧量測, span: '血氧濃度'}
+    - {value: 心率監測, span: '心率、心律不整快篩'}
+  form:
+    - {value: worn, span: '睡前佩戴檢測設備'}
+  places:
+    - {value: home, span: '在家中進行睡眠監測'}
+  sensing: []
+  viewing:
+    - {value: app, span: '透過專屬應用程式查看'}
+  power: []
+  users: []
+- product: '健康天使智慧手環'
+  company: '蓋德科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 體溫量測, span: '體溫、心率、血壓、血氧'}
+    - {value: 心率監測, span: '體溫、心率、血壓、血氧'}
+    - {value: 血壓量測, span: '體溫、心率、血壓、血氧'}
+    - {value: 血氧量測, span: '體溫、心率、血壓、血氧'}
+  form:
+    - {value: worn, span: '佩戴在手腕'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: app, span: '同步至手機應用程式'}
+  power:
+    - {value: battery, span: '具備長效電池'}
+  users: []
+- product: 'D+健康定位錶'
+  company: '智慧時尚股份有限公司'
+  split: dev
+  functions:
+    - {value: 定位, span: 'GPS/Wi-Fi多重精準定位'}
+    - {value: 防走失, span: '離開預設的守護範圍'}
+    - {value: 緊急求助, span: 'SOS緊急呼救'}
+    - {value: 心率監測, span: '自動量測心率與血氧'}
+    - {value: 血氧量測, span: '自動量測心率與血氧'}
+  form:
+    - {value: worn, span: '適合日常佩戴'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: line, span: '透過LINE推播通知'}
+    - {value: computer, span: '透過專屬平台或PC端'}
+  power:
+    - {value: battery, span: '充滿電後可使用約5至7天'}
+  users: []
+- product: '享健康智慧照護站'
+  company: '先進醫資股份有限公司'
+  split: heldout
+  functions:
+    - {value: 血壓量測, span: '血壓、血氧、額溫'}
+    - {value: 血氧量測, span: '血壓、血氧、額溫'}
+    - {value: 體溫量測, span: '血壓、血氧、額溫'}
+  form:
+    - {value: device, span: '設置的智慧照護站'}
+  places:
+    - {value: hospital, span: '醫療院所、社區據點、企業照護和長照中心'}
+    - {value: institution, span: '醫療院所、社區據點、企業照護和長照中心'}
+    - {value: public, span: '醫療院所、社區據點、企業照護和長照中心'}
+  sensing: []
+  viewing:
+    - {value: app, span: '傳送到使用者或家人的手機'}
+  power: []
+  users: []
+- product: '無距離健康雲'
+  company: '無距健康股份有限公司'
+  split: dev
+  functions:
+    - {value: 遠距健康管理, span: '整合健康管理與照護服務的雲端平台'}
+  form:
+    - {value: software, span: '整合健康管理與照護服務的雲端平台'}
+  places:
+    - {value: home, span: '提升居家健康管理的效率'}
+  sensing: []
+  viewing:
+    - {value: app, span: '透過APP查看健康紀錄'}
+  power: []
+  users: []
+- product: '小驢行交通服務平台'
+  company: '小驢行'
+  split: dev
+  functions:
+    - {value: 交通接送, span: '提供多元的接送服務'}
+  form:
+    - {value: service, span: '交通媒合平台'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: computer, span: '平台的網站或應用程式'}
+    - {value: app, span: '平台的網站或應用程式'}
+  power: []
+  users: []
+- product: '長照院務管理系統'
+  company: '展望亞洲科技股份有限公司'
+  split: heldout
+  functions:
+    - {value: 機構管理, span: '住民基本資料管理、護理照護紀錄'}
+  form:
+    - {value: software, span: '透過網頁介面或行動裝置進入'}
+  places:
+    - {value: institution, span: '適用於各類型長照機構'}
+  sensing: []
+  viewing:
+    - {value: computer, span: '透過網頁介面或行動裝置'}
+    - {value: app, span: '透過網頁介面或行動裝置'}
+  power: []
+  users: []
+- product: 'Tec Care 健康樂齡關懷系統'
+  company: '磊星科技有限公司'
+  split: dev
+  functions:
+    - {value: 遠距健康管理, span: '即時健康監測'}
+    - {value: 緊急求助, span: '緊急求助'}
+    - {value: 活動監測, span: '生活習慣追蹤'}
+  form:
+    - {value: software, span: '健康樂齡關懷系統平台'}
+  places: []
+  sensing: []
+  viewing:
+    - {value: computer, span: '透過電腦或行動裝置登入平台'}
+    - {value: app, span: '透過電腦或行動裝置登入平台'}
+  power: []
+  users: []
+- product: 'FREE Walk'
+  company: '福寶科技股份有限公司'
+  split: dev
+  functions:
+    - {value: 下肢復健, span: '提供下肢無力者行走等功能性訓練'}
+  form:
+    - {value: worn, span: '穿戴式動力外骨骼機器人'}
+    - {value: robot, span: '穿戴式動力外骨骼機器人'}
+  places: []
+  sensing: []
+  viewing: []
+  power: []
+  users: []
+- product: '巡邏照護機器人「SOWAN」'
+  company: '天目時科股份有限公司'
+  split: dev
+  functions:
+    - {value: 巡邏機器人, span: '自主巡邏'}
+  form:
+    - {value: robot, span: '巡邏照護機器人'}
+  places:
+    - {value: institution, span: '專為照護機構設計'}
+  sensing:
+    - {value: camera, span: '影像辨識技術'}
+  viewing: []
+  power: []
+  users: []
+- product: 'Kebbi Air S 凱比機器人'
+  company: '女媧創造股份有限公司'
+  split: heldout
+  functions:
+    - {value: 陪伴互動, span: '多功能AI陪伴機器人'}
+    - {value: 雙向通話, span: '支援視訊通話'}
+  form:
+    - {value: robot, span: '多功能AI陪伴機器人'}
+  places:
+    - {value: home, span: '適合家庭、學校及長照機構使用'}
+    - {value: public, span: '適合家庭、學校及長照機構使用'}
+    - {value: institution, span: '適合家庭、學校及長照機構使用'}
+  sensing:
+    - {value: camera, span: '500萬像素攝影鏡頭'}
+  viewing: []
+  power: []
+  users: []
