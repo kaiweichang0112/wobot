@@ -6,6 +6,7 @@ import pytest
 from wobot.agent.list_agent import TOOLS_BY_NAME
 from wobot.eval import gold
 from wobot.eval.dataset import dataset_names, load_dataset
+from wobot.eval.judge_labels import LABELS, read_labels
 from wobot.eval.runner import case_refs
 
 
@@ -24,9 +25,16 @@ def test_every_gold_file_belongs_to_a_case():
         if case.check and "gold" in case.check
     }
 
-    files = {path.name for path in gold.GOLD_DIR.iterdir() if path.name != "README.md"}
+    # The judge's labels are of replies a run kept, not of a case's sources.
+    files = {p.name for p in gold.GOLD_DIR.iterdir() if p.name not in ("README.md", LABELS.name)}
 
     assert files == used
+
+
+def test_the_judge_labels_read_cleanly():
+    labels = read_labels(LABELS)  # raises on a verdict other than pass or fail
+
+    assert labels.entries and labels.blank == 0 and labels.labelled_on
 
 
 @pytest.mark.parametrize("name", ["lists-v1", "turns-v1"])
