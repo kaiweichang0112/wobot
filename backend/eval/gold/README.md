@@ -77,7 +77,9 @@ lacks, decides what is recommended.
   falls or rating their risk is `跌倒預防`, not `跌倒偵測`; sleep is not bed exit. A
   measurement (`血壓量測`, `心率監測` and the like) is labelled only when the product itself
   measures it; a product that records or shows what other devices measure is
-  `遠距健康管理`, and uploading data to a cloud alone is neither. `緊急求助` is the person
+  `遠距健康管理`, and uploading data to a cloud alone is neither; a carer seeing a
+  product's own readings from afar is `viewing`, not `遠距健康管理`, which is a product
+  made to keep and follow health records over time. `緊急求助` is the person
   asking for help, not an alert the product sends by itself. `活動監測` is a person's
   activity in a room or in daily life, not body movement in bed (`體動`) or posture.
 - `form`: `worn` is on the person cared for (a wristband, pendant, patch, insole or
@@ -91,7 +93,8 @@ lacks, decides what is recommended.
   centres), hospital (hospitals, clinics, wards, and `醫療` in a list of places such as
   `居家、醫療與長照場域`) or public (schools, companies, gyms, public spaces). A ward bed
   (`病床`), staff (nurses, carers, `醫療人員`) or residents alone name no place, nor does a
-  place the product only reports to or connects with.
+  system the product only connects or sends data to; a product said to help an
+  institution run its care or manage its beds is used there.
 - `sensing`: `camera` includes images and 3D depth sensing. A sensor, pad or mat whose kind
   the text does not name is no value.
 - `viewing`: where a carer sees the data or the alert. `app` is a phone, tablet or other

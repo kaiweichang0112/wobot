@@ -27,6 +27,7 @@ from wobot.knowledge.records.products import normalize_product, with_facets
 PROMPT_FINGERPRINTS = {
     1: "e1d35836e44c0a112fe76f8c10f5a2103f96aa10f3456d504cd591488f61abc4",
     2: "0383be8dd93748c397454b0d1c557cce8a6741ea2450867555fea0590158c479",
+    3: "77300fa40a62cb4b84192121708d90a0fd09b74536cbb29c0306b0d3d6012d91",
 }
 
 TEXT = {

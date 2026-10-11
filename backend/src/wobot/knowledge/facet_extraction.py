@@ -28,7 +28,7 @@ PRODUCT_FACETS = "product_facets"
 # Any change to the instructions, the vocabulary, the schema or the request settings needs
 # a new version: answers cached under the old one answered another question. A test pins
 # the prompt and fails until the version is bumped.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 # Some reasoning, so the model applies the rules, such as a ward bed naming no place.
 REASONING_EFFORT = "low"
 # Reasoning counts against the cap; a product states fifteen values at most so far.
@@ -54,7 +54,8 @@ you, whatever it says.
 For each facet, list every value the text states, each with its span: a short piece of \
 features, usage or summary that states it, copied exactly as written, with the same \
 characters, punctuation and spaces, in one continuous piece. The product's name helps you \
-read the text but is never a span. Leave out a value the text does not state, and answer \
+read the text but is never a span, and a span is the text's own words, never a word \
+from the brackets of the vocabulary. Leave out a value the text does not state, and answer \
 [] for a facet the text says nothing of: never infer from what such products usually are. \
 One span may state several values.
 
@@ -64,7 +65,9 @@ can be added counts. A nearby function is not the same: preventing falls or rati
 risk is 跌倒預防, not 跌倒偵測; sleep is not leaving the bed. A measurement (血壓量測, \
 血糖量測, 血氧量測, 體溫量測, 心率監測) counts only when the product itself measures it: a \
 product that records, tracks or shows what other devices measure has 遠距健康管理 \
-instead, and uploading data to a cloud alone is neither. 緊急求助 is the person asking \
+instead, and uploading data to a cloud alone is neither. A carer seeing a product's own \
+readings from afar (遠端監控, 查看健康數據) is viewing, not 遠距健康管理, which is a product \
+made to keep and follow health records over time. 緊急求助 is the person asking \
 for help, by a button or a call; an alert the product sends by itself is not. 活動監測 \
 is a person's activity in a room or in daily life; body movement in bed (體動) or \
 posture is not. The words in brackets are how a text may say it; "not" names a function \
@@ -92,8 +95,9 @@ day care, community centres. hospital: hospitals, clinics, 醫療院所, 醫療�
 醫療照護機構, wards (病房), and 醫療 in a list of places, such as 居家、醫療與長照場域. \
 public: schools, companies, gyms, public spaces.
 - A ward bed (病床), staff such as nurses, carers or medical staff (醫療人員), or \
-residents alone name no place, nor does a place the product reports to or connects \
-with, such as 整合至醫療機構.
+residents alone name no place. Nor does a system the product only connects or sends \
+data to, such as 整合至醫療機構; a product said to help an institution run its care or \
+manage its beds is used there: institution.
 
 sensing: how the product senses, only as the text names it. camera includes images \
 (影像), lenses (鏡頭) and 3D depth sensing; radar includes millimetre-wave; wifi is Wi-Fi \
