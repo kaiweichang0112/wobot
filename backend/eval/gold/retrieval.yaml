@@ -11,14 +11,21 @@
 #   - section: '<a heading on the GRC home page, the G-Tech pages or the WhizToys docs,
 #               as "page › heading" when several pages share it; or a piece of its text
 #               that no other section has>'
+#   - image: '<the picture's address>'
+#   - document_page: {document: '<whizpad_catalog, whiztoys_catalog or whiztoys_manual>',
+#                     page: <the PDF's page number>}
+# When several items each answer the question alone, list them under one `any_of`: the
+# search needs to find one of them, not all.
 CASE-003:
   question: 請根據 GRC 官網介紹徐業良的研究領域。
   relevant:
-    - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
-    - profile: '徐教授2015年執行經濟部「產學研價值創造計畫」，在計畫要求下帶領學生團隊成立新創公司「世大智科」，從研究開發進入生活應用，對老人福祉科技產品設計、創新創業有深刻經驗與體會'
+    # The 簡介 and Biography, its English version, say the same: either answers.
+    - any_of:
+        - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
+        - profile: '徐教授2015年執行經濟部「產學研價值創造計畫」，在計畫要求下帶領學生團隊成立新創公司「世大智科」，從研究開發進入生活應用，對老人福祉科技產品設計、創新創業有深刻經驗與體會'
+        - profile: 'Biography'
     - profile: 'Smart product design'
     - profile: 'Gerontechnology'
-    - profile: 'Biography'
 CASE-010:
   question: WhizPad 安心臥智慧床墊提供哪些照護功能？
   relevant:
@@ -35,7 +42,12 @@ CASE-017:
 CASE-001:
   question: GRC 是哪一年成立的？
   relevant:
-    - section: 'Since 2003'
+    # Any one of these gives the year GRC was founded.
+    - any_of:
+        - section: 'Since 2003'
+        - image: 'https://static.wixstatic.com/media/2927b2_8cd563d276e1469898e1f483dbd58fe8~mv2.png'
+        - profile: '徐業良教授於2003年創立元智大學「老人福祉科技(gerontechnology)研究中心」，開創國內在此領域的學術研究，多次領導團隊執行國科會、經濟部、衛福部大型計畫。'
+        - profile: 'Biography'
 CASE-002:
   question: GRC 的地址與聯絡電話是什麼？
   relevant:
@@ -43,8 +55,14 @@ CASE-002:
 CASE-009:
   question: G-Tech 的主要產品有哪些？
   relevant:
-    - section: 'WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋'
-    - section: '運動地墊遊戲平台'
+    # Each product is named on several pages; one of each is enough.
+    - any_of:
+        - section: 'WhizPad 安心臥智慧床墊 › 打造最安心的好眠體驗 健康睡眠智慧升級 ＋'
+        - section: '首頁 › WhizPad安心臥智慧床墊x安心臥照護系統'
+        - document_page: {document: 'whizpad_catalog', page: 1}
+    - any_of:
+        - section: '運動地墊遊戲平台'
+        - section: 'WhizToys 運動地墊遊戲平台總覽'
 CASE-011:
   question: G-Tech 官網介紹的智慧床墊是否需要插電與 Wi-Fi？請區分床墊與其他系統設備的說明。
   relevant:
@@ -57,4 +75,6 @@ CASE-012:
 CASE-013:
   question: WhizToys 運動地墊遊戲平台主要用於哪些活動或訓練？
   relevant:
-    - section: '從“嚴肅遊戲”的角度，將運動及復健內容遊戲化，結合認知訓練、互動競爭及聲光刺激回饋，以提高長者參與活動的意願。透過客製化遊戲內 容，亦可應用在幼兒學習及運動訓練領域。'
+    - any_of:
+        - section: 'WhizToys 運動地墊遊戲平台總覽'
+        - section: '從“嚴肅遊戲”的角度，將運動及復健內容遊戲化，結合認知訓練、互動競爭及聲光刺激回饋，以提高長者參與活動的意願。透過客製化遊戲內 容，亦可應用在幼兒學習及運動訓練領域。'

@@ -1,6 +1,6 @@
 """Run datasets against one index version: each case's check, from labels to scores.
 
-Four checks, all on item identities:
+Five checks, all on item identities:
 - list: the records a structured filter returns against the labelled items. This is the
   query the answer agent will run for "list every …" questions.
 - fields: labelled field values against the matched records' fields.
@@ -8,6 +8,9 @@ Four checks, all on item identities:
   labelled relevant items.
 - transcription: what a vision model read in one image or PDF page against what a person
   transcribed from it.
+
+- facets: the facets a version keeps of each labelled product against what a person
+  read in its catalog text (DEC-069).
 """
 
 import hashlib
@@ -21,7 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from wobot.eval import gold
 from wobot.eval.corpus import Corpus
 from wobot.eval.dataset import Case, Dataset
+from wobot.eval.facets import stored_facets
 from wobot.eval.metrics import (
+    FacetScore,
     FieldScore,
     RetrievalScore,
     SetScore,
@@ -50,6 +55,7 @@ class CaseResult:
     fields: FieldScore | None = None
     retrieval: RetrievalScore | None = None
     transcription: TranscriptionScore | None = None
+    facets: FacetScore | None = None
 
 
 @dataclass
@@ -80,8 +86,8 @@ async def run_datasets(
             if case.check is None:
                 result.detail = case.pending or "no check defined"
                 continue
-            if result.kind in AGENT_CHECKS:
-                result.detail = "scored by wobot-eval agent"
+            if result.kind in GRAPH_CHECKS:
+                result.detail = "scored by playing the chat graph"
                 continue
             try:
                 refs = case_refs(case, gold_dir, run.gold_files)
@@ -97,6 +103,9 @@ async def run_datasets(
             if result.kind == "retrieval":
                 retrieval.append((result, case, resolved))
                 continue
+            if result.kind == "facets":
+                await _score_facets(conn, result, resolved, corpus.version_id)
+                continue
             if result.kind == "transcription":
                 await _score_transcription(result, resolved, corpus)
                 continue
@@ -109,9 +118,9 @@ async def run_datasets(
     return run
 
 
-# Checks scored from what the chat agent did, by `wobot-eval agent`: they need paid model
-# calls, which `run` never makes.
-AGENT_CHECKS = frozenset({"tools", "behavior", "recommendation"})
+# Checks scored from what the chat graph did: they need paid model calls, which `run`
+# never makes.
+GRAPH_CHECKS = frozenset({"route", "knowledge", "list_path", "turns", "recommendation"})
 
 
 def _kind(case: Case) -> str | None:
@@ -136,30 +145,17 @@ def case_refs(case: Case, gold_dir: Path, used: dict[str, str]) -> list[gold.Ref
             return gold.speech_field_refs(path)
         case "transcription":
             return gold.transcription_refs(path, case.case_id)
+        case "product_facets":
+            return gold.product_facet_refs(path, case.split)
         case None:
             return gold.named_refs(path, case.case_id, spec.get("key", "relevant"))
     raise gold.GoldError(f"{case.case_id}: unknown gold format {spec.get('as')!r}")
 
 
-def labelled_keys(
-    case: Case, corpus: Corpus, gold_dir: Path, used: dict[str, str]
-) -> tuple[set[str], list[str]]:
-    """The record keys a case's labels name, and the labels that match no record.
-
-    A label that matches no record stays in the set under a key no record holds, so it
-    counts as missed, as in the run's own checks.
-    """
-    resolved = gold.resolve(case_refs(case, gold_dir, used), corpus)
-    unresolved = [_describe(r) for r in resolved if not r.keys]
-    keys = {key for r in resolved for key in r.keys}
-    return keys | {f"unresolved {where}" for where in unresolved}, unresolved
-
-
 def _describe(resolved: gold.Resolved) -> str:
     ref = resolved.ref
-    value = ref.value if isinstance(ref.value, str) else ", ".join(map(str, ref.value.values()))
     problem = f" ({resolved.problem})" if resolved.problem else ""
-    return f"{ref.where}: {ref.kind} {value[:120]!r}{problem}"
+    return f"{ref.where}: {ref.kind} {gold.label_value(ref)[:120]!r}{problem}"
 
 
 async def _score_records(
@@ -211,6 +207,28 @@ async def _score_transcription(
     result.status = "scored"
 
 
+async def _score_facets(
+    conn: AsyncConnection, result: CaseResult, resolved: list[gold.Resolved], version_id: int
+) -> None:
+    """What the version keeps of each labelled product's facets, against the labels. A
+    product no model read counts every labelled value as missed."""
+    matched = [r for r in resolved if len(r.keys) == 1]
+    stored = await stored_facets(conn, version_id, [r.keys[0] for r in matched])
+    if all(stored.get(r.keys[0]) is None for r in matched):
+        result.detail = "the version keeps no product facets"
+        return
+    score = FacetScore()
+    unread = 0
+    for r in matched:
+        kept = stored.get(r.keys[0])
+        unread += kept is None
+        score.add(r.ref.value["name"], r.ref.expected["facets"], kept or {})
+    result.facets = score
+    if unread:
+        result.detail = f"{unread} products no model read"
+    result.status = "scored"
+
+
 def _matches(fields: Mapping[str, Any], where: Mapping[str, Any]) -> bool:
     for name, condition in where.items():
         value = fields.get(name)
@@ -233,8 +251,9 @@ async def _score_retrieval(
     for (result, _, resolved), vector in zip(cases, embedded.vectors, strict=True):
         hits = await search_chunks(conn, vector, embedder.config_id, k, version_id=version_id)
         keys = await chunk_record_keys(conn, [hit.chunk_id for hit in hits], version_id)
-        relevant = {key for r in resolved for key in r.keys}
+        items = gold.item_keys(resolved)
+        relevant = set(items.values())
         relevant |= {f"unresolved {where}" for where in result.unresolved}
-        ranked = [(keys[hit.chunk_id], hit.token_count) for hit in hits]
+        ranked = [([items.get(k, k) for k in keys[hit.chunk_id]], hit.token_count) for hit in hits]
         result.retrieval = await retrieval_score(relevant, ranked, k)
         result.status = "scored"

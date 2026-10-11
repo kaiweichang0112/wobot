@@ -1,55 +1,106 @@
-"""A chat model that plays a script, so agent tests never call a provider."""
+"""Stand-ins for the models, so tests run without a network or a key."""
 
-import json
+from collections.abc import Sequence
 from typing import Any
 
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import RunnableLambda
+
+from wobot.agent.graph import Models
+from wobot.agent.rewrite import SearchPlan
+from wobot.agent.route import Route, Routed
+from wobot.agent.write_list import ListIntro
 
 
-class ScriptedChatModel(BaseChatModel):
-    """Answers each request with the next scripted message, and keeps what it was sent."""
+class FakeRouter:
+    """Routes every message the same way, and remembers what it was asked."""
 
-    script: list[AIMessage]
-    requests: list[list[BaseMessage]] = []
-    tool_names: list[str] = []  # the tools the agent offered
+    def __init__(self, route: Route, confidence: float | None = None):
+        self.route = route
+        self.confidence = confidence
+        self.calls: list[tuple[list[BaseMessage], str | None]] = []
 
-    @property
-    def _llm_type(self) -> str:
-        return "scripted"
-
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "ScriptedChatModel":
-        self.tool_names = [tool.name for tool in tools]
-        return self
-
-    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
-        self.requests.append(list(messages))
-        if not self.script:
-            raise AssertionError("the model was called more often than scripted")
-        return ChatResult(generations=[ChatGeneration(message=self.script.pop(0))])
+    async def __call__(
+        self, messages: Sequence[BaseMessage], pending_question: str | None
+    ) -> Routed:
+        self.calls.append((list(messages), pending_question))
+        return Routed(self.route, self.confidence)
 
 
-def answers(
-    text: str,
-    lists: list[dict[str, Any]] = (),
-    *,
-    grounding: str = "general",
-    citations: list[str] = (),
-    recommendation: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> AIMessage:
-    """A final reply in the agent's answer schema, as the provider returns it: JSON text."""
-    answer = {
-        "answer": text,
-        "grounding": grounding,
-        "citations": list(citations),
-        "lists": list(lists),
-        "recommendation": recommendation,
-    }
-    return AIMessage(json.dumps(answer, ensure_ascii=False), **kwargs)
+def fake_chat(*replies: str) -> GenericFakeChatModel:
+    """A chat model that answers with the replies given, in order."""
+    return GenericFakeChatModel(messages=iter(AIMessage(reply) for reply in replies))
 
 
-def calls(name: str, args: dict[str, Any], call_id: str = "call-1") -> AIMessage:
-    """A model reply that calls one tool."""
-    return AIMessage("", tool_calls=[{"name": name, "args": args, "id": call_id}])
+def fake_models(
+    route: Route = "chat",
+    chat: Sequence[str] = ("你好！",),
+    plan: SearchPlan | None = None,
+    answers: Sequence[str] = ("答案。",),
+    list_calls: Sequence[AIMessage] = (AIMessage("done"),),
+    intro: ListIntro | None = None,
+    rec_calls: Sequence[AIMessage] = (AIMessage("想解決哪方面的照顧需求？"),),
+) -> Models:
+    """Models that route, plan, answer, call list tools, introduce lists and recommend as
+    given. Unless told otherwise, the recommendation agent asks what the user needs."""
+    plan = plan or SearchPlan(question_zh="問題", question_en="question", name=None)
+    return Models(
+        router=FakeRouter(route),
+        chat=fake_chat(*chat),
+        rewrite=FakeStructuredModel(plan),
+        answer=fake_chat(*answers),
+        list_agent=FakeToolModel(*list_calls),
+        write_list=FakeStructuredModel(intro or ListIntro(intro="沒有找到。", lists=[])),
+        rec_agent=FakeToolModel(*rec_calls),
+    )
+
+
+def calls(*tools: tuple[str, dict[str, Any]]) -> AIMessage:
+    """A model's message calling each tool with its arguments."""
+    return AIMessage(
+        "",
+        tool_calls=[
+            {"name": name, "args": args, "id": f"call-{n}"}
+            for n, (name, args) in enumerate(tools, start=1)
+        ],
+    )
+
+
+class FakeToolModel:
+    """A model bound to tools that replies with the messages given, in order; records
+    each prompt and the tool choice it was bound with."""
+
+    def __init__(self, *replies: AIMessage):
+        self.replies = iter(replies)
+        self.prompts: list[tuple[str | None, list[BaseMessage]]] = []
+
+    def bind_tools(self, tools: Any, tool_choice: str | None = None, **kwargs: Any):
+        def reply(messages: list[BaseMessage]) -> AIMessage:
+            self.prompts.append((tool_choice, messages))
+            return next(self.replies)
+
+        return RunnableLambda(reply)
+
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> RunnableLambda:
+        """For a graph that builds every node's runnable: this model never answers so."""
+
+        def refuse(messages: list[BaseMessage]) -> Any:
+            raise AssertionError("a tool model was asked for structured output")
+
+        return RunnableLambda(refuse)
+
+
+class FakeStructuredModel:
+    """A chat model whose structured output is given: records each prompt it is sent."""
+
+    def __init__(self, output: Any):
+        self.output = output
+        self.prompts: list[list[BaseMessage]] = []
+
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> RunnableLambda:
+        def answer(messages: list[BaseMessage]) -> Any:
+            self.prompts.append(messages)
+            return self.output
+
+        return RunnableLambda(answer)

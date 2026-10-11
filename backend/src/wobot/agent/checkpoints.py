@@ -4,6 +4,10 @@ The tables are created by our own migration, never by the library's `setup()`, w
 API's role may not run: no role but the migrator holds DDL. They are written in the state
 the pinned langgraph-checkpoint-postgres reaches after its migrations, and declared here
 so `alembic check` compares them; a test pins how many migrations that state stands for.
+
+The graph saves its state after every node, under the conversation's thread ID, and reads
+it back when that thread is called again: what the freeCodeCamp course's Memory_Agent
+kept by hand in `conversation_history`.
 """
 
 from collections.abc import AsyncIterator
@@ -17,7 +21,6 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy import Column, Index, Integer, LargeBinary, Table, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 
-from wobot.agent.answers import Answer, Check, ListRef, Pick, Recommendation
 from wobot.config import Settings
 from wobot.models import Base
 
@@ -76,15 +79,14 @@ checkpoint_writes = Table(
 
 
 def checkpoint_serde() -> JsonPlusSerializer:
-    """Revives LangGraph's own safe types and the answer's schema, and nothing else (D2).
+    """Revives LangGraph's own safe types, such as messages and datetimes, and nothing else.
 
-    Tool artifacts stay out of the state (TurnArtifacts), so no other type of ours should
-    be stored; one that is comes back as plain data, with a warning a test looks for,
-    rather than as a class a stored row could name.
+    The chat state holds no class of ours: what the tools found is kept as plain dicts.
+    A type of ours that slipped in would be blocked, with a warning a test looks for,
+    rather than revived as a class a stored row could name.
     """
-    return JsonPlusSerializer(
-        allowed_msgpack_modules=[Answer, ListRef, Recommendation, Pick, Check]
-    )
+    # None: LangGraph's safe types only. The default allows any type, with a warning.
+    return JsonPlusSerializer(allowed_msgpack_modules=None)
 
 
 @asynccontextmanager

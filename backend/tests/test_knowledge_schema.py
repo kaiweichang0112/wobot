@@ -4,6 +4,7 @@ import asyncpg
 import pytest
 
 from tests.database import API_USER, INGEST_USER, MIGRATOR_USER, connect, rolled_back
+from wobot.knowledge.facets import FACETS
 
 EMBEDDING_CONFIG = "openai/text-embedding-3-small/1536/cosine"
 INSERT_SOURCE = "INSERT INTO knowledge.sources (source_id, kind) VALUES ('test', 'xlsx')"
@@ -181,6 +182,7 @@ async def test_membership_keeps_the_record_logical_key():
         "list_item_records",
         "lecture_records",
         "llm_extractions",
+        "product_facets",
     ],
 )
 async def test_typed_record_tables_follow_the_knowledge_rights(table):
@@ -259,3 +261,67 @@ async def test_a_cached_answer_has_an_output_or_a_failure(output, failure):
                 output,
                 failure,
             )
+
+
+INSERT_FACET = (
+    "INSERT INTO knowledge.product_facets (record_id, facet, value, span, source_field) "
+    "VALUES ($1, $2, $3, $4, $5)"
+)
+
+
+async def _product(connection: asyncpg.Connection, model=None, version=None) -> uuid.UUID:
+    """A product whose features state bed-exit alerts and whose usage states a pad."""
+    record_id = await _new_record(connection, "product:test", "a")
+    await connection.execute(
+        "INSERT INTO knowledge.product_records (record_id, product_name, company_name, "
+        "features_text, usage_text, facets_model, facets_prompt_version) "
+        "VALUES ($1, '測試床墊', '範例科技', '提供離床提醒。', '感測墊鋪於床墊下。', $2, $3)",
+        record_id,
+        model,
+        version,
+    )
+    return record_id
+
+
+async def test_a_product_keeps_facet_values_its_text_states():
+    async with rolled_back(INGEST_USER) as connection:
+        record_id = await _product(connection, "test-model", 1)
+        await connection.execute(
+            INSERT_FACET, record_id, "functions", "離床偵測", "離床提醒", "features_text"
+        )
+        await connection.execute(INSERT_FACET, record_id, "form", "bed", "鋪於床墊下", "usage_text")
+
+
+@pytest.mark.parametrize(
+    ("facet", "span", "field", "error"),
+    [
+        ("functions", "離床預警", "features_text", "the span is not in features_text"),
+        ("functions", "離床提醒", "usage_text", "the span is not in usage_text"),  # other field
+        ("functions", "離床提醒", "summary_text", "the span is not in summary_text"),  # no text
+        ("colour", "離床提醒", "features_text", "product_facets_facet"),
+        # The trigger runs before the CHECKs, and finds no text in a field it does not read.
+        ("functions", "離床提醒", "product_name", "the span is not in product_name"),
+        ("functions", "", "features_text", "product_facets_span"),
+    ],
+)
+async def test_a_product_rejects_a_facet_its_text_does_not_state(facet, span, field, error):
+    async with rolled_back(INGEST_USER) as connection:
+        record_id = await _product(connection)
+        with pytest.raises(asyncpg.CheckViolationError, match=error):
+            await connection.execute(INSERT_FACET, record_id, facet, "離床偵測", span, field)
+
+
+async def test_the_database_takes_every_facet_the_code_names():
+    async with rolled_back(INGEST_USER) as connection:
+        record_id = await _product(connection)
+        for facet in FACETS:
+            await connection.execute(
+                INSERT_FACET, record_id, facet, "x", "離床提醒", "features_text"
+            )
+
+
+@pytest.mark.parametrize(("model", "version"), [("test-model", None), (None, 1)])
+async def test_a_product_names_both_the_model_and_the_prompt_that_read_its_facets(model, version):
+    async with rolled_back(INGEST_USER) as connection:
+        with pytest.raises(asyncpg.CheckViolationError, match="product_records_facets_read"):
+            await _product(connection, model, version)

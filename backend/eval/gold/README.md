@@ -21,6 +21,11 @@ system extracted; a label copied from parser or model output measures nothing.
 - A section of the GRC home page, the G-Tech pages or the WhizToys docs is named by its
   whole heading, by `page › heading` when another page has the same heading, or by a piece
   of one paragraph under it. A heading is not text: `2003` does not name `Since 2003`.
+- When several items each answer a question alone, such as every page that gives the
+  year GRC was founded, list them under one `any_of`: finding one of them finds the item.
+  Items that answer different parts, such as each of G-Tech's products, stay separate,
+  and every one must be found. Since 2026-10-07 retrieval scores count an `any_of` as one
+  item; earlier reports counted each of its items and do not compare.
 
 Check the files with:
 
@@ -55,6 +60,56 @@ piece of the entry, copied as written.
 - Leave out the commas that separate the parts, also when one sits inside the closing
   quotation mark: `“Smart care in practice,” keynote speech, …` has the title
   `Smart care in practice`.
+
+## Product facets
+
+`product-facets.yaml` labels what each product's catalog text states, in the fixed
+vocabulary of `src/wobot/knowledge/facets.py` (DEC-069). Recommendations filter products
+by these facets, so a value the text does not state, or one it states but the label
+lacks, decides what is recommended.
+
+- Read the product's main features, usage and summary as the workbook writes them.
+- List every facet. Each value takes the span that states it: one continuous piece of the
+  text, copied exactly. `[]` says the text states none of that facet; leaving a facet out
+  is an error.
+- `functions`: what the product itself does, named by the vocabulary, not by the text's
+  words: `離床預警` in the text is `離床偵測`. A nearby function is not the same: preventing
+  falls or rating their risk is `跌倒預防`, not `跌倒偵測`; sleep is not bed exit. A
+  measurement (`血壓量測`, `心率監測` and the like) is labelled only when the product itself
+  measures it; a product that records or shows what other devices measure is
+  `遠距健康管理`, and uploading data to a cloud alone is neither; a carer seeing a
+  product's own readings from afar is `viewing`, not `遠距健康管理`, which is a product
+  made to keep and follow health records over time. `緊急求助` is the person
+  asking for help, not an alert the product sends by itself. `活動監測` is a person's
+  activity in a room or in daily life, not body movement in bed (`體動`) or posture.
+- `form`: `worn` is on the person cared for (a wristband, pendant, patch, insole or
+  exoskeleton), not on staff, such as smart glasses a nurse wears. `bed` is the mattress, or
+  a pad on or under it; a device at the bedside or on the wall above the bed is `room`.
+  `device` is used only to measure, such as a blood-pressure monitor or a kiosk.
+  `software` is a product that is software alone; a device's app or platform is how it is
+  viewed, not its form. `service` is a service people provide or a platform that matches
+  people to one; a powered exoskeleton is both `worn` and `robot`.
+- `places`: home, institution (long-term care, nursing homes, day care, community
+  centres), hospital (hospitals, clinics, wards, and `醫療` in a list of places such as
+  `居家、醫療與長照場域`) or public (schools, companies, gyms, public spaces). A ward bed
+  (`病床`), staff (nurses, carers, `醫療人員`) or residents alone name no place, nor does a
+  system the product only connects or sends data to; a product said to help an
+  institution run its care or manage its beds is used there.
+- `sensing`: `camera` includes images and 3D depth sensing. A sensor, pad or mat whose kind
+  the text does not name is no value.
+- `viewing`: where a carer sees the data or the alert. `app` is a phone, tablet or other
+  mobile device, or its app: `手機` is `app`, and `phone` is a voice call to a number.
+  `computer` includes a PC, a desktop, web pages and central monitoring software; a
+  platform or remote monitoring alone is no value. `device` is the unit itself, a nurse
+  station or a call system.
+- `power`: `mains` when the text says it is plugged in, or has a battery only to bridge a
+  power cut; `battery` when it charges, runs on a battery or warns of a low battery.
+- `users`: for activities only: `group` when several take part at once or compete.
+- `split`: the dev products choose the extraction model; the held-out ones are scored
+  only on what ingestion keeps.
+
+`check-gold` reports a product that matches no record, and a span its record's text does
+not hold.
 
 ## Transcriptions
 

@@ -26,9 +26,11 @@ class Case:
     reference: str | None  # the person's reference answer, for judge metrics later
     check: dict[str, Any] | None
     pending: str | None  # why the case is not scored yet
-    # Earlier turns, scripted: what the user said, the tools then called and the answer.
-    # The tools run for real when the case is played, so their IDs match the version.
+    # Earlier turns, scripted as what the user said and the answer shown.
     history: list[dict[str, Any]] = field(default_factory=list)
+    # Earlier messages of the user alone, each answered by the graph as the case is played.
+    turns: list[str] = field(default_factory=list)
+    pending_question: str | None = None  # a clarifying question the user is answering
     chatbot_name: str | None = None  # the name the account gave its assistant
 
 
@@ -56,6 +58,8 @@ def load_dataset(name: str, directory: Path = DATASET_DIR) -> Dataset:
             check=case.get("check"),
             pending=case.get("pending"),
             history=case.get("history", []),
+            turns=case.get("turns", []),
+            pending_question=case.get("pending_question"),
             chatbot_name=case.get("chatbot_name"),
         )
         for case in data["cases"]

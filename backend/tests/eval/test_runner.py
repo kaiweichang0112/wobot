@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import select
 
-from tests.knowledge.fakes import FakeEmbedder
+from tests.knowledge.fakes import FakeEmbedder, fake_facets
 from tests.knowledge.grc_site import grc_source
 from tests.knowledge.gtech_site import documents_source
 from tests.knowledge.workbooks import catalog_workbook, product_row
@@ -32,7 +32,7 @@ async def ingested(ingest_db, tmp_path):
         ingest_db,
         LocalBlobStore(tmp_path / "blobs"),
         FakeEmbedder(),
-        [ProductCatalogSource(fetch), grc_source([])],
+        [ProductCatalogSource(fetch, fake_facets()), grc_source([])],
     )
     async with ingest_db.begin() as conn:
         return await load_corpus(conn, result.index_version_id)
@@ -186,6 +186,19 @@ async def test_cases_that_cannot_run_say_why(ingest_db, ingested, gold_dir):
     (gold_dir / "empty.txt").write_text("# nothing pasted yet\n", encoding="utf-8")
     retrieval = {"kind": "retrieval", "gold": {"file": "empty.txt", "as": "speech"}}
     missing = {"kind": "list", "records": "lecture", "gold": {"file": "none.txt", "as": "speech"}}
+    facets = "".join(
+        f"  {facet}: []\n" for facet in ("functions", "form", "places", "sensing", "viewing")
+    )
+    (gold_dir / "facets.yaml").write_text(
+        "- product: 測試床墊 TM-1\n  company: 範例科技股份有限公司\n  split: dev\n"
+        f"{facets}  power: []\n  users: []\n",
+        encoding="utf-8",
+    )
+    facet_check = {
+        "kind": "facets",
+        "records": "product",
+        "gold": {"file": "facets.yaml", "as": "product_facets"},
+    }
 
     results = await score(
         ingest_db,
@@ -195,12 +208,21 @@ async def test_cases_that_cannot_run_say_why(ingest_db, ingested, gold_dir):
         case("C2", retrieval),
         case("C3", missing),
         case("C4", pending="held out", split="heldout"),
+        case("C5", facet_check),
     )
 
     assert (results["C1"].status, results["C1"].detail) == ("pending", "needs phase B")
     assert (results["C2"].status, results["C2"].detail) == ("pending", "not labelled yet")
     assert results["C3"].status == "error"
     assert results["C4"].split == "heldout"
+    # The fake reader names 離床偵測 and a bed for TM-1, which the label leaves empty.
+    facet_result = results["C5"]
+    assert (facet_result.status, facet_result.unresolved) == ("scored", [])
+    assert facet_result.facets.products == 1 and facet_result.facets.precision() == 0.0
+    assert facet_result.facets.differences == [
+        "測試床墊 TM-1: + functions 離床偵測 「離床偵測」",
+        "測試床墊 TM-1: + form bed 「床墊下」",
+    ]
 
 
 async def test_a_vision_reading_against_a_person_s_transcription(ingest_db, tmp_path, gold_dir):

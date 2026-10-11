@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     db_max_overflow: int = 2
     db_pool_timeout_seconds: float = 10
     db_connect_timeout_seconds: float = 10
-    # The chat agent's checkpoints, on a psycopg pool of their own (agent/checkpoints.py).
+    # The chat graph's checkpoints, on a psycopg pool of their own (agent/checkpoints.py).
+    # Local only until R1 settles how they reach Cloud SQL, so the budget does not count it.
     checkpoint_pool_size: int = 2
 
     # Needed only by commands that call OpenAI; in the cloud it comes from Secret Manager.
@@ -38,17 +39,48 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     # Reads the parts of list entries, such as a speech's title, during ingestion.
     extraction_model: str = "gpt-5.6-luna"
+    # Reads each product's facets. Chosen by wobot-eval facets (DEC-070): F1 0.95 on the
+    # dev products like gpt-6.1-sol, at 1/17 its cost.
+    facets_model: str = "gpt-6-luna"
     # A source losing more than this share of its records holds the version for review.
     publish_max_drop: float = 0.2
     # Reads images and PDF pages during ingestion; chosen by the A7 evaluation (DEC-049).
     vision_model: str = "gpt-6.1-sol"
-    # The chat agent: one model both picks tools and writes answers (DEC-054). A
-    # placeholder until the phase B evaluation chooses one (DEC-049).
-    agent_model: str = "gpt-5.6-luna"
-    # Medium over low after two one-run comparisons on dev (B3, B7): low more often took
-    # a search that missed for proof that nothing exists. "default" sends none, leaving
-    # the provider's own default.
-    agent_reasoning_effort: str = "medium"
+    # The chat graph: each model node has its own model and reasoning effort, chosen by
+    # that node's evaluation (DV11); the rest are placeholders until theirs. An effort of
+    # "default" sends none, leaving the provider's own.
+    # Jev routes (DEC-059): 23 of 24 dev cases at 0.26s p50, against 24 at 1.40s for the
+    # best OpenAI model. An OpenAI model can still be named here; Jev has no effort.
+    classify_model: str = "jev-latest"
+    classify_effort: str = "none"
+    # A route that takes longer has stalled: give up soon, and try once more at most.
+    classify_timeout_seconds: float = 15
+    # Routes when Jev fails twice (DEC-067): 24 of 24 dev cases at 1.40s p50 (DEC-059).
+    classify_fallback_model: str = "gpt-6-luna"
+    classify_fallback_effort: str = "none"
+    # Chosen for speed (DEC-060): first words at 0.78s p50 against 0.91s for gpt-6-luna.
+    chat_model: str = "gpt-5.6-luna"
+    chat_effort: str = "none"
+    # Chosen by what its searches find (DEC-061): 25.0 of 27 cases at 2.69s p95.
+    rewrite_model: str = "gpt-6-luna"
+    rewrite_effort: str = "none"
+    # Chosen for speed and cost (DEC-062): as correct as gpt-4o, at 2.61s p95 and 1/25 the cost.
+    answer_model: str = "gpt-6-luna"
+    answer_effort: str = "none"
+    # Chosen for accuracy and cost (DEC-063): 16 of 16 cases every run, at 1/24 gpt-4o's
+    # cost; gpt-4o's lower p95 came from one run in which gpt-6-luna was slow throughout.
+    list_agent_model: str = "gpt-6-luna"
+    list_agent_effort: str = "none"
+    # Chosen by its replies (DEC-063): 16 of 16 at 2.97s p95, and alone in never answering
+    # a mixed request's other part from memory.
+    write_list_model: str = "gpt-6-luna"
+    write_list_effort: str = "none"
+    # Chosen for accuracy (DEC-071): 13.7-14.0 of 14 dev with no product shown that may
+    # never be, at 2.07s p50 and $0.45 per 1,000 turns.
+    rec_agent_model: str = "gpt-6-luna"
+    rec_agent_effort: str = "low"
+    # For Jev; in the cloud it comes from Secret Manager.
+    typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.
     knowledge_bucket: str | None = None
     knowledge_local_dir: Path = Path(".data/knowledge")

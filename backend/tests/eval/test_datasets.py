@@ -3,9 +3,8 @@ needs a database, so `wobot-eval check-gold` does that part."""
 
 import pytest
 
-from wobot.agent.tools import build_tools
+from wobot.agent.list_agent import TOOLS_BY_NAME
 from wobot.eval import gold
-from wobot.eval.agent import BEHAVIORS, RECOMMENDATION_CHECKS
 from wobot.eval.dataset import dataset_names, load_dataset
 from wobot.eval.runner import case_refs
 
@@ -30,34 +29,16 @@ def test_every_gold_file_belongs_to_a_case():
     assert files == used
 
 
-def test_tool_labels_name_only_the_agents_tools():
-    tools = {tool.name for tool in build_tools(db=None, embedder=None)}
+@pytest.mark.parametrize("name", ["lists-v1", "turns-v1"])
+def test_every_expected_list_call_is_one_the_tools_take(name):
+    cases = [c for c in load_dataset(name).cases if c.check and "calls" in c.check]
 
-    for name in dataset_names():
-        for case in load_dataset(name).cases:
-            if case.check and case.check["kind"] == "tools" and case.check["expect"]:
-                named = {tool for expected in case.check["expect"] for tool in expected}
-                assert named <= tools, (case.case_id, named - tools)
-
-
-def test_scripted_history_calls_fit_the_tools_as_they_are():
-    # The history's tools run for real when a case is played: a call the tool's schema
-    # refuses would end the case in an error, not measure it.
-    tools = {tool.name: tool for tool in build_tools(db=None, embedder=None)}
-
-    for name in dataset_names():
-        for case in load_dataset(name).cases:
-            for turn in case.history:
-                for call in turn.get("tools", []):
-                    schema = tools[call["name"]].tool_call_schema
-                    schema.model_validate(call["args"])  # raises on a refused call
-
-
-@pytest.mark.parametrize("name", dataset_names())
-def test_behavior_checks_expect_only_known_behaviors(name):
-    for case in load_dataset(name).cases:
-        if case.check and case.check["kind"] in ("behavior", "recommendation"):
-            known = set(BEHAVIORS)
-            if case.check["kind"] == "recommendation":
-                known |= set(RECOMMENDATION_CHECKS)
-            assert set(case.check) - {"kind"} <= known, case.case_id
+    assert cases
+    for case in cases:
+        for accepted in case.check["calls"]:
+            for call in accepted:
+                filters = {name: value for name, value in call.items() if name != "tool"}
+                spellings = filters.pop("contains", [None])
+                for contains in spellings:
+                    given = filters | ({} if contains is None else {"contains": contains})
+                    TOOLS_BY_NAME[call["tool"]].model_validate(given)  # raises if refused

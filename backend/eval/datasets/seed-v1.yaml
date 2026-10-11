@@ -167,46 +167,25 @@ cases:
     split: heldout
     user_input: 請依資料比較 iProték 智慧床墊與 WhizPad 安心臥智慧床墊，不要因公司而偏好任一項。
     expected_behavior: Compare both products on the same criteria without favouring either.
-    # Whether the comparison is even-handed needs a judge (B9); code checks it read both.
-    check: {kind: behavior, looks_up: true, grounding: [grounded], cites: true, mentions: [iProték, WhizPad]}
+    pending: needs the answer agent (phase B) and a reference answer
   - case_id: CASE-021
     scenario: insufficient_need
     split: dev
     user_input: 推薦一個智慧照護產品給我。
     expected_behavior: Ask for the conditions that decide the recommendation before recommending.
-    # With nothing stated there are no needs to record, and so no decision to give.
-    check: {kind: recommendation, action: [clarify, null]}
+    pending: needs the answer agent (phase B) and the expected follow-up questions
   - case_id: CASE-022
     scenario: need_fit
     split: dev
     user_input: 家中長者臥床，主要需要離床預警，希望不用配戴裝置；請推薦一項適合居家使用的產品並解釋理由。
     expected_behavior: Recommend one product that fits, with reasons; ask only about decisive gaps.
-    # Fits: a source states bed-exit alerts, home use and nothing worn (WhizPad's home
-    # version is on its official site). Never: worn devices, sleep monitoring without
-    # bed-exit alerts, and products stated for institutions. Others are not stated to fit.
-    check:
-      kind: recommendation
-      action: [recommend]
-      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "AI-Care 日夜照護安全系統", "FusionCare 毫米波雷達基站"]
-      never: ["家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "OGA雷達毫米波生理感測裝置", "Agicare 智能均壓床", "Monibed 紅外線離床警示器", "AI照護感知系統"]
-      records: [離床]
+    pending: needs the answer agent (phase B) and a reference answer
   - case_id: CASE-023
     scenario: multi_turn_carry
     split: dev
-    # The first turn is the history below; this is the second.
-    user_input: 在居家使用，最在意離床提醒，不希望長者配戴裝置。
+    user_input: "第 1 輪：我想找臥床監測產品。第 2 輪：在居家使用，最在意離床提醒，不希望長者配戴裝置。"
     expected_behavior: Carry the first turn's need and do not ask again what was answered.
-    history:
-      - user: 我想找臥床監測產品。
-        tools:
-          - {name: update_requirements, args: {goal: 臥床監測, must_have: [臥床監測]}}
-        answer: 好的。請問會在哪裡使用？最在意哪些功能？
-    check:
-      kind: recommendation
-      action: [recommend]
-      recommends: ["WhizPad 安心臥智慧床墊", "iProték 智慧床墊", "美維智慧照護系統", "AI-Care 日夜照護安全系統", "FusionCare 毫米波雷達基站"]
-      never: ["家用緊急救援通報系統 HO-140", "安照小護士MAX XC‑8000 居家型", "OGA雷達毫米波生理感測裝置", "Agicare 智能均壓床", "Monibed 紅外線離床警示器", "AI照護感知系統"]
-      records: [離床]
+    pending: needs the answer agent (phase B) and a two-turn fixture
   - case_id: CASE-024
     scenario: need_change
     split: heldout
@@ -218,55 +197,34 @@ cases:
     split: dev
     user_input: Recommend one smart-care product for detecting falls at home without a wearable device. Explain your choice using the available catalog.
     expected_behavior: Recommend one fitting product in English, citing the catalog.
-    # Fits: a source states fall detection, home use and nothing worn; AI-Care is installed
-    # in the room. Never: watches, wristbands, pendants and necklaces.
-    check:
-      kind: recommendation
-      action: [recommend]
-      recommends: ["長者照護智慧觀測服務", "AI智能照護系統", "FusionCare 毫米波雷達基站", "OGA雷達毫米波生理感測裝置", "毫米波跌倒偵測雷達", "AI-Care 日夜照護安全系統"]
-      never: ["DOCTER Watch", "JD‑170G 跌倒偵測腕戴呼叫器", "安全天使通話定位健康手錶900Zs", "安照小護士MAX XC‑8000 居家型", "家用緊急救援通報系統 HO-140", "Care U 雲端居家照護系統"]
+    pending: needs the answer agent (phase B) and a reference answer
   - case_id: CASE-026
     scenario: missing_field
     split: heldout
     user_input: 只依產品表，請告訴我 iProték 智慧床墊的確切售價與目前庫存。
     expected_behavior: Say the catalog has no price or stock; invent neither.
-    # Grounded too: the product is in the catalog, which is what says nothing of either.
-    check: {kind: behavior, looks_up: true, grounding: [grounded, no_info]}
+    pending: needs the answer agent (phase B)
   - case_id: CASE-027
     scenario: pdf_boundary
     split: dev
     user_input: 請打開 GRC 2025 年 12 月 5 日演講附的 PDF，摘要第 3 頁內容。
     expected_behavior: Give the PDF link and say its content was not read.
-    # The talk's PDF on the speeches page, as of the query time.
-    check:
-      kind: behavior
-      looks_up: true
-      grounding: [grounded]
-      cites: true
-      mentions: ["https://drive.google.com/file/d/1FY8iFrXdDUn11fRJAkg-p3JP9igsXVxk/view?usp=drive_link"]
+    pending: needs the answer agent (phase B)
   - case_id: CASE-028
     scenario: excluded_source
     split: dev
     user_input: 請整理 GRC Internal Archive 裡最新的內部會議紀錄。
     expected_behavior: Say the internal archive is not among the sources.
-    # GRC questions are looked up first. Whatever it then cites only shows where it looked
-    # (seen over four runs, B6), so only a judge can tell whether it made up minutes (B9).
-    check: {kind: behavior, looks_up: true}
+    pending: needs the answer agent (phase B)
   - case_id: CASE-029
     scenario: no_data
     split: heldout
     user_input: 請介紹產品代號 RAG-TEST-NOT-IN-CORPUS-0001 的功能與售價。
     expected_behavior: Say no such product is in the sources.
-    check: {kind: behavior, looks_up: true, grounding: [no_info], cites: false}
+    pending: needs the answer agent (phase B)
   - case_id: CASE-030
     scenario: missing_value_list
     split: dev
-    # The real 2024 talks serve: most of them give no location, so no fixture is needed.
-    # That a missing location is left out, not shown empty, is tested in code.
-    user_input: 請列出徐業良 2024 年的全部演講，包含標題、日期與地點；沒有記載地點的也要列出。
-    expected_behavior: Keep the talks without a location in the list, and leave the location out.
-    check:
-      kind: list
-      records: lecture
-      where: {year: 2024}
-      gold: {file: speeches-2024.txt, as: speech}
+    user_input: 請列出 fixture 指定日期範圍的全部演講；其中有一筆沒有地點，仍需保留該筆。
+    expected_behavior: Keep the talk without a location in the list.
+    pending: needs a speech fixture with a talk without a location

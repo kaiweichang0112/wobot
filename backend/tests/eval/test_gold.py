@@ -174,6 +174,59 @@ def test_a_section_is_named_by_its_heading_by_the_one_above_or_by_its_text():
     assert resolved[1].problem == "heading of 2 sections; add the one above"
 
 
+def test_any_of_names_items_that_each_answer_alone(tmp_path):
+    path = write(
+        tmp_path,
+        "k.yaml",
+        "KN-1:\n  relevant:\n    - any_of:\n        - section: 'Since 2003'\n"
+        "        - profile: 'Biography'\n        - student: ''\n"
+        "    - section: '聯絡我們'\n",
+    )
+
+    group, alone = gold.named_refs(path, "KN-1", "relevant")
+
+    assert (group.kind, group.where) == (gold.ANY_OF, "k.yaml:KN-1#1")
+    # The blank template entry is left out, as anywhere else.
+    assert [(m.kind, m.value, m.where) for m in group.value] == [
+        ("section", "Since 2003", "k.yaml:KN-1#1.1"),
+        ("profile", "Biography", "k.yaml:KN-1#1.2"),
+    ]
+    assert gold.label_value(group) == "section Since 2003 | profile Biography"
+    assert (alone.kind, alone.value) == ("section", "聯絡我們")
+
+
+def test_any_of_names_two_items_or_more(tmp_path):
+    path = write(tmp_path, "k.yaml", "KN-1:\n  relevant:\n    - any_of:\n        - section: x\n")
+
+    with pytest.raises(gold.GoldError, match="two items or more"):
+        gold.named_refs(path, "KN-1", "relevant")
+
+
+def test_an_any_of_counts_as_one_item_and_reports_a_member_that_matches_nothing():
+    items = corpus(
+        section("s:home", "中心", "Since 2003", text=["Tel: 03"]),
+        section("s:bio", "徐業良", "Biography", text=["founded in 2003"]),
+    )
+    found = gold.Ref(
+        gold.ANY_OF,
+        (gold.Ref("section", "Since 2003", "a.1"), gold.Ref("section", "Biography", "a.2")),
+        "a",
+    )
+    typo = gold.Ref(
+        gold.ANY_OF,
+        (gold.Ref("section", "Since 2003", "b.1"), gold.Ref("section", "Biografy", "b.2")),
+        "b",
+    )
+
+    resolved = gold.resolve([found, typo, gold.Ref("section", "Since 2003", "c")], items)
+
+    assert resolved[0].keys == ["s:home", "s:bio"]
+    assert (resolved[1].keys, resolved[1].problem) == ([], "b.2 match no record")
+    # Either key found stands for the group; a key labelled alone stands for itself.
+    assert gold.item_keys([resolved[0]]) == {"s:home": "any of a", "s:bio": "any of a"}
+    assert gold.item_keys([resolved[2]]) == {"s:home": "s:home"}
+
+
 # --- Transcriptions ---------------------------------------------------------------------
 
 MEDIA = "https://static.wixstatic.com/media"
@@ -218,3 +271,76 @@ def test_an_image_is_found_by_the_address_a_browser_copies():
     )
 
     assert [r.keys for r in resolved] == [["image:a"], ["document_page:catalog:2"], []]
+
+
+FACETS = """\
+- product: TM-1
+  company: Co
+  split: dev
+  functions:
+    - {value: 離床偵測, span: '離床提醒'}
+  form:
+    - {value: bed, span: '鋪於床墊下'}
+  places: []
+  sensing: []
+  viewing: []
+  power: []
+  users: []
+- product: TM-2
+  company: Co
+  split: heldout
+  functions: []
+  form: []
+  places: []
+  sensing: []
+  viewing: []
+  power: []
+  users: []
+"""
+
+
+def test_product_facets_name_the_split_s_products_with_each_value_s_span(tmp_path):
+    path = write(tmp_path, "f.yaml", FACETS)
+
+    [ref] = gold.product_facet_refs(path, "dev")
+
+    assert (ref.kind, ref.value) == ("product", {"name": "TM-1", "company": "Co"})
+    assert ref.expected["facets"]["functions"] == {"離床偵測": "離床提醒"}
+    assert ref.expected["facets"]["places"] == {}
+    assert [r.value["name"] for r in gold.product_facet_refs(path, "heldout")] == ["TM-2"]
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (("  users: []\n", ""), "users is missing"),
+        (("離床偵測", "離床感應"), "'離床感應' is not a functions value"),
+        (("{value: bed, span: '鋪於床墊下'}", "{value: bed}"), "bed needs the span"),
+        (("  places: []\n", "  places: []\n  colour: []\n"), "no facet colour"),
+        (("split: dev", "split: test"), "split is dev or heldout"),
+        (("  form:\n", "  form:\n    - {value: bed, span: '床墊'}\n"), "bed is listed twice"),
+    ],
+)
+def test_a_facet_label_that_cannot_be_scored_is_an_error(tmp_path, change, problem):
+    path = write(tmp_path, "f.yaml", FACETS.replace(*change, 1))
+
+    with pytest.raises(gold.GoldError, match=problem):
+        gold.product_facet_refs(path, "dev")
+
+
+def test_a_facet_span_its_product_s_text_lacks_is_reported(tmp_path):
+    product = {
+        "product_name": "TM-1",
+        "company_name": "Co",
+        "features_text": "提供離床提醒。",
+        "usage_text": "感測墊鋪於床墊下。",
+        "summary_text": None,
+    }
+    items = corpus(Item("product:co:tm-1", "product", product))
+    path = write(tmp_path, "f.yaml", FACETS.replace("離床提醒", "離床預警"))
+
+    [resolved] = gold.resolve(gold.product_facet_refs(path, "dev"), items)
+
+    assert gold.facet_span_problems(resolved, items) == [
+        "functions 離床偵測: '離床預警' is not in the catalog text"
+    ]

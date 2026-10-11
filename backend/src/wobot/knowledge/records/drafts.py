@@ -2,9 +2,10 @@
 
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
+from wobot.knowledge.facets import FacetValue
 from wobot.knowledge.hashing import content_hash
 
 
@@ -22,6 +23,8 @@ class RecordDraft:
     # a row moving down the sheet is not a new revision.
     locator: dict[str, Any]
     warnings: tuple[str, ...] = ()
+    # A product's facets, kept in knowledge.product_facets (DEC-069).
+    facets: tuple[FacetValue, ...] = ()
 
     @property
     def revision(self) -> tuple[str, str]:
@@ -36,17 +39,22 @@ def record_draft(
     fields: dict[str, Any],
     locator: dict[str, Any],
     warnings: Sequence[str] = (),
+    facets: Sequence[FacetValue] = (),
 ) -> RecordDraft:
+    hashed: dict[str, Any] = {"record_type": record_type, "raw": raw, "fields": fields}
+    if facets:  # hashed only when there are some, so other records keep their revisions
+        hashed["facets"] = [asdict(facet) for facet in facets]
     return RecordDraft(
         record_type=record_type,
         logical_key=logical_key,
         # Normalized fields are hashed too: fixing a normalization bug must yield a new
         # revision even though the source text is unchanged.
-        content_hash=content_hash({"record_type": record_type, "raw": raw, "fields": fields}),
+        content_hash=content_hash(hashed),
         raw=raw,
         fields=fields,
         locator=locator,
         warnings=tuple(warnings),
+        facets=tuple(facets),
     )
 
 

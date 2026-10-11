@@ -2,17 +2,21 @@
 
 `wobot-eval` scores an index version against labelled datasets with RAGAS metrics that
 need no model, computed on item identities, so no judge runs and every number repeats.
-RAGAS's judge metrics need the answer agent and come in phase B. `wobot-eval agent` plays
-the cases that check the chat agent itself, with paid model calls.
+Model comparisons for the chat graph's nodes play their datasets with the candidate
+models (paid calls). Judge metrics come in V8.
 
 | Path | Holds |
 | --- | --- |
 | `datasets/seed-v1.yaml` | The 29 seed questions, split 20 dev / 9 held out by scenario |
 | `datasets/fixtures-v1.yaml` | Engineering checks of ingestion outside the 30 questions |
 | `datasets/items-v1.yaml` | Questions about one item, for comparing chunk strategies |
-| `datasets/tool-selection-v1.yaml` | 31 messages and the tools the agent should call, 21 dev / 10 held out |
-| `datasets/behavior-v1.yaml` | What the agent should do with kinds of turns (AC-AGT), 5 dev / 2 held out |
+| `datasets/route-v1.yaml` | Messages and every acceptable path: 24 dev / 12 held out |
+| `datasets/knowledge-v1.yaml` | Questions for the knowledge path, with the items that answer them and what the reply must hold: 18 / 4 |
+| `datasets/lists-v1.yaml` | Requests for lists, with the calls accepted and the items shown: 17 / 4 |
+| `datasets/recommendation-v2.yaml` | Needs, with the products that fit, those never to show and the facet query that finds them: 15 / 3 |
+| `datasets/turns-v1.yaml` | Conversations whose last turn is scored: 8 / 2 |
 | `gold/` | Labels a person wrote from the sources; see `gold/README.md` |
+| `comparisons/` | Write-ups that compare versions, such as [v1 against v2](comparisons/agent-v1-v2.md) |
 | `runs/` | Reports, gitignored |
 
 ## Commands
@@ -23,7 +27,6 @@ From `backend/`, against the local database; the API's read-only role is enough.
 uv run wobot-eval check-gold
 uv run wobot-eval run
 uv run wobot-eval run --dataset items-v1 --split dev --index-version <version>
-uv run --env-file .env wobot-eval agent [--model <model>] [--effort <effort>] [--split dev]
 ```
 
 `run` writes `runs/<time>-v<version>-k<k>.json` and `.md`, and records the commit, the
@@ -31,15 +34,40 @@ version, its embedding space and strategies, the extraction model and prompt, an
 hash of every dataset and gold file it read. Retrieval embeds each question once with the
 version's embedding model; without `OPENAI_API_KEY` those cases stay pending.
 
+## Model comparisons
+
+Each model node of the chat graph gets its own model (DV11), compared on its dataset
+with every candidate playing every dev case, three times by default:
+
+```bash
+uv run --env-file .env wobot-eval route --model jev-latest --model gpt-6-luna:none
+uv run --env-file .env wobot-eval chat --model gpt-5.6-luna:none --model gpt-6-luna:none
+uv run --env-file .env wobot-eval rewrite --model gpt-6-luna:none
+uv run --env-file .env wobot-eval answer --model gpt-6-luna:none
+uv run --env-file .env wobot-eval list-agent --model gpt-6-luna:none
+uv run --env-file .env wobot-eval write-list --model gpt-6-luna:none
+uv run --env-file .env wobot-eval recommend --model gpt-6-luna:low
+uv run --env-file .env wobot-eval turns
+DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
+```
+
+- A candidate is `model:effort`; Jev takes no effort.
+- Reports show cases right per run, p50 and p95 of the node or path, tokens and cost,
+  and every play's node flow: each node, its seconds and what it did.
+- The rule: keep the candidates within one case of the best, then take the lowest p95,
+  then the cheapest among those close to it. A person reads the failures and the flows
+  before choosing, and the choice is recorded in a decision.
+- `recommend` also checks each turn's `find_products` call against the case's labelled
+  query, and `facets` counts product and need pairs decided unlike a person's labels:
+  a value can be right while the decision it feeds is wrong.
+
 ## Checks
 
 | Check | Compares | RAGAS metrics | Counted here |
 | --- | --- | --- | --- |
-| `behavior` | What the agent's last turn did with what a person expects of it: whether it looked anything up, the grounding its answer claims, its status, whether it cites sources, and texts the reply must mention; scored by `wobot-eval agent` | none: these are facts about the turn, not judgements | pass per case, with each unmet expectation |
 | `list` | The records a structured filter returns, the query behind "list every …", with the labelled items | precision and recall: `IDBasedContextPrecision`, `IDBasedContextRecall` | F1, missing and unlabelled items |
 | `fields` | Labelled values with the matched records' fields, after collapsing spaces | accuracy: the mean of `ExactMatch`; presence: the mean of `StringPresence`, a value that holds the label (an empty label needs an empty value) | mismatches |
 | `retrieval` | The top k chunks of a semantic search, mapped to their records, with the labelled relevant items | recall@k and record precision: `IDBasedContextRecall`, `IDBasedContextPrecision` | MRR, chunk precision, tokens read, missed items |
-| `tools` | The set of tools the agent called in a case's last turn with the acceptable sets a person labelled; scored by `wobot-eval agent` | none: RAGAS's tool-call metrics take one expected sequence, not alternatives | accuracy per split and scenario, calls written as text instead of made, refused arguments, failed tools, seconds and tokens |
 | `transcription` | What the vision model read in one image or PDF page with what a person transcribed from it | text recall: the mean of `StringPresence` over the transcribed lines | value precision and recall on (value, unit) pairs, lines and values missed or misread |
 
 - Labels name items as a person sees them and are matched by normalized text. A label
@@ -77,37 +105,3 @@ DB_USER=wobot_ingest_user uv run wobot-ingest run --sources grc_website --policy
 uv run wobot-eval run --dataset items-v1 --dataset seed-v1 --split dev
 uv run wobot-eval run --dataset items-v1 --dataset seed-v1 --split dev --index-version <version>
 ```
-
-## Agent checks
-
-`wobot-eval agent` builds the chat agent with the configured model, or `--model` and
-`--effort`, against the active version, and plays each `tools`, `retrieval`, `list` and
-`behavior` case of the datasets given with `--dataset` (tool-selection-v1 by default)
-once, in a new thread with an in-memory checkpointer; `--check` plays one kind only. It
-writes `runs/<time>-agent-<model>-<effort>.json` and
-`.md`, recording the model, effort, prompt version, index version and dataset hash.
-
-- It runs dev by default: tune on dev, and play held-out once, when choosing the model.
-- `--effort default` sends no reasoning effort, leaving the model's own default; every
-  effort goes through the Responses API, so efforts compare on one API.
-- A case's `history` scripts earlier turns. Their tools run for real against the version,
-  so follow-ups see real IDs, and only the last turn is measured: a slip in an earlier
-  turn would otherwise be scored as the follow-up's.
-- A call the model writes as text instead of making is counted apart: the answer then
-  rests on no lookup at all.
-- `tools` scores the lookups a turn made. `update_requirements` records what the user
-  said and looks nothing up, so it is left out of the set compared.
-- Retrieval is scored twice against the same labels as `run`. The first search alone,
-  over its k chunks, compares the model's own query with searching the question itself.
-  Every chunk the turn's searches returned, deduplicated, is what the model read: more
-  searches read more, so its recall comes with the tokens it cost.
-- A list is scored by the records the reply showed, which code renders from the
-  `query_records` results the answer names, against the same labels `run` uses. `run`
-  scores the filter a list question needs; `agent` scores whether the agent ran it and
-  attached it.
-- The guard's second tries never enter the messages, so they are counted apart, with
-  their cost and why: a call written as text, or an answer that failed the checks. A turn
-  whose answer was held back is unverified; one that ended without an answer, or with a
-  failed tool, is retryable. A behavior check expects answered unless it says otherwise.
-- Each case runs once, so one run shows what a model does, not how often. With
-  `--env-file .env` and LangSmith set, every turn is also traced.

@@ -8,7 +8,7 @@ from tests.knowledge.conftest import (
     SavepointDatabase,
     ingest_db,  # noqa: F401  # the rolled-back database
 )
-from tests.knowledge.fakes import FakeEmbedder
+from tests.knowledge.fakes import FakeEmbedder, fake_facets
 from tests.knowledge.grc_site import grc_source
 from tests.knowledge.workbooks import catalog_workbook, product_row
 from wobot.knowledge.blobs import LocalBlobStore
@@ -49,7 +49,7 @@ async def knowledge(ingest_db, tmp_path) -> Knowledge:  # noqa: F811
         ingest_db,
         LocalBlobStore(tmp_path),
         embedder,
-        [ProductCatalogSource(fetch), grc_source([])],
+        [ProductCatalogSource(fetch, fake_facets()), grc_source([])],
     )
     assert result.status == "published", result
     return Knowledge(ingest_db, embedder, result.index_version_id)

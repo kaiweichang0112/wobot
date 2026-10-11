@@ -19,6 +19,7 @@ from wobot.knowledge.blobs import BlobStore, GcsBlobStore, LocalBlobStore
 from wobot.knowledge.catalog import CatalogFile, FetchCatalog, ProductCatalogSource
 from wobot.knowledge.embeddings import OpenAIEmbedder
 from wobot.knowledge.extraction import CachedReader, DbAnswerCache, OpenAILectureReader
+from wobot.knowledge.facet_extraction import OpenAIFacetReader, ProductText, facet_input
 from wobot.knowledge.grc import GrcWebsiteSource
 from wobot.knowledge.gtech import GtechDocsSource, GtechDocumentsSource, GtechWebsiteSource
 from wobot.knowledge.locks import exclusive_run
@@ -201,7 +202,14 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
         async with new_client() as client:
             sources: list[Source] = []
             if catalog.SOURCE_ID in args.sources:
-                sources.append(ProductCatalogSource(_fetch_catalog(args.catalog_file, settings)))
+                facets = CachedReader[ProductText](
+                    OpenAIFacetReader(openai_client, settings.facets_model),
+                    DbAnswerCache(engine),
+                    cache_input=facet_input,
+                )
+                sources.append(
+                    ProductCatalogSource(_fetch_catalog(args.catalog_file, settings), facets)
+                )
             if grc.SOURCE_ID in args.sources:
                 lectures = CachedReader(
                     OpenAILectureReader(openai_client, settings.extraction_model),

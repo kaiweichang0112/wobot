@@ -1,8 +1,8 @@
 # Wobot backend
 
-The FastAPI service and its database migrations, packaged as one container image.
-LangGraph agents will live here too. Google Cloud setup is in
-[`infra/README.md`](../infra/README.md).
+The FastAPI service, the chat graph and the database migrations, packaged as one
+container image. The chat graph runs from a terminal for now (`wobot-chat`); the API
+serves it in phase C. Google Cloud setup is in [`infra/README.md`](../infra/README.md).
 
 ## Layout
 
@@ -13,7 +13,9 @@ LangGraph agents will live here too. Google Cloud setup is in
 | `src/wobot/models.py` | SQLAlchemy models; the migrations define the schema |
 | `src/wobot/api/` | FastAPI app, Firebase ID token verification, error envelope |
 | `src/wobot/knowledge/` | Knowledge ingestion: sources → records → chunks → embeddings → versions, and search |
-| `src/wobot/agent/` | The chat agent: its read-only tools, prompt, answer guard, rendering and checkpoint tables |
+| `src/wobot/agent/` | The chat graph: the router, its four paths, each model node's prompt, the tools the loops call, and the conversation checkpoints |
+| `src/wobot/eval/` | `wobot-eval`: labelled datasets scored against an index version, and model comparisons for each model node |
+| `eval/` | Datasets, a person's gold labels, and comparisons such as [v1 against v2](eval/comparisons/agent-v1-v2.md) |
 | `migrations/` | Alembic migrations, run as the `wobot_migrator` group role |
 | `tests/` | API and privilege tests against a migrated local database |
 
@@ -114,6 +116,12 @@ DB_USER=wobot_ingest_user uv run wobot-ingest rollback <version>
   which the database checks too. Answers are kept in `knowledge.llm_extractions` by
   input, model and prompt version, so a talk is paid for once. Chunks are built from
   the entry text, never from what the model read.
+- Each product's facets (what it does, its form, where it is used, how it senses,
+  where alerts are seen, its power and how many use it at once) come from
+  `FACETS_MODEL` in the fixed vocabulary of `knowledge/facets.py`. A value is kept only
+  with a span of the product's text, which a trigger checks too, and the model and prompt
+  version are part of the product's revision. A product the model did not read holds the
+  version: unread, it would never be found by its facets.
 - A run whose content matches the active version ends as `no_change` and embeds
   nothing. `--policy dry-run` builds and validates a version without publishing it.
 - A version that would empty a source, or lose more than `PUBLISH_MAX_DROP` of a
@@ -140,34 +148,61 @@ DB_USER=wobot_ingest_user uv run wobot-ingest rollback <version>
 - Exit code: 0 for `published`, `no_change`, `validated`, `held` and
   `skipped_concurrent`, which a retry would not change; 1 for `failed`.
 
-## Evaluation
+## Chat graph
 
-`wobot-eval` scores an index version against labelled datasets with RAGAS: complete lists,
-exact fields, retrieval, and vision readings against a person's transcriptions, all from
-item identities. RAGAS is a dev dependency, so this runs from a checkout. Labels are
-written by a person from the sources, never from system output. See `eval/README.md`.
+`agent/graph.py` builds one LangGraph `StateGraph`. `classify` names each message's path
+and every path ends with the reply; a test holds the drawing to
+`tests/agent/expected_graph.mmd`.
 
-```bash
-uv run wobot-eval check-gold
-uv run wobot-eval run
-DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
-```
+| Path | Nodes | Model calls |
+| --- | --- | --- |
+| Chat | `classify` → `chat_reply` | 1 |
+| Knowledge | `classify` → `rewrite_query` → `retrieve` → `answer` | 2 |
+| Lists | `classify` → `list_agent` ⇄ `list_tools` → `write_list` | 2 or more |
+| Recommendation | `classify` → `rec_agent` ⇄ `rec_tools` | 1, or 2 when it asks |
 
-`vision` compares vision models on the dev transcriptions (paid calls); see
-`eval/gold/README.md`.
-
-## Chat
-
-`wobot-chat` talks with the chat agent in a terminal (paid calls). Conversations are
-kept in the local database as the API's role, and `--thread` takes one up again; each
-turn prints the tools called and any answer the guard asked again.
+- Each model node has its own model and reasoning effort, chosen by its `wobot-eval`
+  comparison and recorded in a decision (the settings below). Jev routes; when it fails
+  twice, an OpenAI model does.
+- Lists and product cards are written by code from the records, so a phone number or a
+  link is never a model's.
+- A recommendation is judged by code. `rec_agent` turns the need into a query in the facet
+  vocabulary; `find_products` (`agent/find.py`) keeps the products whose facets state
+  every function and contradict no condition, ranks them, and shows them at once when
+  nothing is left to ask. The agent asks when the products split on something the user
+  has not said, and explains when none fits.
+- Every prompt has a `PROMPT_VERSION`, which a test pins with the prompt's fingerprint.
 
 ```bash
 DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>] [--name <name>]
 ```
 
-Only `DB_MODE=local` keeps conversations for now: async psycopg through the Cloud SQL
-connector is still to be settled.
+`wobot-chat` prints each node with its seconds and what it did (paid calls). Conversations
+are kept in the local database's checkpoint tables as the API's role, and `--thread`
+takes one up again. Only `DB_MODE=local` keeps them for now: async psycopg through the
+Cloud SQL connector is still to be settled. Tracing goes to LangSmith only when run with
+`--env-file .env` and `LANGSMITH_TRACING=true`; tests never send traces.
+
+## Evaluation
+
+`wobot-eval` scores an index version against labelled datasets with RAGAS: complete lists,
+exact fields, retrieval, product facets, and vision readings against a person's
+transcriptions, all from item identities. RAGAS is a dev dependency, so this runs from a
+checkout. Labels are written by a person from the sources, never from system output. See
+`eval/README.md`.
+
+```bash
+uv run wobot-eval check-gold
+uv run wobot-eval run
+DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
+DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
+```
+
+`vision` compares vision models on the dev transcriptions, and `facets` models reading
+the dev products' facets; both make paid calls, except for answers already cached. See
+`eval/gold/README.md`. `route`, `chat`, `rewrite`, `answer`, `list-agent`, `write-list`
+and `recommend` compare models for one model node each, `turns` plays conversations
+through the configured graph; all make paid calls. See `eval/README.md`.
 
 ## Migrations
 
@@ -186,10 +221,6 @@ DB_USER=wobot_migrator_user uv run alembic check
 - Never downgrade Cloud SQL; fix forward with a new revision. `downgrade` is for
   checking locally that a revision reverses cleanly.
 - `alembic check` fails when the models and the migrations disagree.
-- The agent's checkpoint tables (`0005`) are written in the state the pinned
-  `langgraph-checkpoint-postgres` reaches, and its `setup()` is never run: the API's
-  role has no DDL. A test builds the library's own tables and compares them with ours,
-  so upgrading the package means a new revision for whatever migrations it adds.
 
 ## Container image
 
@@ -222,14 +253,23 @@ docker build -t wobot-api:local .
 | `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | `2`, `2` | Connections per instance, sized against the budget in `infra/README.md` |
 | `DB_POOL_TIMEOUT_SECONDS` | `10` | Longest wait for a free pooled connection |
 | `DB_CONNECT_TIMEOUT_SECONDS` | `10` | Longest wait to open a connection |
-| `CHECKPOINT_POOL_SIZE` | `2` | Most connections the chat agent's checkpoints hold, on a psycopg pool of their own |
-| `OPENAI_API_KEY` | none | Ingestion and search only; from Secret Manager in the cloud |
+| `OPENAI_API_KEY` | none | Ingestion, search and the chat graph; from Secret Manager in the cloud |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | Longest wait for one OpenAI request |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match a row of `knowledge.embedding_configs` |
 | `EXTRACTION_MODEL` | `gpt-5.6-luna` | Reads a speech's title, event and location; answers are cached per model |
+| `FACETS_MODEL` | `gpt-6-luna` | Reads each product's facets; chosen with `wobot-eval facets`; answers are cached per model |
 | `VISION_MODEL` | `gpt-6.1-sol` | Reads images and PDF pages; chosen with `wobot-eval vision`; answers are cached per model |
-| `AGENT_MODEL` | `gpt-5.6-luna` | The chat agent's model, until the phase B evaluation chooses one |
-| `AGENT_REASONING_EFFORT` | `medium` | Its reasoning effort; `default` sends none |
+| `TYPESAFE_API_KEY` | none | Jev, the router |
+| `CLASSIFY_MODEL`, `CLASSIFY_EFFORT` | `jev-latest`, `none` | Routes each message (DEC-059) |
+| `CLASSIFY_FALLBACK_MODEL`, `CLASSIFY_FALLBACK_EFFORT` | `gpt-6-luna`, `none` | Routes when Jev fails twice (DEC-067) |
+| `CLASSIFY_TIMEOUT_SECONDS` | `15` | Longest wait for one route |
+| `CHAT_MODEL`, `CHAT_EFFORT` | `gpt-5.6-luna`, `none` | Small talk and writing (DEC-060) |
+| `REWRITE_MODEL`, `REWRITE_EFFORT` | `gpt-6-luna`, `none` | Rewrites a question for the search (DEC-061) |
+| `ANSWER_MODEL`, `ANSWER_EFFORT` | `gpt-6-luna`, `none` | Answers from what the search found (DEC-062) |
+| `LIST_AGENT_MODEL`, `LIST_AGENT_EFFORT` | `gpt-6-luna`, `none` | Chooses the list queries (DEC-063) |
+| `WRITE_LIST_MODEL`, `WRITE_LIST_EFFORT` | `gpt-6-luna`, `none` | Introduces the lists (DEC-063) |
+| `REC_AGENT_MODEL`, `REC_AGENT_EFFORT` | `gpt-6-luna`, `low` | Turns a need into a facet query (DEC-071) |
+| `CHECKPOINT_POOL_SIZE` | `2` | Connections the conversation checkpoints hold, on a psycopg pool of their own |
 | `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
 | `KNOWLEDGE_LOCAL_DIR` | `.data/knowledge` | Where local runs keep raw source files |

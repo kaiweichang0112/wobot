@@ -1,7 +1,10 @@
 """Product catalog rows → normalized product drafts, ready to become records."""
 
 import re
+from dataclasses import replace
 
+from wobot.knowledge.extraction import Answer, Question
+from wobot.knowledge.facet_extraction import grounded_facets
 from wobot.knowledge.records.drafts import RecordDraft, record_draft, separate_collisions
 from wobot.knowledge.records.text import clean_line, clean_text, key_text
 from wobot.knowledge.sources.xlsx import URL_HEADER, CatalogRow
@@ -74,6 +77,9 @@ def normalize_product(row: CatalogRow) -> RecordDraft:
         "category_l2_label": l2_label,
         "adoption_years": years,
         "adoption_years_raw": cells["本計畫導入年分"],
+        # Unread until `with_facets`; every product has the columns, read or not.
+        "facets_model": None,
+        "facets_prompt_version": None,
     }
     return record_draft(
         RECORD_TYPE,
@@ -82,6 +88,25 @@ def normalize_product(row: CatalogRow) -> RecordDraft:
         fields=fields,
         locator={"row": row.row_number},
         warnings=warnings,
+    )
+
+
+def with_facets(draft: RecordDraft, answer: Answer, question: Question) -> RecordDraft:
+    """The product with the facets the model read in its text, and which model and prompt
+    read them: a new prompt is a new revision. Without an answer the product stays unread,
+    and the version waits for a person (`check_products`)."""
+    if answer.output is None:
+        return replace(draft, warnings=(*draft.warnings, f"no facets: {answer.failure}"))
+    facets, dropped = grounded_facets(answer.output, draft.fields)
+    return record_draft(
+        draft.record_type,
+        draft.logical_key,
+        raw=draft.raw,
+        fields=draft.fields
+        | {"facets_model": question.model, "facets_prompt_version": question.prompt_version},
+        locator=draft.locator,
+        warnings=[*draft.warnings, *dropped],
+        facets=facets,
     )
 
 

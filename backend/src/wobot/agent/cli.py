@@ -1,7 +1,9 @@
-"""wobot-chat: talk with the chat agent in a terminal, one conversation per thread.
+"""wobot-chat: talk with the chat graph in a terminal, one conversation per thread.
 
 Conversations are kept in the local database's checkpoint tables, as the API's role,
-the way the app will keep them; a thread can be taken up again later. Run from backend/:
+the way the app will keep them; a thread can be taken up again later. Each turn shows
+the nodes it passed through, their seconds and what they found, then the reply. Run from
+backend/ (with --env-file, LangSmith traces are sent if .env turns them on):
 
     DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>] [--name <name>]
 """
@@ -9,19 +11,20 @@ the way the app will keep them; a thread can be taken up again later. Run from b
 import argparse
 import asyncio
 import json
+import time
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from itertools import takewhile
+from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage, ToolMessage
+from langgraph.graph.state import CompiledStateGraph
 from openai import AsyncOpenAI
 from sqlalchemy import select
 
-from wobot.agent.build import build_agent, chat_model
 from wobot.agent.checkpoints import open_checkpointer
-from wobot.agent.guard import this_turn
-from wobot.agent.render import ReplyStatus, turn_reply
-from wobot.agent.tools import TurnContext, build_tools
+from wobot.agent.graph import build_graph, models_for
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.knowledge.embeddings import OpenAIEmbedder
@@ -45,58 +48,131 @@ async def _chat(args: argparse.Namespace, settings: Settings) -> int:
         timeout=settings.openai_timeout_seconds,
         max_retries=3,
     )
-    tools_engine, connector = await create_engine(settings)
-    config = {"configurable": {"thread_id": args.thread or f"chat-{uuid.uuid4()}"}}
+    engine, connector = await create_engine(settings)
+    thread_id = args.thread or f"chat-{uuid.uuid4()}"
+    config = {"configurable": {"thread_id": thread_id}}
     try:
         async with open_checkpointer(settings) as saver:
-            tools = build_tools(tools_engine, OpenAIEmbedder(client, settings.embedding_model))
-            agent = build_agent(chat_model(settings), tools, saver)
-            earlier = (await agent.aget_state(config)).values.get("messages", [])
+            embedder = OpenAIEmbedder(client, settings.embedding_model)
+            app = build_graph(models_for(settings), engine, embedder, saver)
+            earlier = (await app.aget_state(config)).values.get("messages", [])
             turns = sum(isinstance(m, HumanMessage) for m in earlier)
             print(
-                f"{settings.agent_model} ({settings.agent_reasoning_effort}), "
-                f"thread {config['configurable']['thread_id']}"
+                f"thread {thread_id}"
                 + (f", {turns} earlier turns" if turns else "")
                 + ". Ctrl-D quits; --thread takes it up again."
             )
-            while (question := await _ask()) is not None:
-                if not question:
+            while (message := await _ask()) is not None:
+                if not message:
                     continue
-                async with tools_engine.connect() as conn:
+                async with engine.connect() as conn:
                     version = await conn.scalar(select(ActiveKnowledge.index_version_id))
                 if version is None:
                     print("no active knowledge version: run wobot-ingest first")
                     return 1
-                context = TurnContext("local-chat", datetime.now(UTC), version, args.name)
-                state = await agent.ainvoke(
-                    {"messages": [HumanMessage(question)]}, config, context=context
-                )
-                messages = this_turn(state["messages"])
-                for message in messages:
-                    if isinstance(message, AIMessage):
-                        for call in message.tool_calls:
-                            args_text = json.dumps(call["args"], ensure_ascii=False)
-                            print(f"  · {call['name']} {args_text}")
-                for held in state.get("retries", []):
-                    print(f"  · asked again, {held['reason']}: {'; '.join(held['detail'])}")
-                reply = turn_reply(
-                    messages,
-                    state.get("structured_response"),
-                    context.artifacts,
-                    state.get("requirements"),
-                )
-                print(f"\n{reply.text}")
-                if reply.status is not ReplyStatus.ANSWERED:
-                    print(f"  [{reply.status}: {'; '.join(reply.problems)}]")
+                turn = {
+                    "messages": [HumanMessage(message)],
+                    "index_version": version,
+                    "query_time": datetime.now(UTC),
+                    "chatbot_name": args.name,
+                }
+                await play_turn(app, turn, config)
     finally:
-        await tools_engine.dispose()
+        await engine.dispose()
         if connector is not None:
             await connector.close_async()
     return 0
 
 
+async def play_turn(app: CompiledStateGraph, turn: dict[str, Any], config: dict) -> None:
+    """One turn, each node printed as it finishes, then the reply."""
+    final: dict[str, Any] = {}
+    last = time.perf_counter()
+    async for mode, chunk in app.astream(turn, config, stream_mode=["updates", "values"]):
+        if mode == "values":
+            final = chunk
+            continue
+        now = time.perf_counter()
+        for node, update in chunk.items():
+            note = describe(node, update or {})
+            print(f"  · {node:<14} {now - last:5.2f}s" + (f"  {note}" if note else ""))
+        last = now
+    print(f"\n{final.get('reply', {}).get('text', '(no reply)')}")
+
+
+def describe(node: str, update: dict[str, Any]) -> str:
+    """What a node found, in a line: enough to follow the path a turn took."""
+    if node == "classify":
+        if update.get("status") == "failed":
+            return "failed: no router answered"
+        confidence = update.get("route_confidence")
+        by = " (fallback)" if update.get("route_fallback") else ""
+        return f"route {update['route']}{by}" + (f" ({confidence:.2f})" if confidence else "")
+    if node == "rewrite_query":
+        name = f", name {update['name']}" if update.get("name") else ""
+        return f"{update['question']}{name}"
+    if node in ("retrieve", "list_tools") and update.get("status") == "failed":
+        return "failed"
+    if node == "retrieve":
+        evidence = update["evidence"]
+        return f"{len(evidence['passages'])} passages, {len(evidence['records'])} records"
+    if node == "list_agent":
+        if not update:
+            return "no model call: the lists will do"
+        if update.get("status") == "failed":
+            return "failed"
+        message = update["list_messages"][-1]
+        return "; ".join(_call(c["name"], c["args"]) for c in message.tool_calls) or "done"
+    if node == "rec_agent":
+        if update.get("status") == "failed":
+            return "failed"
+        if reply := update.get("reply"):
+            return f"{reply['action']}: " + reply["text"].split("\n", 1)[0]
+        message = update["rec_messages"][-1]
+        return "; ".join(_call(c["name"], c["args"]) for c in message.tool_calls)
+    if node in ("list_tools", "rec_tools"):
+        if update.get("status") == "failed":
+            return "failed"
+        scratch = update["list_messages" if node == "list_tools" else "rec_messages"]
+        answers = takewhile(lambda m: isinstance(m, ToolMessage), reversed(scratch))
+        said = "; ".join(_answer(m) for m in reversed(list(answers)))
+        if reply := update.get("reply"):
+            names = ", ".join(p["name"] for p in reply["products"])
+            return f"{said}; {reply['action']}: {names}"
+        return said
+    return ""
+
+
+def _answer(message: ToolMessage) -> str:
+    """A tool's answer as the model read it, in a few words, or why it was refused."""
+    if message.status == "error":
+        return message.text
+    content = json.loads(message.text)
+    if "list" in content:
+        return f"{content['list']} {content['count']}"
+    if "shown" in content:
+        return f"shown {', '.join(content['shown'])}"
+    names = ", ".join(p["name"] for p in content["products"][:3])
+    said = [f"{content['matched']} fit" + (f": {names}" if names else "")]
+    said += [f"decisive {s['facet']} {s['values']}" for s in content["decisive"]]
+    said += [f"gap {g['need']} {g['products']}" for g in content["gaps"]]
+    return ", ".join(said)
+
+
+def _call(name: str, args: dict[str, Any]) -> str:
+    """A tool call in one line, leaving out what was not given, such as unnamed facets."""
+    return f"{name} {json.dumps(_given(args), ensure_ascii=False)}"
+
+
+def _given(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    kept = {key: _given(item) for key, item in value.items()}
+    return {key: item for key, item in kept.items() if item not in (None, [], {})}
+
+
 async def _ask() -> str | None:
-    """The next question, or None at the end of input."""
+    """The next message, or None at the end of input."""
     try:
         return (await asyncio.to_thread(input, "\n> ")).strip()
     except EOFError:
