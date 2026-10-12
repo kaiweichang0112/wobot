@@ -24,7 +24,8 @@
 # institutions or long-term care settings alone do; that 中央監控軟體 is viewing on a
 # computer; and that a product shown is not shown again when the user drops a condition.
 # On 2026-10-12 the expected behaviour of NE-008, REC-FX-04 and NE-011 was written to allow
-# asking, as their checks had since 2026-10-08.
+# asking, as their checks had since 2026-10-08; and REC-FX-03's to allow asking about the
+# function, which the person accepted on reading the replies.
 dataset: recommendation-v2
 query_time: "2026-10-08T10:00:00+08:00"
 timezone: Asia/Taipei
@@ -40,8 +41,9 @@ cases:
     scenario: decisive_difference
     split: dev
     user_input: 我爸最近很容易跌倒，我想找一個照護產品
-    expected_behavior: Ask whether a worn device is acceptable, or where it is used, or recommend a product that detects falls.
+    expected_behavior: Ask whether a worn device is acceptable, where it is used, or whether it should detect falls or prevent them, or recommend a product that detects falls.
     # Asking and recommending are both right (person, 2026-10-08): fits as NE-007.
+    # Asking about the function is right too (person, 2026-10-12, on reading the replies).
     check:
       kind: recommendation
       query: {functions: [跌倒偵測]}
