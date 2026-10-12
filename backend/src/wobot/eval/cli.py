@@ -14,10 +14,10 @@ what the knowledge path finds. `list-agent` and `write-list` compare models for 
 path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
 turns-v1's conversations through the configured graph and scores each last turn.
 `recommend` compares models for rec_agent on recommendation-v2, finding products by their
-facets as the recommendation path does. `judge` grades the replies an `answer` or
-`write-list` run kept, by a rubric and, on the knowledge path, by faithfulness, with a
-model none of those comparisons tried; it reads an answer run's version only to match the
-labels to records.
+facets as the recommendation path does. `judge` grades the replies an `answer`,
+`write-list` or `recommend` run kept, by a rubric and, on the knowledge path, by
+faithfulness, with a model none of those comparisons tried; it reads an answer run's
+version only to match the labels to records.
 """
 
 import argparse
@@ -258,10 +258,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     answer.set_defaults(handler=_answer)
 
     judge = commands.add_parser(
-        "judge", help="judge the replies a saved answer or write-list run kept (paid calls)"
+        "judge",
+        help="judge the replies a saved answer, write-list or recommend run kept (paid calls)",
     )
     judge.add_argument(
-        "run", type=Path, help="the JSON report of a wobot-eval answer or write-list run"
+        "run", type=Path, help="the JSON report of a wobot-eval answer, write-list or recommend run"
     )
     judge.add_argument(
         "--judge",
@@ -721,6 +722,14 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
                 await connector.close_async()
         labelled = gold_keys(dataset, corpus)
     items = inputs_of(run, dataset, labelled, args.candidate)
+    if not items:
+        print(
+            f"{args.run.name}: no words to judge; a recommend run before V8d keeps no tool "
+            "results: run wobot-eval recommend again"
+            if path == "recommend"
+            else f"{args.run.name}: no replies to judge"
+        )
+        return 1
     client = AsyncOpenAI(
         api_key=settings.openai_api_key.get_secret_value(),
         timeout=settings.openai_timeout_seconds,

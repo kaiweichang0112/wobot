@@ -27,6 +27,7 @@ from wobot.eval.judge import CRITERIA, PATHS, Judged, JudgeInput, shown_evidence
 LABELS = {
     "knowledge": gold.GOLD_DIR / "judge-labels.yaml",
     "list": gold.GOLD_DIR / "judge-labels-lists.yaml",
+    "recommend": gold.GOLD_DIR / "judge-labels-recommend.yaml",
 }
 VERDICTS = {"pass": True, "fail": False}
 # What each label compares with: the rubric's criteria, and faithfulness's verdict that
@@ -62,7 +63,25 @@ LIST_HEADER = """\
 #              can be asked again, is not a fact
 #
 """
-HEADERS = {"knowledge": HEADER, "list": LIST_HEADER}
+REC_HEADER = """\
+# Judge labels: a person's verdicts on the words the recommendation agent wrote itself: a
+# question, why no product fits, or the sentence before the products it chose. Read the
+# conversation, the message, what the case expects, the words (reply) and the products
+# shown as cards (products_shown); for supported, also each tool the agent called and what
+# it returned (tools). Code chooses the products and writes their cards, and
+# recommendation-v2 scores them. Write pass or fail. A blank is not a label, and the
+# judge's own verdicts are not shown.
+#
+#   expected   the words, with the products shown, do what expected says: judge the
+#              meaning, not the wording or the order; the cards count, so the words need
+#              not name the products
+#   supported  every fact the words state about the products or the catalog, such as what
+#              was found, how many, or which need none meets, is in what the tools returned
+#              or in the conversation; a question, the choices it offers, advice and a
+#              greeting are not facts
+#
+"""
+HEADERS = {"knowledge": HEADER, "list": LIST_HEADER, "recommend": REC_HEADER}
 
 type Key = tuple[str, str, int]  # candidate, case, run
 
@@ -140,7 +159,9 @@ def _text_block(dumper: yaml.SafeDumper, value: _Text) -> yaml.Node:
 
 
 class _Dumper(yaml.SafeDumper):
-    pass
+    def ignore_aliases(self, data: Any) -> bool:
+        """Each value written out where it stands: no &id001 for a person to follow."""
+        return True
 
 
 _Dumper.add_representer(_Text, _text_block)
@@ -155,7 +176,8 @@ def labels_template(
     seed: int,
 ) -> str:
     """The file a person labels: each reply with what its case expects, blank verdicts,
-    and, once a case, what its model read where supported is asked."""
+    and what its model read where supported is asked: once a case, or, on the
+    recommendation path, where each turn called its own tools, with the reply."""
     path = sampled[0].judged.path if sampled else "knowledge"
     replies = []
     for number, item in enumerate(sampled, start=1):
@@ -174,13 +196,18 @@ def labels_template(
         }
         if path == "list":
             entry["lists_shown"] = _lists_shown(given)
+        if path == "recommend":
+            entry["products_shown"] = list(given.evidence["shown"])
+            if item.asks_supported:
+                entry["tools"] = given.evidence["tools"]
         entry["expected"] = ""
         if item.asks_supported:
             entry["supported"] = ""
         entry["note"] = ""
         replies.append(entry)
     evidence = {}
-    for case_id in sorted({i.judged.case_id for i in sampled if i.asks_supported}):
+    once_a_case = path != "recommend"
+    for case_id in sorted({i.judged.case_id for i in sampled if i.asks_supported and once_a_case}):
         given = next(inputs[key_of(i.judged)] for i in sampled if i.judged.case_id == case_id)
         evidence[case_id] = _lists_found(given) if path == "list" else _passages(given)
     body = {
@@ -215,14 +242,16 @@ def _lists_shown(given: JudgeInput) -> list[dict[str, Any]]:
 
 
 def _lists_found(given: JudgeInput) -> dict[str, Any]:
-    """Each list's count, and its span where it has one; the facts the words state are
-    these, not the items, which a list of 153 would bury."""
+    """Each list as the writer and the judge read it: its count, its span where it has
+    one, and at most 50 items, since words can state what the items hold."""
     lists = []
     for found in given.evidence["found"]:
         shown = {**_list_name(found), "count": found["count"]}
         if "window" in found:
             shown["window"] = found["window"]
             shown["uncertain_count"] = found["uncertain_count"]
+            shown["uncertain"] = found["uncertain"]
+        shown["items"] = found["items"]
         lists.append(shown)
     return {"lists": lists}
 

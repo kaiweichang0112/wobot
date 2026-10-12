@@ -10,6 +10,7 @@ from wobot.eval.judge import (
     MAX_OUTPUT_TOKENS,
     PROMPT_VERSIONS,
     REASONING_EFFORT,
+    REC_RUBRIC,
     RUBRIC,
     STATEMENTS,
     VERDICTS,
@@ -31,6 +32,7 @@ from wobot.eval.judge import (
     judge_replies,
     list_judge_inputs,
     list_words,
+    rec_judge_inputs,
 )
 from wobot.eval.report import judge_markdown
 from wobot.knowledge.hashing import content_hash
@@ -42,6 +44,7 @@ PROMPT_FINGERPRINTS = {
     ("knowledge", 1): "575e341c11187fc48d374ca717c1b991428533e35f892d9c141f8dc93e2e6fa9",
     ("knowledge", 2): "ab9fa4a5bfa55ea5f2d319384378226474617d0cbc624061b2e4ffadb1febf15",
     ("list", 1): "6afa4be2339fb7193dad18a88e9610bf297cda7a9abe688b18733ff4ef4f9d26",
+    ("recommend", 1): "18b0a747a234ce2b5689e4d904fe6eea71bc5c2e07c1d575b7ae58c294c15ff7",
 }
 
 EVIDENCE = {
@@ -113,7 +116,7 @@ def prompts_of(path):
             "max_output_tokens": MAX_OUTPUT_TOKENS,
         }
     return {
-        "rubric": LIST_RUBRIC,
+        "rubric": {"list": LIST_RUBRIC, "recommend": REC_RUBRIC}[path],
         "schemas": [Rubric.model_json_schema()],
         "reasoning_effort": REASONING_EFFORT,
         "max_output_tokens": MAX_OUTPUT_TOKENS,
@@ -512,3 +515,90 @@ def test_the_list_report_leaves_out_what_only_the_knowledge_path_has():
     assert "| Candidate | Expected | Supported | Language | Unlike check |" in text
     assert "| model-a:none | 0 / 1 | 1 / 1 | 1 / 1 | 1 |" in text
     assert "Grounded" not in text
+
+
+# --- The recommendation path --------------------------------------------------------------
+
+
+FOUND_NONE = {
+    "tool": "find_products",
+    "args": {"functions": ["翻身監測"]},
+    "returned": {"matched": 0, "products": [], "decisive": [], "gaps": [{"need": "翻身監測"}]},
+}
+REC_RUN = {
+    "meta": {"dataset": "recommendation-v2 abc"},
+    "candidates": [
+        {
+            "candidate": "model-a:low",
+            "plays": [
+                {  # code showed the cards: nothing the agent wrote
+                    "case_id": "RC-1",
+                    "run": 0,
+                    "shown": ["WhizPad 安心臥智慧床墊"],
+                    "words": None,
+                    "tools": [],
+                    "right": True,
+                    "error": None,
+                },
+                {
+                    "case_id": "RC-1",
+                    "run": 1,
+                    "shown": [],
+                    "words": "目錄裡沒有能監測翻身的產品。",
+                    "tools": [FOUND_NONE],
+                    "right": False,
+                    "error": None,
+                },
+                {  # a run before V8d kept no words
+                    "case_id": "RC-1",
+                    "run": 2,
+                    "shown": [],
+                    "right": True,
+                    "error": None,
+                },
+            ],
+        }
+    ],
+}
+REC_DATASET = Dataset(
+    "recommendation-v2",
+    "",
+    "",
+    [
+        Case(
+            case_id="RC-1",
+            scenario="s",
+            split="dev",
+            user_input="想找監測翻身的產品",
+            expected_behavior="Say no product monitors turning.",
+            reference=None,
+            check={"kind": "recommendation"},
+            pending=None,
+            history=[{"user": "你好", "answer": "你好！"}],
+        )
+    ],
+    "abc",
+)
+
+
+def test_only_the_agents_own_words_are_judged():
+    (item,) = rec_judge_inputs(REC_RUN, REC_DATASET)
+
+    assert (item.path, item.run, item.reply) == ("recommend", 1, "目錄裡沒有能監測翻身的產品。")
+    assert item.evidence == {"tools": [FOUND_NONE], "shown": []}
+    assert item.checked is False and item.history == ({"user": "你好", "answer": "你好！"},)
+
+
+async def test_a_recommendation_turn_is_graded_on_its_tools_by_the_rec_rubric():
+    requests = []
+    client = openai_answering(output_text(grades()), requests)
+    (item,) = rec_judge_inputs(REC_RUN, REC_DATASET)
+
+    judged = await judge_one(OpenAIJudge(client, "judge-test"), item)
+
+    (sent,) = requests
+    assert sent["instructions"] == REC_RUBRIC
+    data = json.loads(sent["input"])
+    assert list(data) == ["history", "message", "expected", "tools", "products_shown", "words"]
+    assert data["tools"] == [FOUND_NONE]
+    assert judged.path == "recommend" and judged.calls == 1 and judged.grounded is None

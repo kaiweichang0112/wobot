@@ -1595,13 +1595,23 @@ def judge_markdown(
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     else:
+        judged_words = {
+            "list": "the words written before the lists: code writes the items, and the "
+            "run's check scores them. Expected is whether the words, with the lists shown, "
+            "do what a person says the reply should; supported whether every fact they "
+            "state is in the lists found",
+            "recommend": "the agent's own words, a question, why nothing fits or the "
+            "sentence before the products it chose: code chooses the products and writes "
+            "their cards, and the run's check scores them; turns whose reply code wrote are "
+            "not judged. Expected is whether the words, with the tools called and the "
+            "products shown, do what a person says the turn should; supported whether every "
+            "fact they state about the products is in what the tools returned or in the "
+            "conversation",
+        }[meta["path"]]
         lines += [
-            "Each criterion counts the replies the judge passed, of those it judged, on the "
-            "words written before the lists: code writes the items, and the run's check "
-            "scores them. Expected is whether the words, with the lists shown, do what a "
-            "person says the reply should; supported whether every fact they state is in the "
-            "lists found, and language whether they are in the user's language. Unlike check "
-            "counts the replies where the run's check and expected disagree.",
+            f"Each criterion counts the replies the judge passed, of those it judged, on "
+            f"{judged_words}; language is whether they are in the user's language. Unlike "
+            "check counts the replies where the run's check and expected disagree.",
             "",
             "| Candidate | Expected | Supported | Language | Unlike check | Judge $ | Errors |",
             "| --- | --- | --- | --- | --- | --- | --- |",

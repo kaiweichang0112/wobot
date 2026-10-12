@@ -51,6 +51,7 @@ uv run --env-file .env wobot-eval turns
 DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge eval/runs/<stamp>-answer.json --candidate gpt-6-luna:none
 uv run --env-file .env wobot-eval judge eval/runs/<stamp>-write-list.json --candidate gpt-6-luna:none
+uv run --env-file .env wobot-eval judge eval/runs/<stamp>-recommend.json
 uv run wobot-eval judge-sample eval/runs/<stamp>-judge.json
 uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
 ```
@@ -82,6 +83,11 @@ uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
   two, so there is no faithfulness, and no database is read. Each path's prompts have
   their own version and their own labels, `gold/judge-labels-lists.yaml` for this one, so
   changing one path's prompt leaves the other's measurement standing.
+- `judge` grades a `recommend` run's turns on the agent's own words: a question, why
+  nothing fits, or the sentence it gives `show_products`. A turn whose cards and opening
+  code wrote is not judged; the run scores it. Each play keeps every tool call with what
+  the agent read back, which the rubric reads, so a run made before V8d cannot be judged.
+  Its labels are `gold/judge-labels-recommend.yaml`.
 
 ## Checks
 

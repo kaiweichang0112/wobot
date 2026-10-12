@@ -187,8 +187,19 @@ each.
 `judge-labels-lists.yaml` holds the same verdicts on the words the list path wrote before
 its lists, from a `wobot-eval write-list` run; `judge-sample` and `judge-agreement` choose
 it for a judge report of that run. Each entry gives the lists it shows and how many items
-of each (`lists_shown`), and `evidence` gives each case's lists found with their counts,
-not their items: code writes the items, and lists-v1 scores them. `expected` passes when
+of each (`lists_shown`), and `evidence` gives each case's lists found as the writer read
+them, with their counts and at most 50 items: code writes the items, and lists-v1 scores
+them. `expected` passes when
 the words, with the lists shown, do what the case expects, though they need not repeat
 the items; `supported` when every fact they state, such as what a list holds and its
 count, is in the lists found.
+
+`judge-labels-recommend.yaml` holds the verdicts on the words the recommendation agent
+wrote itself, from a `wobot-eval recommend` run: a question, why no product fits, or the
+sentence before the products it chose. Each entry gives the products shown as cards
+(`products_shown`) and, where `supported` is asked, every tool the agent called with what
+it returned (`tools`), since each turn found its own. `expected` passes when the words,
+with the products shown, do what the case expects, though they need not name the
+products; `supported` when every fact they state about the products or the catalog is in
+what the tools returned or in the conversation. A question and the choices it offers are
+not facts.

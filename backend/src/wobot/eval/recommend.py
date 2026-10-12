@@ -7,9 +7,12 @@ rec_agent: the agent asks or turns the need into a query, and code judges, ranks
 shows (DEC-069), as in the app. Every message is routed there, so the router's mistakes
 are not counted against the agent; a case that checks the route itself is the router's,
 and left out.
-Each play keeps its flow, node by node, with seconds and what each node did.
+Each play keeps its flow, node by node, with seconds and what each node did, and for the
+judge (V8) every tool call with what the agent read back, and the words the agent wrote
+itself.
 """
 
+import json
 import statistics
 import time
 from collections import defaultdict
@@ -20,7 +23,7 @@ from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import LLMResult
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import ValidationError
@@ -184,6 +187,12 @@ class RecPlay:
     # Whether that find asked for the case's query: None where the case has none or the
     # turn found nothing, such as when it asked the user first.
     query_right: bool | None = None
+    # The agent's own words: its reply when it answered in words, or the sentence it gave
+    # show_products; None when code wrote the whole reply. The judge grades these alone.
+    words: str | None = None
+    # Each tool call of the turn and what the agent read back, in order: what its words
+    # can rest on.
+    tools: tuple[dict[str, Any], ...] = ()
 
     @property
     def right(self) -> bool:
@@ -224,7 +233,8 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
         error = "the path reported a failure"
     action = reply.get("action", "")
     shown = tuple(p["name"] for p in reply.get("products", []))
-    asked = [m for m in final.get("rec_messages", []) if isinstance(m, AIMessage)]
+    scratch = final.get("rec_messages", [])
+    asked = [m for m in scratch if isinstance(m, AIMessage)]
     finds = [c["args"] for m in asked for c in m.tool_calls if c["name"] == "find_products"]
     searches = len(finds)
     last_find = query_of(finds[-1]) if finds else None
@@ -254,7 +264,49 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
             if item.query is None or not finds
             else last_find is not None and same_query(last_find, item.query)
         ),
+        words=agent_words(reply, scratch),
+        tools=tuple(tool_steps(scratch)),
     )
+
+
+def tool_steps(scratch: Sequence[BaseMessage]) -> list[dict[str, Any]]:
+    """Each tool call of the turn with its arguments and what the agent read back."""
+    calls = {c["id"]: c for m in scratch if isinstance(m, AIMessage) for c in m.tool_calls}
+    steps = []
+    for message in scratch:
+        if not isinstance(message, ToolMessage):
+            continue
+        call = calls.get(message.tool_call_id, {})
+        try:
+            returned: Any = json.loads(message.text)
+        except ValueError:  # a refusal is text
+            returned = message.text
+        steps.append(
+            {
+                "tool": call.get("name"),
+                "args": call.get("args"),
+                "returned": returned,
+                **({"refused": True} if message.status == "error" else {}),
+            }
+        )
+    return steps
+
+
+def agent_words(reply: Mapping[str, Any], scratch: Sequence[BaseMessage]) -> str | None:
+    """What the agent wrote itself: its reply in words, or the intro of the show_products
+    call that ended the turn; None when code wrote it all."""
+    if reply.get("action") == "replied":
+        return reply.get("text") or None
+    shows = [
+        call
+        for m in scratch
+        if isinstance(m, AIMessage)
+        for call in m.tool_calls
+        if call["name"] == "show_products"
+    ]
+    if reply.get("action") == "recommend" and shows:
+        return (shows[-1]["args"].get("intro") or "").strip() or None
+    return None
 
 
 def query_of(args: dict[str, Any]) -> FacetQuery | None:

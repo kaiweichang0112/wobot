@@ -268,7 +268,7 @@ LIST_JUDGED = [
 ]
 
 
-def test_the_list_template_shows_the_lists_not_their_items(tmp_path):
+def test_the_list_template_shows_the_lists_as_the_writer_read_them(tmp_path):
     inputs = {key_of(j): replace(given(j), evidence=LISTS) for j in LIST_JUDGED}
     sampled = sample(LIST_JUDGED, size=2, supported=2)
 
@@ -286,10 +286,11 @@ def test_the_list_template_shows_the_lists_not_their_items(tmp_path):
         "list": "list_projects",
         "filters": {"year_from": 2024, "year_to": 2024},
         "count": 7,
+        "items": [{"id": "r-1", "title_zh": "計畫"}],
     }
     assert lists[1]["window"] == {"from": "2023-10-07", "to": "2026-10-07"}
     assert lists[1]["uncertain_count"] == 1
-    assert "計畫" not in text  # no item
+    assert "&id" not in text and "*id" not in text  # each value where it stands
 
 
 def test_a_path_without_faithfulness_is_never_compared_on_grounded(tmp_path):
@@ -312,3 +313,28 @@ def test_a_path_without_faithfulness_is_never_compared_on_grounded(tmp_path):
     assert by_name["expected"] == Agreement(both_pass=1, both_fail=1)
     assert by_name["supported"] == Agreement(both_pass=1, judge_passes=1)
     assert by_name["grounded"].labelled == 0  # not a pass for every reply
+
+
+TOOLS = [{"tool": "find_products", "args": {"functions": ["翻身監測"]}, "returned": {"matched": 0}}]
+REC_JUDGED = [
+    judged("RC-1", expected=False, grounded=None, path="recommend"),
+    judged("RC-2", grounded=None, path="recommend"),
+]
+
+
+def test_the_rec_template_keeps_each_turns_tools_with_its_reply():
+    inputs = {
+        key_of(j): replace(given(j), evidence={"tools": TOOLS, "shown": ["產品 A"]})
+        for j in REC_JUDGED
+    }
+    sampled = sample(REC_JUDGED, size=2, supported=1, seed=0)
+
+    text = labels_template(sampled, inputs, "x-recommend.json", 8936, "x-judge.json", 0)
+
+    assert text.startswith("# Judge labels: a person's verdicts on the words the recommendation")
+    data = yaml.safe_load(text)
+    asked = [e for e in data["replies"] if "supported" in e]
+    assert len(asked) == 1 and asked[0]["tools"] == TOOLS
+    assert all(e["products_shown"] == ["產品 A"] for e in data["replies"])
+    assert data["evidence"] == {}  # each turn found its own: no evidence once a case
+    assert all("tools" not in e for e in data["replies"] if "supported" not in e)
