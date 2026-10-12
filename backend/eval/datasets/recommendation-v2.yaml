@@ -30,6 +30,13 @@
 # user has not said was relabelled to ask first, and NE-012 to NE-014 were added for what
 # follows the questions. These were proposed by AI from the catalog of index version 7730
 # and confirmed by a person on 2026-10-12.
+# On 2026-10-12 REC-FX-04's expected behaviour stopped limiting the question to products
+# the catalog states can be viewed on a computer: a condition left unstated passes
+# (DEC-065), so code asks about what splits every product that fits. The person changed
+# it on reading a judged reply that disagreed with their label.
+# On 2026-10-12 NE-008's expected behaviour was made to say what the person had held it to:
+# the condition taken back is not asked about again. Two judge runs had decided one reply
+# both ways; the person changed it on reading them.
 dataset: recommendation-v2
 query_time: "2026-10-08T10:00:00+08:00"
 timezone: Asia/Taipei
@@ -159,7 +166,7 @@ cases:
     scenario: interface_constraint  # NE-101
     split: dev
     user_input: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
-    expected_behavior: Ask about a difference among the products the catalog states can be viewed on a computer, before recommending the one product asked for.
+    expected_behavior: Keep viewing on a computer as a need, and ask about a difference among the products that fit, before recommending the one product asked for.
     # Asks first (DEC-075, person, 2026-10-12).
     check:
       kind: recommendation
@@ -219,7 +226,7 @@ cases:
           - 離床偵測：符合
           - 不用穿戴：符合
     user_input: 其實穿戴的也可以
-    expected_behavior: Drop the condition taken back, and ask about a difference among those that fit.
+    expected_behavior: Drop the condition taken back without asking about it again, and ask about a difference among those that fit.
     # Asks first (DEC-075, person, 2026-10-12).
     check:
       kind: recommendation

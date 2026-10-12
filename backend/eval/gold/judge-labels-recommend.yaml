@@ -14,495 +14,34 @@
 #              or in the conversation; a question, the choices it offers, advice and a
 #              greeting are not facts
 #
-# Made by wobot-eval judge-sample from 20261012-104429-judge.json, seed 0.
-run: 20261012-103051-recommend.json
+# Made by wobot-eval judge-sample from 20261012-212409-judge.json, seed 0.
+run: 20261012-204937-recommend.json
 index_version: 7730
 labelled_on: '2026-10-12'
 replies:
 - id: JL-01
-  case_id: CASE-021
-  candidate: gpt-6-luna:none
-  run: 1
-  reply_sha: 28a783a22f44
-  message: 推薦一個智慧照護產品給我。
-  expected_behavior: Ask what the product is for, without searching.
-  reply: 你想找哪一類智慧照護產品？例如跌倒偵測、健康量測或復健訓練？
-  products_shown: []
-  tools:
-  - tool: find_products
-    args:
-      functions: []
-      must:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      must_not:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other: []
-      count: 1
-    returned: 'Not done: : Value error, name a function, or the need in other.'
-    refused: true
-  expected: fail
-  supported: pass
-  note: ''
-- id: JL-02
-  case_id: REC-FX-04
-  candidate: gpt-6-luna:none
-  run: 0
-  reply_sha: 8f7825041336
-  message: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
-  expected_behavior: Recommend only a product the catalog states can be viewed on a computer,
-    or ask about a difference among those that fit.
-  reply: 這項產品可偵測長輩準備離床，並透過中央監控軟體通知照護人員。
-  products_shown:
-  - 美思臥床照護系統
-  tools:
-  - tool: find_products
-    args:
-      functions:
-      - 離床偵測
-      must:
-        form: []
-        places: []
-        sensing: []
-        viewing:
-        - computer
-        power: []
-        users: []
-      must_not:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other:
-      - 長輩離床時通知照護人員
-      count: 1
-    returned:
-      matched: 5
-      products:
-      - id: r-85129b3f
-        name: 美思臥床照護系統
-        company: 美思科技有限公司
-        needs:
-          離床偵測: 病人準備離床
-          viewing=computer: 中央監控軟體
-        text: '美思臥床照護系統是一套非接觸式、連續偵測的病人安全預測系統，旨在提高病人安全並提升照護品質。透過加裝感應墊，系統可偵測病人的臥床資訊，並在病人準備離床或需要翻身時，提前通知照護人員。此外，系統提供中央監控軟體，支援多床監測及各別臥床資訊管理，並具備即時異常通知功能。透過數據分析，系統可提供病人安全效益及成本分析，協助機構優化照護流程。
-
-          使用者只需將美思臥床照護系統的感應墊鋪設於病床上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測病人的臥床狀態。透過主機上的控制面板，醫護人員可設定翻身角度、翻身方向和翻身停留時間等參數。當發現異常情況時，系統會即時發送通知至照護人員，並提供實時的健康建議。此外，系統支援多床監測，方便機構進行統一管理。
-
-          美思臥床照護系統是一套非接觸式、連續偵測的病人安全預測系統，透過感應墊偵測病人的臥床資訊，並在病人準備離床或需要翻身時，提前通知照護人員。系統提供中央監控軟體，支援多床監測及各別臥床資訊管理，並具備即時異常通知功能。透過數據分析，協助機構優化照護流程，提高病人安全並降低醫療成本。'
-      - id: r-ebe05d1e
-        name: 毫米波雷達跌倒偵測系統
-        company: 群邁通訊股份有限公司
-        needs:
-          離床偵測: 離床提醒
-          viewing=computer: 桌機
-        text: '透過毫米波雷達技術，利用電磁波反射訊號偵測物體的距離、速度和角度，蒐集 4D 點雲資訊，並結合自主開發的 AI 深度學習引擎進行人體姿態辨識，判斷是否發生跌倒情況，並即時通知照顧者。系統具備多種偵測功能，包括跌倒偵測、呼吸偵測、離床提醒、主動呼救等，並提供雲端資訊儀表板，讓照顧者可透過手機或桌機即時接收警報和查看健康數據，提升照護效率與病人安全。
-
-          使用者需將毫米波雷達感測器安裝於病房內，建議安裝於天花板或牆壁上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測病人的動作與姿態。當偵測到異常情況（如跌倒、離床、呼吸異常等）時，系統會即時發送警報通知照護人員。照護人員可透過專用應用程式查看健康數據、設置警報參數，並進行遠端監控。系統支援多床監測，方便機構進行統一管理。此外，系統亦整合睡眠型態紀錄、浴廁停留逾時偵測等功能，提供全面的照護服務。
-
-          毫米波雷達跌倒偵測系統是一款非接觸式、連續偵測的病人安全預測系統，透過毫米波雷達技術偵測病人的動作與姿態，並即時通知照護人員。系統具備跌倒偵測、呼吸偵測、離床提醒等功能，並提供雲端資訊儀表板，讓照護人員可即時接收警報和查看健康數據。使用者需將感測器安裝於病房，系統自動啟動並開始監測。照護人員可透過應用程式進行遠端監控，提升照護效率與病人安全。'
-      - id: r-aa61f7a5
-        name: 南丁格爾智慧照護系統
-        company: 智宇生醫股份有限公司
-        needs:
-          離床偵測: 如離床、久臥等異常情況
-          viewing=computer: 電腦端
-        text: '南丁格爾智慧照護系統結合了先進的感測技術和數據分析，專為長期照護環境設計。該系統通過床墊內建感測器，能夠精準監測使用者的睡眠狀態、心跳、呼吸等生理參數。數據會即時傳送至雲端平台，並可通過應用程式查看，照護人員可根據需要設置警示條件，及時獲得異常情況的通知。系統還具備自動分析睡眠質量、翻身次數及久臥提醒等功能，能有效減少照護負擔並提高病人的照護質量。
-
-          使用者只需將南丁格爾智慧照護系統的床墊鋪設於病床上，並連接至電源和Wi-Fi網絡。開機後，系統會自動啟動並開始監測使用者的生理數據。數據會自動上傳至雲端，並能在手機或電腦端查看。照護人員可以透過專用應用程式設定警報條件（如離床、久臥等異常情況），並根據系統分析的睡眠品質報告進行必要的照護調整。系統還能提供多床監控，適合機構使用，提升照護效率。
-
-          南丁格爾智慧照護系統結合感測技術與數據分析，專為長期照護設計。床墊感測器可監測使用者的睡眠狀態、心跳、呼吸等生理參數，並將數據即時傳送至雲端。照護人員可透過應用程式查看健康狀況並設置警示條件，及時發現異常情況。系統還能自動分析睡眠質量、翻身次數及久臥提醒，幫助提高照護質量並減輕照護負擔。'
-      - id: r-a161885a
-        name: AI-Care 日夜照護安全系統
-        company: 百一電子股份有限公司
-        needs:
-          離床偵測: 離床偵測
-          viewing=computer: unknown
-        text: 'AI Care 日夜照護安全系統結合AI 邊緣計算與嵌入式 GPU 雙架構，提供全方位、全天候（24小時）守護，適用於居家、醫療機構與公共場域。系統強調AI
-          去識別化處理，優先保護使用者隱私，避免影像記錄與個資外洩。具備跌倒偵測、離床偵測、房內動態監控、禁區誤入與異常駐留辨識功能，並可即時報警，協助照護人員快速介入。系統運用
-          AI 技術深入分析被照顧者的生理、姿態與行為模式，評估居家生活與潛在風險，進而提升整體照護品質與用戶安全感。
-
-          使用者可將 AI Care 系統安裝於居家或照護場域的相關房間，系統將24小時自動偵測跌倒、離床、禁區誤入、異常駐留與房內動態，並在偵測到異常狀況時即刻進行警報與通報
-          。可搭配 NVR 進行影像錄製與回放，並支援即時雙向通話功能，讓照護者能與被照護者互動與確保安全。系統適用於多房間、多人追蹤布署，可靈活應用於獨居長者、長照機構、日照中心及公共場域，有效提供全天候、安全、隱私兼顧的智慧照護模式。
-
-          AI Care 日夜照護安全系統結合AI邊緣運算與GPU架構，提供24小時跌倒、離床、禁區誤入、異常駐留偵測與即時通報，且具AI去識別化隱私保護。安裝後自動監控異常動態，支援NVR影像回放與雙向通話，適用於居家、長照與公共照護環境，提升安全與隱私並重的守護效能。'
-      - id: r-bdfbd328
-        name: 智慧照護解決方案
-        company: 佐臻股份有限公司
-        needs:
-          離床偵測: 在床狀態
-          viewing=computer: unknown
-        text: '智慧照護解決方案結合佐臻AR智慧眼鏡、毫米波雷達和可視化管理平台，為長照和醫療機構提供完整的監控與管理方案。AR智慧眼鏡協助醫護人員實時接收信息，進行照護巡房、緊急送院及遠距家屬探訪。毫米波雷達可偵測病人的在床狀態、跌倒情況，並設置電子圍籬進行監控，增強病患安全。此外，管理平台可將場域數據整合，包括人流、體溫和設備狀態等，提供管理人員即時監控與分析。
-
-          使用者可以佩戴佐臻AR智慧眼鏡，進行健康監控和照護巡房，並透過實時接收的醫療指示來執行緊急送院或遠距家屬探訪。毫米波雷達需安裝於病房、走道等區域，並且在病人睡眠或移動時進行監測，偵測到異常情況後會發送警報。管理人員則可透過智慧平台查看病房內的數據，包括病人的心跳、體溫等資訊，並設置警示與監控功能，提升整體健康管理效率。
-
-          智慧照護解決方案結合佐臻AR智慧眼鏡、毫米波雷達和可視化管理平台，提供全面的健康監控功能。醫護人員可透過AR智慧眼鏡進行照護巡房及緊急送院，毫米波雷達進行在床偵測與跌倒偵測，平台則整合各類數據進行即時監控與分析。此系統大大提升了病房管理與病人安全。'
-      decisive: []
-      gaps: []
-      recommended_before: 0
-  - tool: show_products
-    args:
-      products:
-      - r-85129b3f
-      intro: 這項產品可偵測長輩準備離床，並透過中央監控軟體通知照護人員。
-    returned:
-      shown:
-      - r-85129b3f
-  expected: pass
-  supported: pass
-  note: 'Does what expected says; the person would ask about the differences instead (design change pending).'
-- id: JL-03
-  case_id: CASE-025
-  candidate: gpt-6-luna:none
-  run: 2
-  reply_sha: d3264873df91
-  message: Recommend one smart-care product for detecting falls at home without a wearable
-    device. Explain your choice using the available catalog.
-  expected_behavior: Recommend one fitting product, in English.
-  reply: 'For your needs, this is a strong choice: it detects falls at home without requiring
-    a wearable.'
-  products_shown:
-  - 毫米波跌倒偵測雷達
-  tools:
-  - tool: find_products
-    args:
-      functions:
-      - 跌倒偵測
-      must:
-        form: []
-        places:
-        - home
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      must_not:
-        form:
-        - worn
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other:
-      - Explain why the product is a good choice using the available catalog.
-      count: 1
-    returned:
-      matched: 6
-      products:
-      - id: r-d56cb2dd
-        name: 毫米波跌倒偵測雷達
-        company: 邁摩科技股份有限公司
-        needs:
-          跌倒偵測: 非接觸式跌倒偵測
-          places=home: 家庭
-          form!=worn: 天花板或牆面安裝
-        text: '採用毫米波技術（FMCW 結合 MIMO 與波束成形）與深度學習與自動追蹤演算法，可進行非接觸式跌倒偵測與人體追蹤，可辨識人體位置、姿態與速度，並即時觸發警報，適合臥室與浴室等私密場域。該裝置具
-          MTI 動態目標偵測技術，具備低功耗特性且隱私友善，可應用於家庭、社區與醫療照護場所的跌倒預警與監控管理。
-
-          使用者可將雷達裝置進行天花板或牆面安裝，選擇接上乙太網、有線或 Wi‑Fi 網路後，即可連結平台進行資料傳輸。裝置將持續監測偵測區域（如 0.41 至數米範圍內），非接觸捕捉人體跌倒事件，當偵測到跌倒動作時，系統會即時觸發警報並提供關鍵訊息。建議安裝於長照空間、臥室與浴室，以進行全天候的跌倒即時偵測與安全保障。
-
-          毫米波跌倒偵測雷達採用FMCW、MIMO與波束成形結合AI偵測人體位置、姿態與速度，非接觸判斷跌倒並即時警報，隱私友善並適合私密場域。裝置安裝後透過有線或Wi‑Fi連網，持續監控偵測區域，適用於居家、浴室與長照設置，以提升跌倒預警能力。'
-      - id: r-a227dc74
-        name: FusionCare 毫米波雷達基站
-        company: Fusion智匯網
-        needs:
-          跌倒偵測: 跌倒
-          places=home: 居家
-          form!=worn: 裝設於天花板
-        text: 'FusionCare 毫米波雷達基站採用毫米波雷達技術與4D點雲AI學習，能非接觸偵測人體呼吸與姿態，適用於跌倒、離床、浴廁停留逾時、空間使用與呼吸偵測。透過雷達點雲判別人體姿態，即時推送系統與手機訊息，縮短黃金搶救時間。其非攝影方案有效保護隱私，可安心安裝於浴室與臥房，精準度不受光源、溫度、夜間或蒸氣影響
-
-          使用者將毫米波雷達基站裝設於天花板，對準偵測區域，接上電源並透過 Wi‑Fi（2.4／5GHz）或 PoE+ 網路連接。裝置內建 ARM Cortex A7 與
-          mmWave 雷達，可於距離1.5–3公尺、120°視角內進行24小時偵測，捕捉呼吸、睡眠與跌倒資訊。異常偵測時將即時透過系統與手機 app 發出推播警報；所有資料同步至雲端平台，可隨時查看歷史紀錄，並適用於居家、長照與醫療場域
-
-          FusionCare 毫米波雷達基站使用 mmWave 雷達與4D點雲AI技術，非接觸偵測呼吸、姿態、跌倒、離床與停留逾時，全天候運作且不侵犯隱私。安裝於天花板後，透過
-          Wi‑Fi 或 PoE+ 連網，自動偵測並於異常時推播通知，資料同步雲端，適用居家與長照場域。'
-      - id: r-a161885a
-        name: AI-Care 日夜照護安全系統
-        company: 百一電子股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-          places=home: 居家
-          form!=worn: 安裝於居家或照護場域的相關房間
-        text: 'AI Care 日夜照護安全系統結合AI 邊緣計算與嵌入式 GPU 雙架構，提供全方位、全天候（24小時）守護，適用於居家、醫療機構與公共場域。系統強調AI
-          去識別化處理，優先保護使用者隱私，避免影像記錄與個資外洩。具備跌倒偵測、離床偵測、房內動態監控、禁區誤入與異常駐留辨識功能，並可即時報警，協助照護人員快速介入。系統運用
-          AI 技術深入分析被照顧者的生理、姿態與行為模式，評估居家生活與潛在風險，進而提升整體照護品質與用戶安全感。
-
-          使用者可將 AI Care 系統安裝於居家或照護場域的相關房間，系統將24小時自動偵測跌倒、離床、禁區誤入、異常駐留與房內動態，並在偵測到異常狀況時即刻進行警報與通報
-          。可搭配 NVR 進行影像錄製與回放，並支援即時雙向通話功能，讓照護者能與被照護者互動與確保安全。系統適用於多房間、多人追蹤布署，可靈活應用於獨居長者、長照機構、日照中心及公共場域，有效提供全天候、安全、隱私兼顧的智慧照護模式。
-
-          AI Care 日夜照護安全系統結合AI邊緣運算與GPU架構，提供24小時跌倒、離床、禁區誤入、異常駐留偵測與即時通報，且具AI去識別化隱私保護。安裝後自動監控異常動態，支援NVR影像回放與雙向通話，適用於居家、長照與公共照護環境，提升安全與隱私並重的守護效能。'
-      - id: r-94f27ce7
-        name: OGA雷達毫米波生理感測裝置
-        company: 尚茂智能科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒檢測
-          places=home: 居家
-          form!=worn: 安置於照護場域如臥床區域或公共空間
-        text: 'OGA 雷達毫米波生理感測裝置可非接觸式感測人體呼吸與心跳等生理訊號，並具隱私保護優勢，不使用影像偵測。配備毫米波雷達技術，可進行睡眠狀態偵測、跌倒檢測與區域動能分析，其自動告警機制能即時發送
-          LINE 訊息。此外，所有量測數據均雲端紀錄，支援後續追蹤與分析。此裝置顯著提升照護施設與居家看護的安全管理功能，並以科技取代傳統監控，兼顧隱私與智慧化監護
-
-          使用者將 OGA 裝置安置於照護場域如臥床區域或公共空間，接上電源並連結 Wi‑Fi（2.4／5GHz），可在 0–40°C 環境下運作。系統即時感測呼吸與心跳變化，自動識別跌倒與異常動態，當異常觸發即透過
-          LINE 傳送警示訊息給照護人員。所有數據同步至雲端平台，可隨時回查歷史紀錄以監測身體狀況變化。其零接觸設計使使用時無需改動現場佈置，且具備隱私保護元素，適合居家、醫療與長照場域應用
-
-          OGA 雷達毫米波生理感測裝置採非接觸毫米波雷達技術，感測呼吸、心跳、睡眠與跌倒狀態，具隱私保護與自動告警功能，並雲端儲存數據。安裝於居家或照護區域後，透過 Wi‑Fi
-          運作，異常即 LINE 通報，同時可隨時回查雲端紀錄，實現全天候智慧監控。'
-      - id: r-5dc13647
-        name: AI智能照護系統
-        company: 合錦科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-          places=home: 居家
-          form!=worn: 天花板或桌面
-        text: '為非穿戴式 AI 系統，採用 AI 影像檢測與 PPS 隱私保護感測技術，支持家庭行為分析（在場、走路、坐、睡）、睡姿分析（仰臥、趴睡、左右側睡）、跌倒偵測、睡眠中斷統計與入室盜竊偵測。系統擁有
-          87.2° 水平視角、有效偵測距離 0.41 至 4 米，連接 Wi‑Fi 傳輸加密資料，並符合 FCC/CE/NCC/BSMI 認證；偵測異常時可立即向手機、平板或
-          PC 發出緊急警報，並能呼叫醫療機構，同時具夜燈功能，支援溫度感測與環境監控，強化居家安全。
-
-          放置於長者活動區域天花板或桌面，接上 110–240VAC 電源與 Wi‑Fi 或有線網路連接，啟動後系統即開始 AI 行為與睡眠監測。裝置會自動辨識在場、活動、睡眠與跌倒等行為，並記錄睡眠中斷次數與睡姿，透過安全加密傳輸至雲端平台。使用者可在
-          Android 8/iOS 13 或以上的行動裝置 app 上查看即時狀態與環境溫度／空氣品質；發生異常時，系統會啟動緊急警報與夜燈，並依設定模式自動通報預設聯絡人與醫療機構。
-
-          AI智能照護系統是非穿戴 AI 關愛系統，具行為與睡姿分析、跌倒與睡眠中斷偵測、入室盜竊防護及夜燈、溫度感測等功能，保障高隱私與安全。安裝簡易，採 Wi‑Fi
-          連接與安全加密，異常即時推播緊急警報與醫療通報，適合居家與長照場所。'
-      decisive: []
-      gaps: []
-      recommended_before: 0
-  - tool: show_products
-    args:
-      products:
-      - r-d56cb2dd
-      intro: 'For your needs, this is a strong choice: it detects falls at home without requiring
-        a wearable.'
-    returned:
-      shown:
-      - r-d56cb2dd
-  expected: pass
-  supported: pass
-  note: 'Does what expected says; the person would ask about the differences instead (design change pending).'
-- id: JL-04
-  case_id: CASE-021
-  candidate: gpt-6-luna:none
-  run: 0
-  reply_sha: a5f02ac413e8
-  message: 推薦一個智慧照護產品給我。
-  expected_behavior: Ask what the product is for, without searching.
-  reply: "你想找的產品主要要幫忙做什麼呢？例如偵測跌倒、用藥提醒，或協助復健？ \n<br><br>你有偏好的使用場所或產品形式嗎？ \n<br><br>我是 Wobot，元智大學老人福祉科技研究中心的智慧照護助理。\
-    \ \n<br><br>你也可以回我「都可以」，我會幫你挑一個。 \n<br><br>另外，你可以到 GRC 官網使用左下角的 Messenger 與中心聯繫。 \n<br><br>GRC\
-    \ 官網：<a href=\"https://www.grc.yzu.edu.tw/\" target=\"_blank\">https://www.grc.yzu.edu.tw/</a>\
-    \ \n<br><br> \n<br><br> You can also contact the center through Messenger on the lower\
-    \ left of the GRC website.你想找的產品主要要幫忙做什麼呢？例如跌倒偵測、用藥提醒或復健訓練？"
-  products_shown: []
-  tools:
-  - tool: find_products
-    args:
-      functions: []
-      must:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      must_not:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other: []
-      count: 1
-    returned: 'Not done: : Value error, name a function, or the need in other.'
-    refused: true
-  expected: fail
-  supported: pass
-  note: ''
-- id: JL-05
-  case_id: REC-FX-03
-  candidate: gpt-6-luna:none
-  run: 1
-  reply_sha: f31301a2b116
-  message: 我爸最近很容易跌倒，我想找一個照護產品
-  expected_behavior: Ask whether a worn device is acceptable, where it is used, or whether it should detect falls or prevent them, or recommend a product that detects falls.
-  reply: 請問您希望產品能偵測他跌倒後發出警報，還是預防跌倒、評估跌倒風險？您希望產品在他跌倒時發出警報，還是協助預防跌倒、評估跌倒風險？
-  products_shown: []
-  tools: []
-  expected: pass
-  supported: pass
-  note: ''
-- id: JL-06
-  case_id: REC-FX-03
-  candidate: gpt-5.6-luna:none
-  run: 1
-  reply_sha: a38d6e395558
-  message: 我爸最近很容易跌倒，我想找一個照護產品
-  expected_behavior: Ask whether a worn device is acceptable, where it is used, or whether it should detect falls or prevent them, or recommend a product that detects falls.
-  reply: 您需要的是跌倒偵測，還是預防跌倒與評估風險？
-  products_shown: []
-  tools: []
-  expected: pass
-  supported: pass
-  note: ''
-- id: JL-07
-  case_id: REC-FX-03
-  candidate: gpt-5.6-luna:none
-  run: 2
-  reply_sha: 16975aab042e
-  message: 我爸最近很容易跌倒，我想找一個照護產品
-  expected_behavior: Ask whether a worn device is acceptable, where it is used, or whether it should detect falls or prevent them, or recommend a product that detects falls.
-  reply: 您需要產品在家中偵測爸爸跌倒，還是在照護機構中使用？
-  products_shown: []
-  tools: []
-  expected: pass
-  supported: pass
-  note: ''
-- id: JL-08
-  case_id: REC-FX-04
-  candidate: gpt-5.6-luna:none
-  run: 0
-  reply_sha: ca9cf295501e
-  message: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
-  expected_behavior: Recommend only a product the catalog states can be viewed on a computer,
-    or ask about a difference among those that fit.
-  reply: 以下產品符合離床通知照護人員，並可讓照護人員在電腦上查看：
-  products_shown:
-  - 美思臥床照護系統
-  tools:
-  - tool: find_products
-    args:
-      functions:
-      - 離床偵測
-      must:
-        form: []
-        places: []
-        sensing: []
-        viewing:
-        - computer
-        power: []
-        users: []
-      must_not:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other:
-      - 離床時通知照護人員
-      count: 1
-    returned:
-      matched: 5
-      products:
-      - id: r-85129b3f
-        name: 美思臥床照護系統
-        company: 美思科技有限公司
-        needs:
-          離床偵測: 病人準備離床
-          viewing=computer: 中央監控軟體
-        text: '美思臥床照護系統是一套非接觸式、連續偵測的病人安全預測系統，旨在提高病人安全並提升照護品質。透過加裝感應墊，系統可偵測病人的臥床資訊，並在病人準備離床或需要翻身時，提前通知照護人員。此外，系統提供中央監控軟體，支援多床監測及各別臥床資訊管理，並具備即時異常通知功能。透過數據分析，系統可提供病人安全效益及成本分析，協助機構優化照護流程。
-
-          使用者只需將美思臥床照護系統的感應墊鋪設於病床上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測病人的臥床狀態。透過主機上的控制面板，醫護人員可設定翻身角度、翻身方向和翻身停留時間等參數。當發現異常情況時，系統會即時發送通知至照護人員，並提供實時的健康建議。此外，系統支援多床監測，方便機構進行統一管理。
-
-          美思臥床照護系統是一套非接觸式、連續偵測的病人安全預測系統，透過感應墊偵測病人的臥床資訊，並在病人準備離床或需要翻身時，提前通知照護人員。系統提供中央監控軟體，支援多床監測及各別臥床資訊管理，並具備即時異常通知功能。透過數據分析，協助機構優化照護流程，提高病人安全並降低醫療成本。'
-      - id: r-ebe05d1e
-        name: 毫米波雷達跌倒偵測系統
-        company: 群邁通訊股份有限公司
-        needs:
-          離床偵測: 離床提醒
-          viewing=computer: 桌機
-        text: '透過毫米波雷達技術，利用電磁波反射訊號偵測物體的距離、速度和角度，蒐集 4D 點雲資訊，並結合自主開發的 AI 深度學習引擎進行人體姿態辨識，判斷是否發生跌倒情況，並即時通知照顧者。系統具備多種偵測功能，包括跌倒偵測、呼吸偵測、離床提醒、主動呼救等，並提供雲端資訊儀表板，讓照顧者可透過手機或桌機即時接收警報和查看健康數據，提升照護效率與病人安全。
-
-          使用者需將毫米波雷達感測器安裝於病房內，建議安裝於天花板或牆壁上，並確保設備與電源連接。開機後，系統會自動啟動並開始監測病人的動作與姿態。當偵測到異常情況（如跌倒、離床、呼吸異常等）時，系統會即時發送警報通知照護人員。照護人員可透過專用應用程式查看健康數據、設置警報參數，並進行遠端監控。系統支援多床監測，方便機構進行統一管理。此外，系統亦整合睡眠型態紀錄、浴廁停留逾時偵測等功能，提供全面的照護服務。
-
-          毫米波雷達跌倒偵測系統是一款非接觸式、連續偵測的病人安全預測系統，透過毫米波雷達技術偵測病人的動作與姿態，並即時通知照護人員。系統具備跌倒偵測、呼吸偵測、離床提醒等功能，並提供雲端資訊儀表板，讓照護人員可即時接收警報和查看健康數據。使用者需將感測器安裝於病房，系統自動啟動並開始監測。照護人員可透過應用程式進行遠端監控，提升照護效率與病人安全。'
-      - id: r-aa61f7a5
-        name: 南丁格爾智慧照護系統
-        company: 智宇生醫股份有限公司
-        needs:
-          離床偵測: 如離床、久臥等異常情況
-          viewing=computer: 電腦端
-        text: '南丁格爾智慧照護系統結合了先進的感測技術和數據分析，專為長期照護環境設計。該系統通過床墊內建感測器，能夠精準監測使用者的睡眠狀態、心跳、呼吸等生理參數。數據會即時傳送至雲端平台，並可通過應用程式查看，照護人員可根據需要設置警示條件，及時獲得異常情況的通知。系統還具備自動分析睡眠質量、翻身次數及久臥提醒等功能，能有效減少照護負擔並提高病人的照護質量。
-
-          使用者只需將南丁格爾智慧照護系統的床墊鋪設於病床上，並連接至電源和Wi-Fi網絡。開機後，系統會自動啟動並開始監測使用者的生理數據。數據會自動上傳至雲端，並能在手機或電腦端查看。照護人員可以透過專用應用程式設定警報條件（如離床、久臥等異常情況），並根據系統分析的睡眠品質報告進行必要的照護調整。系統還能提供多床監控，適合機構使用，提升照護效率。
-
-          南丁格爾智慧照護系統結合感測技術與數據分析，專為長期照護設計。床墊感測器可監測使用者的睡眠狀態、心跳、呼吸等生理參數，並將數據即時傳送至雲端。照護人員可透過應用程式查看健康狀況並設置警示條件，及時發現異常情況。系統還能自動分析睡眠質量、翻身次數及久臥提醒，幫助提高照護質量並減輕照護負擔。'
-      - id: r-a161885a
-        name: AI-Care 日夜照護安全系統
-        company: 百一電子股份有限公司
-        needs:
-          離床偵測: 離床偵測
-          viewing=computer: unknown
-        text: 'AI Care 日夜照護安全系統結合AI 邊緣計算與嵌入式 GPU 雙架構，提供全方位、全天候（24小時）守護，適用於居家、醫療機構與公共場域。系統強調AI
-          去識別化處理，優先保護使用者隱私，避免影像記錄與個資外洩。具備跌倒偵測、離床偵測、房內動態監控、禁區誤入與異常駐留辨識功能，並可即時報警，協助照護人員快速介入。系統運用
-          AI 技術深入分析被照顧者的生理、姿態與行為模式，評估居家生活與潛在風險，進而提升整體照護品質與用戶安全感。
-
-          使用者可將 AI Care 系統安裝於居家或照護場域的相關房間，系統將24小時自動偵測跌倒、離床、禁區誤入、異常駐留與房內動態，並在偵測到異常狀況時即刻進行警報與通報
-          。可搭配 NVR 進行影像錄製與回放，並支援即時雙向通話功能，讓照護者能與被照護者互動與確保安全。系統適用於多房間、多人追蹤布署，可靈活應用於獨居長者、長照機構、日照中心及公共場域，有效提供全天候、安全、隱私兼顧的智慧照護模式。
-
-          AI Care 日夜照護安全系統結合AI邊緣運算與GPU架構，提供24小時跌倒、離床、禁區誤入、異常駐留偵測與即時通報，且具AI去識別化隱私保護。安裝後自動監控異常動態，支援NVR影像回放與雙向通話，適用於居家、長照與公共照護環境，提升安全與隱私並重的守護效能。'
-      - id: r-bdfbd328
-        name: 智慧照護解決方案
-        company: 佐臻股份有限公司
-        needs:
-          離床偵測: 在床狀態
-          viewing=computer: unknown
-        text: '智慧照護解決方案結合佐臻AR智慧眼鏡、毫米波雷達和可視化管理平台，為長照和醫療機構提供完整的監控與管理方案。AR智慧眼鏡協助醫護人員實時接收信息，進行照護巡房、緊急送院及遠距家屬探訪。毫米波雷達可偵測病人的在床狀態、跌倒情況，並設置電子圍籬進行監控，增強病患安全。此外，管理平台可將場域數據整合，包括人流、體溫和設備狀態等，提供管理人員即時監控與分析。
-
-          使用者可以佩戴佐臻AR智慧眼鏡，進行健康監控和照護巡房，並透過實時接收的醫療指示來執行緊急送院或遠距家屬探訪。毫米波雷達需安裝於病房、走道等區域，並且在病人睡眠或移動時進行監測，偵測到異常情況後會發送警報。管理人員則可透過智慧平台查看病房內的數據，包括病人的心跳、體溫等資訊，並設置警示與監控功能，提升整體健康管理效率。
-
-          智慧照護解決方案結合佐臻AR智慧眼鏡、毫米波雷達和可視化管理平台，提供全面的健康監控功能。醫護人員可透過AR智慧眼鏡進行照護巡房及緊急送院，毫米波雷達進行在床偵測與跌倒偵測，平台則整合各類數據進行即時監控與分析。此系統大大提升了病房管理與病人安全。'
-      decisive: []
-      gaps: []
-      recommended_before: 0
-  - tool: show_products
-    args:
-      products:
-      - r-85129b3f
-      - r-ebe05d1e
-      - r-aa61f7a5
-      intro: 以下產品符合離床通知照護人員，並可讓照護人員在電腦上查看：
-    returned:
-      shown:
-      - r-85129b3f
-  expected: pass
-  supported: pass
-  note: 'Does what expected says; the person would ask about the differences instead (design change pending).'
-- id: JL-09
-  case_id: REC-FX-03B
+  case_id: NE-008
   candidate: gpt-6-luna:low
-  run: 0
-  reply_sha: 17a4c5c6937f
-  message: 我想找離床預警的產品
-  expected_behavior: Ask where it is used, or what kind of device is acceptable, or recommend
-    a product with bed-exit alerts.
-  reply: 您偏好安裝在房間裡的設備，還是放在床上或床墊上的產品？
-  products_shown: []
-  expected: pass
-  note: ''
-- id: JL-10
-  case_id: REC-FX-03
-  candidate: gpt-6-luna:none
-  run: 0
-  reply_sha: 0a3171c7dd2f
-  message: 我爸最近很容易跌倒，我想找一個照護產品
-  expected_behavior: Ask whether a worn device is acceptable, where it is used, or whether it should detect falls or prevent them, or recommend a product that detects falls.
-  reply: 你打算在家裡使用，還是在照護機構或醫院使用？想找房間安裝的，還是穿戴式的？
+  run: 1
+  reply_sha: 4c6ead7dc273
+  history:
+  - user: 想找能偵測長輩離床的，不要穿戴的。
+    answer: '推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+
+      床墊下感測離床，提供三階段離床提醒，不需配戴。
+
+      - 離床偵測：符合
+
+      - 不用穿戴：符合'
+  message: 其實穿戴的也可以
+  expected_behavior: Drop the condition taken back without asking about it again, and ask about a difference among those that fit.
+  reply: 想優先找床墊或床邊設備，還是穿戴式也一起考慮？使用地點是在家、照護機構或醫院呢？
   products_shown: []
   tools:
   - tool: find_products
     args:
       functions:
-      - 跌倒偵測
+      - 離床偵測
       must:
         form: []
         places: []
@@ -519,346 +58,11 @@ replies:
         users: []
       other: []
       count: null
+      no_preference:
+      - form
     returned:
       matched: 15
       products:
-      - id: r-d56cb2dd
-        name: 毫米波跌倒偵測雷達
-        company: 邁摩科技股份有限公司
-        needs:
-          跌倒偵測: 非接觸式跌倒偵測
-      - id: r-ebe05d1e
-        name: 毫米波雷達跌倒偵測系統
-        company: 群邁通訊股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      - id: r-ca9e10d4
-        name: JD‑170G 跌倒偵測腕戴呼叫器
-        company: 金阿波羅股份有限公司
-        needs:
-          跌倒偵測: 跌倒自動感測功能
-      - id: r-a227dc74
-        name: FusionCare 毫米波雷達基站
-        company: Fusion智匯網
-        needs:
-          跌倒偵測: 跌倒
-      - id: r-a161885a
-        name: AI-Care 日夜照護安全系統
-        company: 百一電子股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      - id: r-f3d11989
-        name: 長者照護智慧觀測服務
-        company: 元創電子股份有限公司
-        needs:
-          跌倒偵測: 偵測到無活動、異常長時間停留或跌倒時
-      - id: r-94f27ce7
-        name: OGA雷達毫米波生理感測裝置
-        company: 尚茂智能科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒檢測
-      - id: r-5dc13647
-        name: AI智能照護系統
-        company: 合錦科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      - id: r-80a9f79f
-        name: 安照小護士MAX XC‑8000 居家型
-        company: 瀚微科技股份有限公司
-        needs:
-          跌倒偵測: 精準跌倒偵測功能
-      - id: r-faccb990
-        name: AI照護感知系統
-        company: 雄欣科技有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      decisive:
-      - facet: places
-        values:
-          home: 12
-          institution: 10
-          hospital: 8
-          public: 3
-        unstated: 0
-      - facet: form
-        values:
-          room: 12
-          worn: 6
-          software: 1
-        unstated: 0
-      gaps: []
-      recommended_before: 0
-  expected: pass
-  supported: pass
-  note: ''
-- id: JL-11
-  case_id: CASE-025
-  candidate: gpt-6-luna:low
-  run: 2
-  reply_sha: 94298811f43a
-  message: Recommend one smart-care product for detecting falls at home without a wearable
-    device. Explain your choice using the available catalog.
-  expected_behavior: Recommend one fitting product, in English.
-  reply: 'This catalog option fits your request: it detects falls at home without requiring
-    a wearable, using non-contact millimeter-wave radar.'
-  products_shown:
-  - 毫米波跌倒偵測雷達
-  tools:
-  - tool: find_products
-    args:
-      functions:
-      - 跌倒偵測
-      must:
-        form: []
-        places:
-        - home
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      must_not:
-        form:
-        - worn
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other:
-      - Explain the choice using the available catalog.
-      count: 1
-    returned:
-      matched: 6
-      products:
-      - id: r-d56cb2dd
-        name: 毫米波跌倒偵測雷達
-        company: 邁摩科技股份有限公司
-        needs:
-          跌倒偵測: 非接觸式跌倒偵測
-          places=home: 家庭
-          form!=worn: 天花板或牆面安裝
-        text: '採用毫米波技術（FMCW 結合 MIMO 與波束成形）與深度學習與自動追蹤演算法，可進行非接觸式跌倒偵測與人體追蹤，可辨識人體位置、姿態與速度，並即時觸發警報，適合臥室與浴室等私密場域。該裝置具
-          MTI 動態目標偵測技術，具備低功耗特性且隱私友善，可應用於家庭、社區與醫療照護場所的跌倒預警與監控管理。
-
-          使用者可將雷達裝置進行天花板或牆面安裝，選擇接上乙太網、有線或 Wi‑Fi 網路後，即可連結平台進行資料傳輸。裝置將持續監測偵測區域（如 0.41 至數米範圍內），非接觸捕捉人體跌倒事件，當偵測到跌倒動作時，系統會即時觸發警報並提供關鍵訊息。建議安裝於長照空間、臥室與浴室，以進行全天候的跌倒即時偵測與安全保障。
-
-          毫米波跌倒偵測雷達採用FMCW、MIMO與波束成形結合AI偵測人體位置、姿態與速度，非接觸判斷跌倒並即時警報，隱私友善並適合私密場域。裝置安裝後透過有線或Wi‑Fi連網，持續監控偵測區域，適用於居家、浴室與長照設置，以提升跌倒預警能力。'
-      - id: r-a227dc74
-        name: FusionCare 毫米波雷達基站
-        company: Fusion智匯網
-        needs:
-          跌倒偵測: 跌倒
-          places=home: 居家
-          form!=worn: 裝設於天花板
-        text: 'FusionCare 毫米波雷達基站採用毫米波雷達技術與4D點雲AI學習，能非接觸偵測人體呼吸與姿態，適用於跌倒、離床、浴廁停留逾時、空間使用與呼吸偵測。透過雷達點雲判別人體姿態，即時推送系統與手機訊息，縮短黃金搶救時間。其非攝影方案有效保護隱私，可安心安裝於浴室與臥房，精準度不受光源、溫度、夜間或蒸氣影響
-
-          使用者將毫米波雷達基站裝設於天花板，對準偵測區域，接上電源並透過 Wi‑Fi（2.4／5GHz）或 PoE+ 網路連接。裝置內建 ARM Cortex A7 與
-          mmWave 雷達，可於距離1.5–3公尺、120°視角內進行24小時偵測，捕捉呼吸、睡眠與跌倒資訊。異常偵測時將即時透過系統與手機 app 發出推播警報；所有資料同步至雲端平台，可隨時查看歷史紀錄，並適用於居家、長照與醫療場域
-
-          FusionCare 毫米波雷達基站使用 mmWave 雷達與4D點雲AI技術，非接觸偵測呼吸、姿態、跌倒、離床與停留逾時，全天候運作且不侵犯隱私。安裝於天花板後，透過
-          Wi‑Fi 或 PoE+ 連網，自動偵測並於異常時推播通知，資料同步雲端，適用居家與長照場域。'
-      - id: r-a161885a
-        name: AI-Care 日夜照護安全系統
-        company: 百一電子股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-          places=home: 居家
-          form!=worn: 安裝於居家或照護場域的相關房間
-        text: 'AI Care 日夜照護安全系統結合AI 邊緣計算與嵌入式 GPU 雙架構，提供全方位、全天候（24小時）守護，適用於居家、醫療機構與公共場域。系統強調AI
-          去識別化處理，優先保護使用者隱私，避免影像記錄與個資外洩。具備跌倒偵測、離床偵測、房內動態監控、禁區誤入與異常駐留辨識功能，並可即時報警，協助照護人員快速介入。系統運用
-          AI 技術深入分析被照顧者的生理、姿態與行為模式，評估居家生活與潛在風險，進而提升整體照護品質與用戶安全感。
-
-          使用者可將 AI Care 系統安裝於居家或照護場域的相關房間，系統將24小時自動偵測跌倒、離床、禁區誤入、異常駐留與房內動態，並在偵測到異常狀況時即刻進行警報與通報
-          。可搭配 NVR 進行影像錄製與回放，並支援即時雙向通話功能，讓照護者能與被照護者互動與確保安全。系統適用於多房間、多人追蹤布署，可靈活應用於獨居長者、長照機構、日照中心及公共場域，有效提供全天候、安全、隱私兼顧的智慧照護模式。
-
-          AI Care 日夜照護安全系統結合AI邊緣運算與GPU架構，提供24小時跌倒、離床、禁區誤入、異常駐留偵測與即時通報，且具AI去識別化隱私保護。安裝後自動監控異常動態，支援NVR影像回放與雙向通話，適用於居家、長照與公共照護環境，提升安全與隱私並重的守護效能。'
-      - id: r-94f27ce7
-        name: OGA雷達毫米波生理感測裝置
-        company: 尚茂智能科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒檢測
-          places=home: 居家
-          form!=worn: 安置於照護場域如臥床區域或公共空間
-        text: 'OGA 雷達毫米波生理感測裝置可非接觸式感測人體呼吸與心跳等生理訊號，並具隱私保護優勢，不使用影像偵測。配備毫米波雷達技術，可進行睡眠狀態偵測、跌倒檢測與區域動能分析，其自動告警機制能即時發送
-          LINE 訊息。此外，所有量測數據均雲端紀錄，支援後續追蹤與分析。此裝置顯著提升照護施設與居家看護的安全管理功能，並以科技取代傳統監控，兼顧隱私與智慧化監護
-
-          使用者將 OGA 裝置安置於照護場域如臥床區域或公共空間，接上電源並連結 Wi‑Fi（2.4／5GHz），可在 0–40°C 環境下運作。系統即時感測呼吸與心跳變化，自動識別跌倒與異常動態，當異常觸發即透過
-          LINE 傳送警示訊息給照護人員。所有數據同步至雲端平台，可隨時回查歷史紀錄以監測身體狀況變化。其零接觸設計使使用時無需改動現場佈置，且具備隱私保護元素，適合居家、醫療與長照場域應用
-
-          OGA 雷達毫米波生理感測裝置採非接觸毫米波雷達技術，感測呼吸、心跳、睡眠與跌倒狀態，具隱私保護與自動告警功能，並雲端儲存數據。安裝於居家或照護區域後，透過 Wi‑Fi
-          運作，異常即 LINE 通報，同時可隨時回查雲端紀錄，實現全天候智慧監控。'
-      - id: r-5dc13647
-        name: AI智能照護系統
-        company: 合錦科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-          places=home: 居家
-          form!=worn: 天花板或桌面
-        text: '為非穿戴式 AI 系統，採用 AI 影像檢測與 PPS 隱私保護感測技術，支持家庭行為分析（在場、走路、坐、睡）、睡姿分析（仰臥、趴睡、左右側睡）、跌倒偵測、睡眠中斷統計與入室盜竊偵測。系統擁有
-          87.2° 水平視角、有效偵測距離 0.41 至 4 米，連接 Wi‑Fi 傳輸加密資料，並符合 FCC/CE/NCC/BSMI 認證；偵測異常時可立即向手機、平板或
-          PC 發出緊急警報，並能呼叫醫療機構，同時具夜燈功能，支援溫度感測與環境監控，強化居家安全。
-
-          放置於長者活動區域天花板或桌面，接上 110–240VAC 電源與 Wi‑Fi 或有線網路連接，啟動後系統即開始 AI 行為與睡眠監測。裝置會自動辨識在場、活動、睡眠與跌倒等行為，並記錄睡眠中斷次數與睡姿，透過安全加密傳輸至雲端平台。使用者可在
-          Android 8/iOS 13 或以上的行動裝置 app 上查看即時狀態與環境溫度／空氣品質；發生異常時，系統會啟動緊急警報與夜燈，並依設定模式自動通報預設聯絡人與醫療機構。
-
-          AI智能照護系統是非穿戴 AI 關愛系統，具行為與睡姿分析、跌倒與睡眠中斷偵測、入室盜竊防護及夜燈、溫度感測等功能，保障高隱私與安全。安裝簡易，採 Wi‑Fi
-          連接與安全加密，異常即時推播緊急警報與醫療通報，適合居家與長照場所。'
-      decisive: []
-      gaps: []
-      recommended_before: 0
-  - tool: show_products
-    args:
-      products:
-      - r-d56cb2dd
-      intro: 'This catalog option fits your request: it detects falls at home without requiring
-        a wearable, using non-contact millimeter-wave radar.'
-    returned:
-      shown:
-      - r-d56cb2dd
-  expected: pass
-  supported: pass
-  note: 'Does what expected says; the person would ask about the differences instead (design change pending).'
-- id: JL-12
-  case_id: REC-FX-03
-  candidate: gpt-6-luna:low
-  run: 1
-  reply_sha: 49161049400b
-  message: 我爸最近很容易跌倒，我想找一個照護產品
-  expected_behavior: Ask whether a worn device is acceptable, where it is used, or whether it should detect falls or prevent them, or recommend a product that detects falls.
-  reply: 你希望產品在家中使用，還是在照護機構使用？偏好安裝在房間內，還是戴在身上？
-  products_shown: []
-  tools:
-  - tool: find_products
-    args:
-      functions:
-      - 跌倒偵測
-      must:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      must_not:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other: []
-      count: null
-    returned:
-      matched: 15
-      products:
-      - id: r-d56cb2dd
-        name: 毫米波跌倒偵測雷達
-        company: 邁摩科技股份有限公司
-        needs:
-          跌倒偵測: 非接觸式跌倒偵測
-      - id: r-ebe05d1e
-        name: 毫米波雷達跌倒偵測系統
-        company: 群邁通訊股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      - id: r-ca9e10d4
-        name: JD‑170G 跌倒偵測腕戴呼叫器
-        company: 金阿波羅股份有限公司
-        needs:
-          跌倒偵測: 跌倒自動感測功能
-      - id: r-a227dc74
-        name: FusionCare 毫米波雷達基站
-        company: Fusion智匯網
-        needs:
-          跌倒偵測: 跌倒
-      - id: r-a161885a
-        name: AI-Care 日夜照護安全系統
-        company: 百一電子股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      - id: r-f3d11989
-        name: 長者照護智慧觀測服務
-        company: 元創電子股份有限公司
-        needs:
-          跌倒偵測: 偵測到無活動、異常長時間停留或跌倒時
-      - id: r-94f27ce7
-        name: OGA雷達毫米波生理感測裝置
-        company: 尚茂智能科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒檢測
-      - id: r-5dc13647
-        name: AI智能照護系統
-        company: 合錦科技股份有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      - id: r-80a9f79f
-        name: 安照小護士MAX XC‑8000 居家型
-        company: 瀚微科技股份有限公司
-        needs:
-          跌倒偵測: 精準跌倒偵測功能
-      - id: r-faccb990
-        name: AI照護感知系統
-        company: 雄欣科技有限公司
-        needs:
-          跌倒偵測: 跌倒偵測
-      decisive:
-      - facet: places
-        values:
-          home: 12
-          institution: 10
-          hospital: 8
-          public: 3
-        unstated: 0
-      - facet: form
-        values:
-          room: 12
-          worn: 6
-          software: 1
-        unstated: 0
-      gaps: []
-      recommended_before: 0
-  expected: pass
-  supported: pass
-  note: ''
-- id: JL-13
-  case_id: REC-FX-03B
-  candidate: gpt-5.6-luna:none
-  run: 1
-  reply_sha: cbeeb50a6cb8
-  message: 我想找離床預警的產品
-  expected_behavior: Ask where it is used, or what kind of device is acceptable, or recommend
-    a product with bed-exit alerts.
-  reply: 請問您要在家中、照護機構，還是醫院使用？偏好安裝在床上，還是放在房間內？
-  products_shown: []
-  tools:
-  - tool: find_products
-    args:
-      functions:
-      - 離床偵測
-      must:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      must_not:
-        form: []
-        places: []
-        sensing: []
-        viewing: []
-        power: []
-        users: []
-      other: []
-      count: null
-    returned:
-      matched: 16
-      products:
-      - id: r-c17f5961
-        name: WhizPad 安心臥智慧床墊
-        company: 世大智科股份有限公司
-        needs:
-          離床偵測: 提供離床預警
       - id: r-f49e0e06
         name: Monibed 紅外線離床警示器
         company: 司博創意科技有限公司
@@ -904,11 +108,16 @@ replies:
         company: 緯創醫療科技股份有限公司
         needs:
           離床偵測: 離床
+      - id: r-564d6702
+        name: 美維智慧照護系統
+        company: 美維科技股份有限公司
+        needs:
+          離床偵測: 離床警示
       decisive:
       - facet: form
         values:
-          room: 11
-          bed: 7
+          room: 10
+          bed: 6
           software: 2
           worn: 1
         unstated: 0
@@ -918,23 +127,1268 @@ replies:
           hospital: 7
           home: 5
           public: 1
-        unstated: 4
+        unstated: 3
+      gaps: []
+      recommended_before: 1
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-02
+  case_id: NE-011
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: 7cd757e1d4d2
+  history:
+  - user: 想找能偵測長輩離床的，不要穿戴的。
+    answer: '推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+
+      床墊下感測離床，提供三階段離床提醒，不需配戴。
+
+      - 離床偵測：符合
+
+      - 不用穿戴：符合'
+  message: 另外要能用電腦看
+  expected_behavior: Keep the earlier needs, add viewing on a computer, and ask about a difference
+    among those that fit.
+  reply: 你希望用在家裡、照護機構，還是醫院？可複選。
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing:
+        - computer
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 5
+      products:
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          viewing=computer: 桌機
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          viewing=computer: 中央監控軟體
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-aa61f7a5
+        name: 南丁格爾智慧照護系統
+        company: 智宇生醫股份有限公司
+        needs:
+          離床偵測: 如離床、久臥等異常情況
+          viewing=computer: 電腦端
+          form!=worn: 床墊鋪設於病床上
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          離床偵測: 離床偵測
+          viewing=computer: unknown
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-bdfbd328
+        name: 智慧照護解決方案
+        company: 佐臻股份有限公司
+        needs:
+          離床偵測: 在床狀態
+          viewing=computer: unknown
+          form!=worn: 管理平台
+      decisive:
+      - facet: places
+        values:
+          institution: 5
+          hospital: 3
+          public: 1
+          home: 1
+        unstated: 0
+      gaps: []
+      recommended_before: 0
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places:
+        - home
+        sensing: []
+        viewing:
+        - computer
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned: 'Not done: ask the user about places first: their answer decides.'
+    refused: true
+  expected: pass
+  note: ''
+- id: JL-03
+  case_id: NE-007
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 9adaa58980f0
+  message: 推薦三個能偵測跌倒的產品
+  expected_behavior: Ask about a difference among the products that fit before recommending
+    three.
+  reply: 請告訴我你偏好的使用場所（家中、照護機構、醫院或公共場所）和產品形式（房間安裝式、穿戴式或軟體）；若都可以，也可以直接說「都可以」。
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 3
+      no_preference: all
+    returned:
+      matched: 15
+      products:
+      - id: r-d56cb2dd
+        name: 毫米波跌倒偵測雷達
+        company: 邁摩科技股份有限公司
+        needs:
+          跌倒偵測: 非接觸式跌倒偵測
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+      - id: r-ca9e10d4
+        name: JD‑170G 跌倒偵測腕戴呼叫器
+        company: 金阿波羅股份有限公司
+        needs:
+          跌倒偵測: 跌倒自動感測功能
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          跌倒偵測: 跌倒
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+      - id: r-f3d11989
+        name: 長者照護智慧觀測服務
+        company: 元創電子股份有限公司
+        needs:
+          跌倒偵測: 偵測到無活動、異常長時間停留或跌倒時
+      - id: r-94f27ce7
+        name: OGA雷達毫米波生理感測裝置
+        company: 尚茂智能科技股份有限公司
+        needs:
+          跌倒偵測: 跌倒檢測
+      - id: r-5dc13647
+        name: AI智能照護系統
+        company: 合錦科技股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+      - id: r-80a9f79f
+        name: 安照小護士MAX XC‑8000 居家型
+        company: 瀚微科技股份有限公司
+        needs:
+          跌倒偵測: 精準跌倒偵測功能
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+      decisive:
+      - facet: places
+        values:
+          home: 12
+          institution: 10
+          hospital: 8
+          public: 3
+        unstated: 0
+      - facet: form
+        values:
+          room: 12
+          worn: 6
+          software: 1
+        unstated: 0
+      gaps: []
+      recommended_before: 0
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 3
+      no_preference:
+      - places
+      - form
+    returned: 'Not done: ask the user about places, form first: their answer decides.'
+    refused: true
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-04
+  case_id: NE-014
+  candidate: gpt-6-luna:low
+  run: 0
+  reply_sha: 13aeea00789e
+  history:
+  - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 都可以，你推薦就好。
+  expected_behavior: Ask nothing more, and show the products that fit, up to five, saying
+    how many more fit.
+  reply: 你希望用手機或平板 App、電腦、LINE 接收通知，還是看設備本身的螢幕或護理站？
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+    returned:
+      matched: 15
+      products:
+      - id: r-c17f5961
+        name: WhizPad 安心臥智慧床墊
+        company: 世大智科股份有限公司
+        needs:
+          離床偵測: 提供離床預警
+          form!=worn: 主機上的控制面板
+      - id: r-f49e0e06
+        name: Monibed 紅外線離床警示器
+        company: 司博創意科技有限公司
+        needs:
+          離床偵測: 離床狀況
+          form!=worn: 安裝於床邊
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          form!=worn: 鋪設於床墊下方
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          form!=worn: 鋪設在床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          form!=worn: 裝設於天花板
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          form!=worn: 主機
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          離床偵測: 離床偵測
+          form!=worn: 感測裝置安裝於病房內
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 9
+          device: 4
+          computer: 3
+          line: 1
+        unstated: 2
+      gaps: []
+      recommended_before: 0
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-05
+  case_id: CASE-025
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 1562e0b361e9
+  message: Recommend one smart-care product for detecting falls at home without a wearable
+    device. Explain your choice using the available catalog.
+  expected_behavior: Ask in English about a difference among the products that fit, before
+    recommending the one product asked for.
+  reply: 'How would you like to receive fall alerts: through a phone app, computer, LINE,
+    or SMS? Also, should the system be plugged in or battery-powered?'
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      must:
+        form: []
+        places:
+        - home
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 1
+      no_preference:
+      - viewing
+      - power
+    returned:
+      matched: 6
+      products:
+      - id: r-d56cb2dd
+        name: 毫米波跌倒偵測雷達
+        company: 邁摩科技股份有限公司
+        needs:
+          跌倒偵測: 非接觸式跌倒偵測
+          places=home: 家庭
+          form!=worn: 天花板或牆面安裝
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          跌倒偵測: 跌倒
+          places=home: 居家
+          form!=worn: 裝設於天花板
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+          places=home: 居家
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-f3d11989
+        name: 長者照護智慧觀測服務
+        company: 元創電子股份有限公司
+        needs:
+          跌倒偵測: 偵測到無活動、異常長時間停留或跌倒時
+          places=home: 居家照護
+          form!=worn: 安置於長者居家常活動區域
+      - id: r-94f27ce7
+        name: OGA雷達毫米波生理感測裝置
+        company: 尚茂智能科技股份有限公司
+        needs:
+          跌倒偵測: 跌倒檢測
+          places=home: 居家
+          form!=worn: 安置於照護場域如臥床區域或公共空間
+      - id: r-5dc13647
+        name: AI智能照護系統
+        company: 合錦科技股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+          places=home: 居家
+          form!=worn: 天花板或桌面
+      decisive:
+      - facet: viewing
+        values:
+          app: 3
+          computer: 2
+          line: 2
+          sms: 1
+        unstated: 2
       gaps: []
       recommended_before: 0
   expected: pass
   supported: pass
   note: ''
-- id: JL-14
-  case_id: REC-FX-04
+- id: JL-06
+  case_id: NE-014
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 4e15f878c737
+  history:
+  - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 都可以，你推薦就好。
+  expected_behavior: Ask nothing more, and show the products that fit, up to five, saying
+    how many more fit.
+  reply: 你希望透過手機 App、電腦、LINE 或設備本身的螢幕查看離床通知？都可以的話也可以告訴我。
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+    returned:
+      matched: 15
+      products:
+      - id: r-c17f5961
+        name: WhizPad 安心臥智慧床墊
+        company: 世大智科股份有限公司
+        needs:
+          離床偵測: 提供離床預警
+          form!=worn: 主機上的控制面板
+      - id: r-f49e0e06
+        name: Monibed 紅外線離床警示器
+        company: 司博創意科技有限公司
+        needs:
+          離床偵測: 離床狀況
+          form!=worn: 安裝於床邊
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          form!=worn: 鋪設於床墊下方
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          form!=worn: 鋪設在床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          form!=worn: 裝設於天花板
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          form!=worn: 主機
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          離床偵測: 離床偵測
+          form!=worn: 感測裝置安裝於病房內
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 9
+          device: 4
+          computer: 3
+          line: 1
+        unstated: 2
+      gaps: []
+      recommended_before: 0
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+      - viewing
+    returned: 'Not done: ask the user about viewing first: their answer decides.'
+    refused: true
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-07
+  case_id: NE-005
+  candidate: gpt-6-luna:low
+  run: 0
+  reply_sha: c22baa80afa5
+  history:
+  - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 在家裡。
+  expected_behavior: Take the answer with the earlier needs, and ask about a difference among
+    the products that fit.
+  reply: 希望透過手機 App 查看、照護設備本身的螢幕查看，還是用 LINE 接收通知？
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places:
+        - home
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 8
+      products:
+      - id: r-c17f5961
+        name: WhizPad 安心臥智慧床墊
+        company: 世大智科股份有限公司
+        needs:
+          離床偵測: 提供離床預警
+          places=home: unknown
+          form!=worn: 主機上的控制面板
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          places=home: 需要居家照護的長者
+          form!=worn: 鋪設於床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          places=home: 居家
+          form!=worn: 裝設於天花板
+      - id: r-564d6702
+        name: 美維智慧照護系統
+        company: 美維科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          places=home: 居家照護
+          form!=worn: 感測器安裝在床墊或病床上
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          離床偵測: 離床偵測
+          places=home: 居家
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          places=home: unknown
+          form!=worn: 鋪設在床墊下方
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          places=home: unknown
+          form!=worn: 主機
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          places=home: unknown
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 5
+          device: 2
+          line: 1
+        unstated: 1
+      gaps: []
+      recommended_before: 0
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-08
+  case_id: NE-011
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 893a369c79be
+  history:
+  - user: 想找能偵測長輩離床的，不要穿戴的。
+    answer: '推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+
+      床墊下感測離床，提供三階段離床提醒，不需配戴。
+
+      - 離床偵測：符合
+
+      - 不用穿戴：符合'
+  message: 另外要能用電腦看
+  expected_behavior: Keep the earlier needs, add viewing on a computer, and ask about a difference
+    among those that fit.
+  reply: 有要在家中、照護機構、醫院，還是公共場所使用？
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing:
+        - computer
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 5
+      products:
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          viewing=computer: 桌機
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          viewing=computer: 中央監控軟體
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-aa61f7a5
+        name: 南丁格爾智慧照護系統
+        company: 智宇生醫股份有限公司
+        needs:
+          離床偵測: 如離床、久臥等異常情況
+          viewing=computer: 電腦端
+          form!=worn: 床墊鋪設於病床上
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          離床偵測: 離床偵測
+          viewing=computer: unknown
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-bdfbd328
+        name: 智慧照護解決方案
+        company: 佐臻股份有限公司
+        needs:
+          離床偵測: 在床狀態
+          viewing=computer: unknown
+          form!=worn: 管理平台
+      decisive:
+      - facet: places
+        values:
+          institution: 5
+          hospital: 3
+          public: 1
+          home: 1
+        unstated: 0
+      gaps: []
+      recommended_before: 0
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-09
+  case_id: CASE-021
   candidate: gpt-6-luna:none
   run: 2
-  reply_sha: 0e75d71a6017
+  reply_sha: 7cddabed60a2
+  message: 推薦一個智慧照護產品給我。
+  expected_behavior: Ask what the product is for, without searching.
+  reply: 沒有產品能同時符合我剛才列出的所有功能。你最想要產品具備哪一項功能？例如跌倒偵測、離床偵測或心率監測。
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      - 跌倒預防
+      - 離床偵測
+      - 翻身監測
+      - 壓瘡預防
+      - 呼吸監測
+      - 心率監測
+      - 睡眠監測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 1
+      no_preference: all
+    returned:
+      matched: 0
+      products: []
+      decisive: []
+      gaps:
+      - need: 跌倒偵測
+        products: 15
+      - need: 跌倒預防
+        products: 3
+      - need: 離床偵測
+        products: 16
+      - need: 翻身監測
+        products: 6
+      - need: 壓瘡預防
+        products: 3
+      - need: 呼吸監測
+        products: 15
+      - need: 心率監測
+        products: 25
+      - need: 睡眠監測
+        products: 20
+      recommended_before: 0
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-10
+  case_id: NE-014
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: ad66d9e0ba32
+  history:
+  - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 都可以，你推薦就好。
+  expected_behavior: Ask nothing more, and show the products that fit, up to five, saying
+    how many more fit.
+  reply: 想用手機 App 接收提醒，還是希望透過電腦、通訊軟體或設備本身查看？都可以的話也請告訴我。
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+    returned:
+      matched: 15
+      products:
+      - id: r-c17f5961
+        name: WhizPad 安心臥智慧床墊
+        company: 世大智科股份有限公司
+        needs:
+          離床偵測: 提供離床預警
+          form!=worn: 主機上的控制面板
+      - id: r-f49e0e06
+        name: Monibed 紅外線離床警示器
+        company: 司博創意科技有限公司
+        needs:
+          離床偵測: 離床狀況
+          form!=worn: 安裝於床邊
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          form!=worn: 鋪設於床墊下方
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          form!=worn: 鋪設在床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          form!=worn: 裝設於天花板
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          form!=worn: 主機
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          離床偵測: 離床偵測
+          form!=worn: 感測裝置安裝於病房內
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 9
+          device: 4
+          computer: 3
+          line: 1
+        unstated: 2
+      gaps: []
+      recommended_before: 0
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+      - viewing
+    returned: 'Not done: ask the user about viewing first: their answer decides.'
+    refused: true
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-11
+  case_id: CASE-025
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: 63beecb51956
+  message: Recommend one smart-care product for detecting falls at home without a wearable
+    device. Explain your choice using the available catalog.
+  expected_behavior: Ask in English about a difference among the products that fit, before
+    recommending the one product asked for.
+  reply: 'How would you like to receive fall alerts: through an app, on a computer, via LINE
+    or SMS, or by phone call?'
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      must:
+        form: []
+        places:
+        - home
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 1
+      no_preference: []
+    returned:
+      matched: 6
+      products:
+      - id: r-d56cb2dd
+        name: 毫米波跌倒偵測雷達
+        company: 邁摩科技股份有限公司
+        needs:
+          跌倒偵測: 非接觸式跌倒偵測
+          places=home: 家庭
+          form!=worn: 天花板或牆面安裝
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          跌倒偵測: 跌倒
+          places=home: 居家
+          form!=worn: 裝設於天花板
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+          places=home: 居家
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-f3d11989
+        name: 長者照護智慧觀測服務
+        company: 元創電子股份有限公司
+        needs:
+          跌倒偵測: 偵測到無活動、異常長時間停留或跌倒時
+          places=home: 居家照護
+          form!=worn: 安置於長者居家常活動區域
+      - id: r-94f27ce7
+        name: OGA雷達毫米波生理感測裝置
+        company: 尚茂智能科技股份有限公司
+        needs:
+          跌倒偵測: 跌倒檢測
+          places=home: 居家
+          form!=worn: 安置於照護場域如臥床區域或公共空間
+      - id: r-5dc13647
+        name: AI智能照護系統
+        company: 合錦科技股份有限公司
+        needs:
+          跌倒偵測: 跌倒偵測
+          places=home: 居家
+          form!=worn: 天花板或桌面
+      decisive:
+      - facet: viewing
+        values:
+          app: 3
+          computer: 2
+          line: 2
+          sms: 1
+        unstated: 2
+      gaps: []
+      recommended_before: 0
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      must:
+        form: []
+        places:
+        - home
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 1
+      no_preference: []
+    returned: 'Not done: ask the user about viewing first: their answer decides.'
+    refused: true
+  expected: pass
+  note: ''
+- id: JL-12
+  case_id: NE-008
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 211afb6a1ac3
+  history:
+  - user: 想找能偵測長輩離床的，不要穿戴的。
+    answer: '推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+
+      床墊下感測離床，提供三階段離床提醒，不需配戴。
+
+      - 離床偵測：符合
+
+      - 不用穿戴：符合'
+  message: 其實穿戴的也可以
+  expected_behavior: Drop the condition taken back without asking about it again, and ask about a difference among those that fit.
+  reply: 了解，穿戴式也可以。你偏好穿戴式、床墊式或房間感測器？產品要用在家中、照護機構還是醫院？
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 15
+      products:
+      - id: r-f49e0e06
+        name: Monibed 紅外線離床警示器
+        company: 司博創意科技有限公司
+        needs:
+          離床偵測: 離床狀況
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          離床偵測: 離床偵測
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+      - id: r-564d6702
+        name: 美維智慧照護系統
+        company: 美維科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+      decisive:
+      - facet: form
+        values:
+          room: 10
+          bed: 6
+          software: 2
+          worn: 1
+        unstated: 0
+      - facet: places
+        values:
+          institution: 10
+          hospital: 7
+          home: 5
+          public: 1
+        unstated: 3
+      gaps: []
+      recommended_before: 1
+  - tool: show_products
+    args:
+      products:
+      - r-f49e0e06
+      - r-6c2771fd
+      - r-ebe05d1e
+      - r-85129b3f
+      - r-8258f31e
+      - r-a227dc74
+      - r-acfe8202
+      - r-faccb990
+      - r-688a0551
+      - r-564d6702
+      intro: 了解，穿戴式也可以；以下是符合離床偵測需求的產品：
+    returned: 'Not done: ask the user about form, places first: their answer decides.'
+    refused: true
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-13
+  case_id: REC-FX-04
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: d68daf09d383
   message: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
-  expected_behavior: Recommend only a product the catalog states can be viewed on a computer,
-    or ask about a difference among those that fit.
-  reply: 這項產品可在偵測到長輩準備離床時通知照護人員，並提供電腦端中央監控。
-  products_shown:
-  - 美思臥床照護系統
+  expected_behavior: Keep viewing on a computer as a need, and ask about a difference among the products that fit, before recommending the one product asked for.
+  reply: 請問要使用在家中、照護機構、醫院，還是公共場所？偏好床墊型、房間感測器，還是軟體系統？
+  products_shown: []
   tools:
   - tool: find_products
     args:
@@ -958,6 +1412,7 @@ replies:
       other:
       - 長輩離床時通知照護人員
       count: 1
+      no_preference: all
     returned:
       matched: 5
       products:
@@ -1019,51 +1474,328 @@ replies:
           使用者可以佩戴佐臻AR智慧眼鏡，進行健康監控和照護巡房，並透過實時接收的醫療指示來執行緊急送院或遠距家屬探訪。毫米波雷達需安裝於病房、走道等區域，並且在病人睡眠或移動時進行監測，偵測到異常情況後會發送警報。管理人員則可透過智慧平台查看病房內的數據，包括病人的心跳、體溫等資訊，並設置警示與監控功能，提升整體健康管理效率。
 
           智慧照護解決方案結合佐臻AR智慧眼鏡、毫米波雷達和可視化管理平台，提供全面的健康監控功能。醫護人員可透過AR智慧眼鏡進行照護巡房及緊急送院，毫米波雷達進行在床偵測與跌倒偵測，平台則整合各類數據進行即時監控與分析。此系統大大提升了病房管理與病人安全。'
-      decisive: []
+      decisive:
+      - facet: places
+        values:
+          institution: 5
+          hospital: 3
+          public: 1
+          home: 1
+        unstated: 0
+      - facet: form
+        values:
+          room: 3
+          bed: 2
+          software: 2
+        unstated: 0
       gaps: []
       recommended_before: 0
-  - tool: show_products
-    args:
-      products:
-      - r-85129b3f
-      intro: 這項產品可在偵測到長輩準備離床時通知照護人員，並提供電腦端中央監控。
-    returned:
-      shown:
-      - r-85129b3f
   expected: pass
   supported: pass
-  note: 'Does what expected says; the person would ask about the differences instead (design change pending).'
-- id: JL-15
+  note: ''
+- id: JL-14
   case_id: CASE-021
-  candidate: gpt-5.6-luna:none
-  run: 0
-  reply_sha: b0175140e55f
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: 3bade0bb7a7f
   message: 推薦一個智慧照護產品給我。
   expected_behavior: Ask what the product is for, without searching.
-  reply: 你想找的產品主要是要協助哪一項照護需求？例如跌倒偵測、離床提醒、健康量測或復健訓練？
+  reply: 你希望產品主要用來做什麼呢？例如偵測跌倒、監測睡眠，或提醒用藥？
   products_shown: []
-  expected: pass
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 跌倒偵測
+      - 跌倒預防
+      - 離床偵測
+      - 翻身監測
+      - 壓瘡預防
+      - 呼吸監測
+      - 心率監測
+      - 睡眠監測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: 1
+      no_preference: []
+    returned:
+      matched: 0
+      products: []
+      decisive: []
+      gaps:
+      - need: 跌倒偵測
+        products: 15
+      - need: 跌倒預防
+        products: 3
+      - need: 離床偵測
+        products: 16
+      - need: 翻身監測
+        products: 6
+      - need: 壓瘡預防
+        products: 3
+      - need: 呼吸監測
+        products: 15
+      - need: 心率監測
+        products: 25
+      - need: 睡眠監測
+        products: 20
+      recommended_before: 0
+  expected: fail
+  note: ''
+- id: JL-15
+  case_id: NE-014
+  candidate: gpt-6-luna:none
+  run: 1
+  reply_sha: 2179a03da29c
+  history:
+  - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 都可以，你推薦就好。
+  expected_behavior: Ask nothing more, and show the products that fit, up to five, saying
+    how many more fit.
+  reply: 您希望透過手機 App、電腦、LINE、簡訊、電話接收通知，還是希望設備本身或護理站顯示？
+  products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+    returned:
+      matched: 15
+      products:
+      - id: r-c17f5961
+        name: WhizPad 安心臥智慧床墊
+        company: 世大智科股份有限公司
+        needs:
+          離床偵測: 提供離床預警
+          form!=worn: 主機上的控制面板
+      - id: r-f49e0e06
+        name: Monibed 紅外線離床警示器
+        company: 司博創意科技有限公司
+        needs:
+          離床偵測: 離床狀況
+          form!=worn: 安裝於床邊
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          form!=worn: 鋪設於床墊下方
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          form!=worn: 鋪設在床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          form!=worn: 裝設於天花板
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          form!=worn: 主機
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          離床偵測: 離床偵測
+          form!=worn: 感測裝置安裝於病房內
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 9
+          device: 4
+          computer: 3
+          line: 1
+        unstated: 2
+      gaps: []
+      recommended_before: 0
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+      - viewing
+    returned: 'Not done: ask the user about viewing first: their answer decides.'
+    refused: true
+  expected: fail
+  supported: pass
   note: ''
 - id: JL-16
-  case_id: REC-FX-03B
-  candidate: gpt-6-luna:low
-  run: 2
-  reply_sha: 840da06ff917
-  message: 我想找離床預警的產品
-  expected_behavior: Ask where it is used, or what kind of device is acceptable, or recommend
-    a product with bed-exit alerts.
-  reply: 您偏好安裝在房間裡（如牆面或床邊），還是放在床上或床墊下的產品？
+  case_id: NE-011
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 89d1d247e608
+  history:
+  - user: 想找能偵測長輩離床的，不要穿戴的。
+    answer: '推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+
+      床墊下感測離床，提供三階段離床提醒，不需配戴。
+
+      - 離床偵測：符合
+
+      - 不用穿戴：符合'
+  message: 另外要能用電腦看
+  expected_behavior: Keep the earlier needs, add viewing on a computer, and ask about a difference
+    among those that fit.
+  reply: 你想用在家裡、長照機構，還是醫院？可複選。你想用在家裡、長照機構，還是醫院？可複選。
   products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing:
+        - computer
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 5
+      products:
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          viewing=computer: 桌機
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          viewing=computer: 中央監控軟體
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-aa61f7a5
+        name: 南丁格爾智慧照護系統
+        company: 智宇生醫股份有限公司
+        needs:
+          離床偵測: 如離床、久臥等異常情況
+          viewing=computer: 電腦端
+          form!=worn: 床墊鋪設於病床上
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          離床偵測: 離床偵測
+          viewing=computer: unknown
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-bdfbd328
+        name: 智慧照護解決方案
+        company: 佐臻股份有限公司
+        needs:
+          離床偵測: 在床狀態
+          viewing=computer: unknown
+          form!=worn: 管理平台
+      decisive:
+      - facet: places
+        values:
+          institution: 5
+          hospital: 3
+          public: 1
+          home: 1
+        unstated: 0
+      gaps: []
+      recommended_before: 0
   expected: pass
+  supported: pass
   note: ''
 - id: JL-17
   case_id: CASE-021
   candidate: gpt-6-luna:none
-  run: 2
-  reply_sha: bcdf282fee7f
+  run: 0
+  reply_sha: 5c4df6651bf0
   message: 推薦一個智慧照護產品給我。
   expected_behavior: Ask what the product is for, without searching.
-  reply: 你想找產品來做什麼呢？例如偵測跌倒、提醒用藥，或協助復健？有沒有特別希望它在哪裡使用？你想找產品來做什麼呢？例如偵測跌倒、提醒用藥，或協助復健？有沒有特別希望它在哪裡使用？
+  reply: 你想找能做什麼的智慧照護產品？例如跌倒偵測、用藥提醒或健康量測。
   products_shown: []
   tools:
   - tool: find_products
@@ -1085,29 +1817,128 @@ replies:
         users: []
       other: []
       count: 1
+      no_preference: []
     returned: 'Not done: : Value error, name a function, or the need in other.'
     refused: true
   expected: fail
-  supported: pass
   note: ''
 - id: JL-18
-  case_id: CASE-021
+  case_id: REC-FX-10
   candidate: gpt-6-luna:low
   run: 2
-  reply_sha: c369614daf58
-  message: 推薦一個智慧照護產品給我。
-  expected_behavior: Ask what the product is for, without searching.
-  reply: 您希望產品協助什麼照護需求？例如跌倒偵測、健康量測或復健訓練？
+  reply_sha: e2e58178ac3f
+  history:
+  - user: 想找離床預警、不用穿戴、在家裡用的產品。
+    answer: '這項產品符合你的需求。
+
+
+      推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
+
+      床墊下感測離床，提供三階段離床提醒，不需配戴。
+
+      - 離床預警：符合
+
+      - 不用穿戴：符合
+
+      - 在家裡用：目錄未註明'
+  message: 還有其他的嗎？
+  expected_behavior: Ask about a difference among the products that fit, other than the one
+    already shown; no email or sending.
+  reply: 你希望用手機 App、照護設備本身的螢幕，還是 LINE 接收離床提醒？
   products_shown: []
-  tools: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places:
+        - home
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 7
+      products:
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          places=home: 需要居家照護的長者
+          form!=worn: 鋪設於床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          places=home: 居家
+          form!=worn: 裝設於天花板
+      - id: r-564d6702
+        name: 美維智慧照護系統
+        company: 美維科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          places=home: 居家照護
+          form!=worn: 感測器安裝在床墊或病床上
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          離床偵測: 離床偵測
+          places=home: 居家
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          places=home: unknown
+          form!=worn: 鋪設在床墊下方
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          places=home: unknown
+          form!=worn: 主機
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          places=home: unknown
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 5
+          device: 1
+          line: 1
+        unstated: 1
+      gaps: []
+      recommended_before: 1
   expected: pass
   supported: pass
   note: ''
 - id: JL-19
-  case_id: NE-008
-  candidate: gpt-6-luna:low
-  run: 1
-  reply_sha: 42cca11c2561
+  case_id: NE-011
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: bdcddcc4157b
   history:
   - user: 想找能偵測長輩離床的，不要穿戴的。
     answer: '推薦：WhizPad 安心臥智慧床墊（世大智科股份有限公司）
@@ -1117,22 +1948,196 @@ replies:
       - 離床偵測：符合
 
       - 不用穿戴：符合'
-  message: 其實穿戴的也可以
-  expected_behavior: Drop the condition taken back, and recommend another product with bed-exit
-    alerts or ask about a difference among those that fit.
-  reply: 您比較偏好裝在房間裡、放在床上或床墊下，還是穿戴式的離床偵測產品？
+  message: 另外要能用電腦看
+  expected_behavior: Keep the earlier needs, add viewing on a computer, and ask about a difference
+    among those that fit.
+  reply: 請問是要在家中、照護機構、醫院，還是公共場所使用？
   products_shown: []
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing:
+        - computer
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference: []
+    returned:
+      matched: 5
+      products:
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          viewing=computer: 桌機
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          viewing=computer: 中央監控軟體
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-aa61f7a5
+        name: 南丁格爾智慧照護系統
+        company: 智宇生醫股份有限公司
+        needs:
+          離床偵測: 如離床、久臥等異常情況
+          viewing=computer: 電腦端
+          form!=worn: 床墊鋪設於病床上
+      - id: r-a161885a
+        name: AI-Care 日夜照護安全系統
+        company: 百一電子股份有限公司
+        needs:
+          離床偵測: 離床偵測
+          viewing=computer: unknown
+          form!=worn: 安裝於居家或照護場域的相關房間
+      - id: r-bdfbd328
+        name: 智慧照護解決方案
+        company: 佐臻股份有限公司
+        needs:
+          離床偵測: 在床狀態
+          viewing=computer: unknown
+          form!=worn: 管理平台
+      decisive:
+      - facet: places
+        values:
+          institution: 5
+          hospital: 3
+          public: 1
+          home: 1
+        unstated: 0
+      gaps: []
+      recommended_before: 0
   expected: pass
   note: ''
 - id: JL-20
-  case_id: CASE-021
-  candidate: gpt-5.6-luna:none
+  case_id: NE-014
+  candidate: gpt-6-luna:low
   run: 1
-  reply_sha: 7f6e539fb432
-  message: 推薦一個智慧照護產品給我。
-  expected_behavior: Ask what the product is for, without searching.
-  reply: 你想要產品主要協助哪一方面？例如跌倒偵測、健康量測、居家安全或復健訓練。
+  reply_sha: accc9ec8fcb5
+  history:
+  - user: 想找可以偵測長輩離床的產品，不要穿戴的。
+    answer: 請問是在家裡用，還是在照護機構用？
+  message: 都可以，你推薦就好。
+  expected_behavior: Ask nothing more, and show the products that fit, up to five, saying
+    how many more fit.
+  reply: 你希望透過手機或平板 App、電腦、LINE，還是設備本身的螢幕／護理站查看離床通知？
   products_shown: []
-  expected: pass
+  tools:
+  - tool: find_products
+    args:
+      functions:
+      - 離床偵測
+      must:
+        form: []
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      must_not:
+        form:
+        - worn
+        places: []
+        sensing: []
+        viewing: []
+        power: []
+        users: []
+      other: []
+      count: null
+      no_preference:
+      - places
+    returned:
+      matched: 15
+      products:
+      - id: r-c17f5961
+        name: WhizPad 安心臥智慧床墊
+        company: 世大智科股份有限公司
+        needs:
+          離床偵測: 提供離床預警
+          form!=worn: 主機上的控制面板
+      - id: r-f49e0e06
+        name: Monibed 紅外線離床警示器
+        company: 司博創意科技有限公司
+        needs:
+          離床偵測: 離床狀況
+          form!=worn: 安裝於床邊
+      - id: r-6c2771fd
+        name: iProték 智慧床墊
+        company: 嘉碩生醫電子股份有限公司
+        needs:
+          離床偵測: 在床／離床警示
+          form!=worn: 鋪設於床墊下方
+      - id: r-ebe05d1e
+        name: 毫米波雷達跌倒偵測系統
+        company: 群邁通訊股份有限公司
+        needs:
+          離床偵測: 離床提醒
+          form!=worn: 安裝於天花板或牆壁上
+      - id: r-85129b3f
+        name: 美思臥床照護系統
+        company: 美思科技有限公司
+        needs:
+          離床偵測: 病人準備離床
+          form!=worn: 感應墊鋪設於病床上
+      - id: r-8258f31e
+        name: ForeAider Z 智慧感知墊
+        company: 輔人科技股份有限公司
+        needs:
+          離床偵測: 離床警示
+          form!=worn: 鋪設在床墊下方
+      - id: r-a227dc74
+        name: FusionCare 毫米波雷達基站
+        company: Fusion智匯網
+        needs:
+          離床偵測: 離床
+          form!=worn: 裝設於天花板
+      - id: r-acfe8202
+        name: Pamorcare智慧臥床照護寶
+        company: 百醫醫材科技股份有限公司
+        needs:
+          離床偵測: 臥床狀態
+          form!=worn: 主機
+      - id: r-faccb990
+        name: AI照護感知系統
+        company: 雄欣科技有限公司
+        needs:
+          離床偵測: 離床偵測
+          form!=worn: 感測裝置安裝於病房內
+      - id: r-688a0551
+        name: AI 零接觸智能照護系統
+        company: 緯創醫療科技股份有限公司
+        needs:
+          離床偵測: 離床
+          form!=worn: 床頭牆面上方或側牆
+      decisive:
+      - facet: viewing
+        values:
+          app: 9
+          device: 4
+          computer: 3
+          line: 1
+        unstated: 2
+      gaps: []
+      recommended_before: 0
+  expected: fail
+  supported: pass
   note: ''
 evidence: {}
