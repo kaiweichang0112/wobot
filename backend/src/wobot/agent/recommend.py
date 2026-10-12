@@ -1,9 +1,10 @@
 """What code shows of a recommendation (DEC-065, DEC-069): which products, and their cards.
 
 find_products judges and ranks every product (`find.py`); a model never does. When the
-user has said enough, code shows the first that fit at once, as many as the user asked
-for. When the agent read products' text for a need the vocabulary has no word for, it
-names those that meet it, and code shows them in its own order. Code writes each card
+user has said enough, code shows the first that fit at once, up to five unless the user
+asked for fewer, and how many more fit. When the agent read products' text for a need
+the vocabulary has no word for, it names those that meet it, and code shows them in its
+own order. Code writes each card
 from the record: every need with the catalog's own words for it, or that the catalog
 does not state it, and how to reach the maker, so none of it is the model's. A product
 recommended earlier in the conversation is never found again, so never shown twice.
@@ -17,7 +18,7 @@ from wobot.agent.find import FindProducts, Found
 from wobot.agent.rec_agent import ShowProducts, reads_text
 from wobot.knowledge.facets import ENGLISH_NAMES
 
-# A recommendation names one product unless the user asks for more; "all" stops here too.
+# A recommendation shows up to five, or as many as the user asked for; "all" stops here too.
 MOST_PRODUCTS = 5
 
 
@@ -31,10 +32,10 @@ def recommended_before(replies: Iterable[str]) -> set[str]:
 
 
 def shown_count(count: int | Literal["all"] | None) -> int:
-    """How many products a recommendation shows: one unless the user named more."""
-    if count is None:
-        return 1
-    return MOST_PRODUCTS if count == "all" else min(count, MOST_PRODUCTS)
+    """How many products a recommendation shows: up to five unless the user named fewer."""
+    if count is None or count == "all":
+        return MOST_PRODUCTS
+    return min(count, MOST_PRODUCTS)
 
 
 def shows_at_once(found: Found, args: FindProducts) -> bool:
@@ -128,6 +129,7 @@ LABELS = {
         "item": "- {name}（{company}）",
         "more": "可以再多告訴我一些你的需求，我再幫你找找看。",
         "none": "我目前沒辦法用資料確認適合的產品。",
+        "others": "另有 {n} 項產品也符合，想看的話再跟我說。",
         "gap": "",  # between sentences
     },
     "en": {
@@ -150,6 +152,7 @@ LABELS = {
         "item": "- {name} ({company})",
         "more": "Tell me a little more about what you need, and I will look again.",
         "none": "I could not confirm a product that fits from the sources.",
+        "others": "Products that also fit but are not shown: {n}. Ask me to see them.",
         "gap": " ",
     },
 }
@@ -197,16 +200,24 @@ def card(product: Mapping[str, Any], needs: Sequence[str], chinese: bool) -> str
 
 
 def recommended_reply(
-    found: Mapping[str, Any], shown: Sequence[str], chinese: bool, intro: str = ""
+    found: Mapping[str, Any],
+    shown: Sequence[str],
+    chinese: bool,
+    intro: str = "",
+    fitting: int | None = None,
 ) -> dict[str, Any]:
-    """The reply showing the products, by ID, in order: an intro, then a card each."""
+    """The reply showing the products, by ID, in order: an intro, a card each and, when
+    more fit than are shown, how many (DEC-075). `fitting` is how many fit: the find's
+    count unless the agent judged them from their text."""
     label = LABELS["zh" if chinese else "en"]
     by_id = {p["id"]: p for p in found["products"]}
     products = [by_id[handle] for handle in shown]
     opening = intro.strip() or label["one" if len(products) == 1 else "many"]
     cards = [card(product, found["needs"], chinese) for product in products]
+    others = (found["matched"] if fitting is None else fitting) - len(products)
+    tail = [label["others"].format(n=others)] if others > 0 else []
     return {
-        "text": "\n\n".join([opening, *cards]),
+        "text": "\n\n".join([opening, *cards, *tail]),
         "action": "recommend",
         "products": [
             {

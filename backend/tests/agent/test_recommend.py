@@ -45,17 +45,24 @@ IPROTEK = found_product(
 )
 
 
-def found(*products: dict, count=None, reads_text=False) -> dict:
-    return {"needs": NEEDS, "count": count, "reads_text": reads_text, "products": list(products)}
+def found(*products: dict, count=None, reads_text=False, matched=None) -> dict:
+    return {
+        "needs": NEEDS,
+        "count": count,
+        "matched": len(products) if matched is None else matched,
+        "reads_text": reads_text,
+        "products": list(products),
+    }
 
 
 # --- Which products ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("count", "shown"), [(None, 1), (1, 1), (3, 3), (9, MOST_PRODUCTS), ("all", MOST_PRODUCTS)]
+    ("count", "shown"),
+    [(None, MOST_PRODUCTS), (1, 1), (3, 3), (9, MOST_PRODUCTS), ("all", MOST_PRODUCTS)],
 )
-def test_one_product_is_shown_unless_the_user_named_more(count, shown):
+def test_up_to_five_are_shown_unless_the_user_named_fewer(count, shown):
     assert shown_count(count) == shown
 
 
@@ -69,27 +76,45 @@ def test_code_shows_at_once_what_fits_when_nothing_is_left_to_ask():
         query = FindProducts(**args)
         return shows_at_once(find(catalog, query.query, query.count, {}), query)
 
-    assert at_once(functions=["離床偵測"], count=1)
+    assert at_once(functions=["離床偵測"], must={"places": ["home"]})
+    assert at_once(functions=["離床偵測"], count="all")
     assert not at_once(functions=["離床偵測"])  # where it is used splits them: ask
+    assert not at_once(functions=["離床偵測"], count=1)  # a number still asks (DEC-075)
     assert not at_once(functions=["離床偵測"], count=1, other=["夜間靜音"])  # the agent reads
     assert not at_once(functions=["翻身監測"], count=1)  # none fits: the agent explains
 
 
 def test_a_find_shows_its_best_ranked_as_many_as_asked_for():
-    assert first_fitting(found(WHIZPAD, IPROTEK)) == ["r-bbbbbbbb"]
-    assert first_fitting(found(WHIZPAD, IPROTEK, count="all")) == ["r-bbbbbbbb", "r-aaaaaaaa"]
+    assert first_fitting(found(WHIZPAD, IPROTEK, count=1)) == ["r-bbbbbbbb"]
+    assert first_fitting(found(WHIZPAD, IPROTEK)) == ["r-bbbbbbbb", "r-aaaaaaaa"]
 
 
 def test_the_agent_shows_only_what_the_find_found_in_code_s_order():
     show = ShowProducts(products=["r-aaaaaaaa", "r-bbbbbbbb"], intro="這兩項都很安靜。")
 
     assert picked(show, found(WHIZPAD, IPROTEK, count=2)) == (["r-bbbbbbbb", "r-aaaaaaaa"], None)
-    assert picked(show, found(WHIZPAD, IPROTEK)) == (["r-bbbbbbbb"], None)  # one asked for
+    assert picked(show, found(WHIZPAD, IPROTEK, count=1)) == (["r-bbbbbbbb"], None)
     assert picked(ShowProducts(products=["r-cccccccc"], intro=""), found(WHIZPAD)) == (
         [],
         "r-cccccccc not among the products find_products found",
     )
     assert picked(show, None)[1] == "call find_products first: this turn found no product"
+
+
+def test_a_recommendation_says_how_many_more_fit_than_it_shows():
+    shown = ["r-bbbbbbbb"]
+
+    reply = recommended_reply(found(WHIZPAD, IPROTEK, count=1, matched=7), shown, True)
+    english = recommended_reply(found(WHIZPAD, matched=3), shown, False)
+    judged = recommended_reply(found(WHIZPAD, IPROTEK, matched=7), shown, True, fitting=2)
+    every = recommended_reply(found(WHIZPAD), shown, True)
+
+    assert reply["text"].endswith("\n\n另有 6 項產品也符合，想看的話再跟我說。")
+    assert english["text"].endswith(
+        "\n\nProducts that also fit but are not shown: 2. Ask me to see them."
+    )
+    assert judged["text"].endswith("另有 1 項產品也符合，想看的話再跟我說。")  # the agent's
+    assert "另有" not in every["text"]
 
 
 # --- Cards ------------------------------------------------------------------------------
@@ -152,7 +177,7 @@ def test_the_fallback_shows_what_the_last_find_judged_to_fit():
     reply = fallback_reply({"found": found(WHIZPAD, IPROTEK)}, chinese=True)
 
     assert reply["action"] == "recommend"
-    assert [p["id"] for p in reply["products"]] == ["r-bbbbbbbb"]
+    assert [p["id"] for p in reply["products"]] == ["r-bbbbbbbb", "r-aaaaaaaa"]  # up to five
 
 
 def test_the_fallback_names_unconfirmed_what_only_the_agent_could_judge():

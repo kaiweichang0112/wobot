@@ -32,7 +32,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([rec_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (rec_agent.PROMPT_VERSION, fingerprint) == (8, "76def1f12f1e")
+    assert (rec_agent.PROMPT_VERSION, fingerprint) == (9, "1e1072266b4c")
 
 
 def test_the_agent_finds_and_shows():
@@ -42,7 +42,7 @@ def test_the_agent_finds_and_shows():
     }
 
     assert params == {
-        "find_products": {"functions", "must", "must_not", "other", "count"},
+        "find_products": {"functions", "must", "must_not", "other", "count", "no_preference"},
         "show_products": {"products", "intro"},
     }
     # The agent reads the vocabulary the extraction labels with.
@@ -111,6 +111,7 @@ def test_the_agent_reads_the_best_fitting_products_and_what_splits_them():
     }
     assert content["decisive"] == [] and content["gaps"] == []
     assert kept["needs"] == ["離床偵測", "places=home"] and kept["count"] is None
+    assert kept["matched"] == 12
     assert kept["reads_text"] is False and len(kept["products"]) == PRODUCTS_READ
     assert kept["products"][0]["fields"] == {"product_name": "P1", "company_name": "Co"}
     json.dumps(kept)  # plain values, as the checkpointer stores them

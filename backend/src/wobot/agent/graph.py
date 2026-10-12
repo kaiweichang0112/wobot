@@ -407,7 +407,9 @@ def build_graph(
                 if problem:
                     answer = refused(call, problem)
                 else:
-                    reply = recommended_reply(evidence["found"], shown, chinese, args.intro)
+                    reply = recommended_reply(
+                        evidence["found"], shown, chinese, args.intro, len(set(args.products))
+                    )
                     answer = answered(call, {"shown": shown})
             else:  # the call was refused: the agent reads why
                 answer = args
