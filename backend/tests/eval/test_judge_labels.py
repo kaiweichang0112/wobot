@@ -333,8 +333,21 @@ def test_the_rec_template_keeps_each_turns_tools_with_its_reply():
 
     assert text.startswith("# Judge labels: a person's verdicts on the words the recommendation")
     data = yaml.safe_load(text)
-    asked = [e for e in data["replies"] if "supported" in e]
-    assert len(asked) == 1 and asked[0]["tools"] == TOOLS
+    assert len([e for e in data["replies"] if "supported" in e]) == 1
     assert all(e["products_shown"] == ["產品 A"] for e in data["replies"])
     assert data["evidence"] == {}  # each turn found its own: no evidence once a case
-    assert all("tools" not in e for e in data["replies"] if "supported" not in e)
+    assert all(e["tools"] == TOOLS for e in data["replies"])  # expected may turn on them
+
+
+def test_a_label_given_against_what_a_case_no_longer_expects_is_set_aside(template):
+    fill(template, **{"KN-1": {"expected": "fail"}, "KN-2": {"expected": "pass"}})
+    labels = read_labels(template)
+    now = {"KN-1": "KN-1 expected", "KN-2": "KN-2 now expects more", "KN-3": "KN-3 expected"}
+
+    against = against_labels(FLAGGED, labels, now)
+
+    entry = next(e for e in labels.entries if e.key[1] == "KN-2")
+    assert against.outdated == [entry.id]
+    expected = next(c for c in against.comparisons if c.name == "expected")
+    assert expected.agreement.labelled == 1  # KN-1; KN-3 is blank
+    assert against_labels(FLAGGED, labels).outdated == []  # no dataset given: as before

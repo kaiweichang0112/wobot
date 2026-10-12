@@ -1710,6 +1710,13 @@ def _against_labels(against: AgainstLabels) -> list[str]:
             "",
             f"Not compared, their reply changed or this run lacks it: {', '.join(against.stale)}.",
         ]
+    if against.outdated:
+        lines += [
+            "",
+            "Not compared, what their case expects changed since they were labelled: "
+            f"{', '.join(against.outdated)}. Relabel them, or confirm each by writing the "
+            "case's expected behaviour into it.",
+        ]
     for c in against.comparisons:
         for judged, label in c.unlike:
             person = (

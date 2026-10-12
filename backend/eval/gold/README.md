@@ -174,6 +174,9 @@ that holds a label.
   English, when the call was close.
 - `reply_sha` ties a label to the reply's text: a label is never compared with another
   reply. Set `labelled_on` when the labels are finished.
+- A label holds for the reply and for what its case expected when it was labelled:
+  `judge-agreement` sets aside, as outdated, an entry whose `expected_behavior` the dataset
+  no longer holds, until it is relabelled or confirmed by copying the new text in.
 
 `wobot-eval judge-agreement <judge report>` measures a judge run against the labels,
 rewriting its report without a call; `wobot-eval judge` does so for each new run.

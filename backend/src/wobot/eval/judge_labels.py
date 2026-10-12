@@ -197,9 +197,10 @@ def labels_template(
         if path == "list":
             entry["lists_shown"] = _lists_shown(given)
         if path == "recommend":
+            # Each turn called its own tools, and expected may turn on them, as on
+            # "without searching": every entry shows them.
             entry["products_shown"] = list(given.evidence["shown"])
-            if item.asks_supported:
-                entry["tools"] = given.evidence["tools"]
+            entry["tools"] = given.evidence["tools"]
         entry["expected"] = ""
         if item.asks_supported:
             entry["supported"] = ""
@@ -268,6 +269,7 @@ class Label:
     supported: bool | None  # None: not asked, or not labelled yet
     asks_supported: bool
     note: str = ""
+    expected_behavior: str = ""  # what the case expected when it was labelled
 
 
 @dataclass(frozen=True)
@@ -306,6 +308,7 @@ def read_labels(path: Path) -> Labels:
                 supported=_verdict(entry.get("supported"), f"{where} supported"),
                 asks_supported="supported" in entry,
                 note=entry.get("note") or "",
+                expected_behavior=entry.get("expected_behavior") or "",
             )
         )
     return Labels(data["run"], data.get("labelled_on") or "", entries)
@@ -386,16 +389,30 @@ class AgainstLabels:
     comparisons: list[Compared]
     blank: int  # verdicts the person has not given
     stale: list[str]  # labels whose reply changed, or that this run does not hold
+    # Labels given against what a case no longer expects: relabelled, or confirmed by
+    # writing the case's expected behaviour into the entry.
+    outdated: list[str] = field(default_factory=list)
 
 
-def against_labels(judged: Sequence[Judged], labels: Labels) -> AgainstLabels:
+def against_labels(
+    judged: Sequence[Judged], labels: Labels, expected: Mapping[str, str] | None = None
+) -> AgainstLabels:
+    """The judge against each label still current: its reply unchanged and, given what
+    each case expects now, its case expecting what it did when labelled."""
     by_key = {key_of(j): j for j in judged}
     stale = [
         e.id
         for e in labels.entries
         if e.key not in by_key or reply_sha(by_key[e.key].reply) != e.reply_sha
     ]
-    current = [e for e in labels.entries if e.id not in stale]
+    outdated = [
+        e.id
+        for e in labels.entries
+        if expected is not None
+        and e.id not in stale
+        and expected.get(e.key[1]) != e.expected_behavior
+    ]
+    current = [e for e in labels.entries if e.id not in stale and e.id not in outdated]
     comparisons = []
     for name, label_field in COMPARED.items():
         pairs, unlike = [], []
@@ -408,4 +425,4 @@ def against_labels(judged: Sequence[Judged], labels: Labels) -> AgainstLabels:
             if verdict != person:
                 unlike.append((by_key[entry.key], entry))
         comparisons.append(Compared(name, agreement(pairs), unlike))
-    return AgainstLabels(comparisons, labels.blank, stale)
+    return AgainstLabels(comparisons, labels.blank, stale, outdated)

@@ -53,7 +53,7 @@ from wobot.eval.candidates import Candidate, parse_candidate
 from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
-from wobot.eval.dataset import dataset_names, load_dataset
+from wobot.eval.dataset import Dataset, dataset_names, load_dataset
 from wobot.eval.facets import Decisions, decide, labelled_products, need_checks
 from wobot.eval.facets import compare_models as compare_facet_models
 from wobot.eval.judge import PROMPT_VERSIONS as JUDGE_PROMPT_VERSIONS
@@ -751,7 +751,7 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
         "prices": "spec 07, checked 2026-10-01",
     }
     judged = [j for r in results for j in r.judged]
-    against = _against(args.labels or LABELS[path], args.run.name, judged)
+    against = _against(args.labels or LABELS[path], args.run.name, judged, dataset)
     report = write_judge_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-judge", against)
     for r in results:
         count = len(r.verdicts)
@@ -799,7 +799,9 @@ async def _judge_sample(args: argparse.Namespace, settings: Settings) -> int:
 async def _judge_agreement(args: argparse.Namespace, settings: Settings) -> int:
     meta, judged = load_judged(args.report)
     labels = args.labels or LABELS[meta.get("path", "knowledge")]
-    against = _against(labels, meta["run"], judged)
+    # What each case expects now, from the dataset the judge read.
+    dataset = load_dataset(meta["dataset"].split()[0])
+    against = _against(labels, meta["run"], judged, dataset)
     if against is None:
         print(f"{labels} does not label {meta['run']}")
         return 1
@@ -811,12 +813,17 @@ async def _judge_agreement(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
-def _against(path: Path, run_name: str, judged: Sequence[Any]) -> AgainstLabels | None:
+def _against(
+    path: Path, run_name: str, judged: Sequence[Any], dataset: Dataset
+) -> AgainstLabels | None:
     """The judge against a person's labels, when they label this run."""
     if not path.exists():
         return None
     labels = read_labels(path)
-    return against_labels(judged, labels) if labels.run == run_name else None
+    if labels.run != run_name:
+        return None
+    expected = {case.case_id: case.expected_behavior for case in dataset.cases}
+    return against_labels(judged, labels, expected)
 
 
 def _print_against(against: AgainstLabels | None) -> None:
@@ -831,6 +838,12 @@ def _print_against(against: AgainstLabels | None) -> None:
         print(f"against labels, {c.name}: {share} of {a.labelled} alike, kappa {kappa}")
     if against.blank:
         print(f"{against.blank} verdicts not labelled yet")
+    if against.outdated:
+        print(
+            f"{len(against.outdated)} labels outdated, what their case expects changed: "
+            f"{', '.join(against.outdated)}; relabel them, or confirm each by writing the "
+            "case's expected_behavior into it"
+        )
 
 
 def _list_meta(
