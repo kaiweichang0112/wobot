@@ -76,6 +76,10 @@ asked of a guard over the model's output are plain code with tests.
 ## Limits
 
 - One index version and dev cases only. Held-out cases wait for V9.
-- Answer quality on chat, knowledge and lists is not compared here, since the reply
-  formats differ. V8 judges it.
+- Answer quality is not compared between v1 and v2, since the reply formats differ. V8
+  judged v2's own replies with gpt-6.1-sol, on what each model wrote, against a person's
+  labels (DEC-074): the knowledge answer met the expected behaviour in 51 of 54 replies,
+  each miss where the search found none of the labelled items, and all 54 were grounded;
+  the list path's words in 47 of 48; the recommendation agent's own words in 16 of 16;
+  the last turns of turns-v1 in 18 of 18. Chat is not judged.
 - recommendation-v2 is labelled by v2's rules, which the misses above separate out.
