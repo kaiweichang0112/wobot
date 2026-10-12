@@ -177,3 +177,9 @@ that holds a label.
 
 `wobot-eval judge-agreement <judge report>` measures a judge run against the labels,
 rewriting its report without a call; `wobot-eval judge` does so for each new run.
+
+A judge prompt changed after reading these labels is measured on them too, so it is also
+checked on replies it was not shaped by: the held-out cases' replies go to
+`judge-labels-heldout.yaml` (`judge-sample --out`), labelled the same way and read with
+`--labels`. A labels file is committed only when every verdict is given; a test reads
+each.
