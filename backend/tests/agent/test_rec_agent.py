@@ -32,7 +32,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([rec_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (rec_agent.PROMPT_VERSION, fingerprint) == (9, "1e1072266b4c")
+    assert (rec_agent.PROMPT_VERSION, fingerprint) == (10, "85f5fa48c899")
 
 
 def test_the_agent_finds_and_shows():

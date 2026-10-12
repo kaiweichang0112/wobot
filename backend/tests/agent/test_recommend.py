@@ -1,4 +1,5 @@
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
 from tests.agent.test_find import bed_exit
 from wobot.agent.find import FindProducts, find
@@ -8,6 +9,7 @@ from wobot.agent.recommend import (
     VALUE_LABELS,
     fallback_reply,
     first_fitting,
+    heeded,
     need_label,
     picked,
     recommended_before,
@@ -82,6 +84,21 @@ def test_code_shows_at_once_what_fits_when_nothing_is_left_to_ask():
     assert not at_once(functions=["離床偵測"], count=1)  # a number still asks (DEC-075)
     assert not at_once(functions=["離床偵測"], count=1, other=["夜間靜音"])  # the agent reads
     assert not at_once(functions=["翻身監測"], count=1)  # none fits: the agent explains
+
+
+def test_what_the_user_left_open_counts_only_in_an_answer_to_a_question():
+    args = FindProducts(functions=["離床偵測"], no_preference="all")
+    asked = [HumanMessage("想找離床偵測的產品"), AIMessage("在家裡用嗎？"), HumanMessage("都可以")]
+    shown = [
+        HumanMessage("想找離床偵測的產品"),
+        AIMessage("推薦：WhizPad（世大智科）"),
+        HumanMessage("都可以"),
+    ]
+
+    assert heeded(args, asked).no_preference == "all"
+    assert heeded(args, shown).no_preference == []  # the last message recommended
+    assert heeded(args, [HumanMessage("推薦三個，都可以")]).no_preference == []  # no question
+    assert heeded(FindProducts(functions=["離床偵測"]), asked).no_preference == []
 
 
 def test_a_find_shows_its_best_ranked_as_many_as_asked_for():

@@ -27,7 +27,7 @@ from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 9
+PROMPT_VERSION = 10
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -51,7 +51,8 @@ this conversation, leaving out any they dropped or changed. Code judges each pro
 from its catalog and shows those that fit.
 - find_products answers with decisive: the fitting products differ in what the user has \
 not said. Ask about every facet it names, in one or two short questions, naming the values \
-in plain words, such as at home or in a care home; never pick a product yourself.
+in plain words, such as at home or in a care home. That question is your reply: never \
+answer it yourself with another find_products, and never pick a product yourself.
 - It answers that nothing fits: say plainly which need no product meets, from gaps, and \
 what the user could change, such as a need without which some products fit.
 - It answers with products and their text, because you gave other needs: call \
@@ -82,12 +83,13 @@ camera.
 condition above already says.
 - count: the number the user asked for, left out when they named none; all when they ask \
 for every product that fits.
-- no_preference: what the user said any value will do for. 都可以 to a question names \
-the facets it asked about, such as places; all when they leave the whole choice to you, \
-such as 你推薦就好 or 你決定. A question answered with a value goes in must or must_not \
-instead.
-When the user asks for more, such as 還有其他的嗎, call find_products with the same needs: \
-code leaves out what it showed before.
+- no_preference: only when the user answers your question by saying any of its choices \
+will do. 都可以 names the facets that question asked about and no other; all only when \
+they leave the whole choice to you, such as 你推薦就好 or 你決定. Leave it out otherwise: \
+a request such as 推薦三個 leaves nothing open. A question answered with a value goes in \
+must or must_not instead.
+When the user asks for more, such as 還有其他的嗎, call find_products with the same needs \
+and count: code leaves out what it showed before.
 
 Functions, with how a user may say them and the nearby ones they are not:
 {vocabulary()}

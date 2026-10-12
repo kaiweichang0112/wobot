@@ -14,6 +14,8 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
+from langchain_core.messages import AIMessage, BaseMessage
+
 from wobot.agent.find import FindProducts, Found
 from wobot.agent.rec_agent import ShowProducts, reads_text
 from wobot.knowledge.facets import ENGLISH_NAMES
@@ -29,6 +31,16 @@ CARD_NAME = re.compile(r"^(?:推薦：(?P<zh>.+)（|Recommended: (?P<en>.+) \()"
 def recommended_before(replies: Iterable[str]) -> set[str]:
     """The products the assistant's earlier replies recommended, by name."""
     return {match["zh"] or match["en"] for reply in replies for match in CARD_NAME.finditer(reply)}
+
+
+def heeded(args: FindProducts, messages: Sequence[BaseMessage]) -> FindProducts:
+    """The find as code runs it: what the user left open counts only when their message
+    answers a question, the assistant's last message being no recommendation (DEC-075)."""
+    earlier = [m for m in messages[:-1] if isinstance(m, AIMessage)]
+    answering = bool(earlier) and not CARD_NAME.search(earlier[-1].text)
+    if answering or not args.no_preference:
+        return args
+    return args.model_copy(update={"no_preference": []})
 
 
 def shown_count(count: int | Literal["all"] | None) -> int:

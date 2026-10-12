@@ -49,6 +49,7 @@ from wobot.agent.rec_agent import (
 from wobot.agent.recommend import (
     fallback_reply,
     first_fitting,
+    heeded,
     picked,
     recommended_before,
     recommended_reply,
@@ -383,6 +384,7 @@ def build_graph(
         for call in scratch[-1].tool_calls:
             args = read_call(call)
             if isinstance(args, FindProducts):
+                args = heeded(args, state["messages"])
                 earlier = (m.text for m in state["messages"] if isinstance(m, AIMessage))
                 try:
                     found = await find_products(
