@@ -6,13 +6,15 @@ import pytest
 from tests.knowledge.openai_responses import openai_answering
 from wobot.eval.dataset import Case, Dataset
 from wobot.eval.judge import (
+    LIST_RUBRIC,
     MAX_OUTPUT_TOKENS,
-    PROMPT_VERSION,
+    PROMPT_VERSIONS,
     REASONING_EFFORT,
     RUBRIC,
     STATEMENTS,
     VERDICTS,
     Grade,
+    Judged,
     JudgeInput,
     OpenAIJudge,
     Rubric,
@@ -27,15 +29,19 @@ from wobot.eval.judge import (
     judge_inputs,
     judge_one,
     judge_replies,
+    list_judge_inputs,
+    list_words,
 )
 from wobot.eval.report import judge_markdown
 from wobot.knowledge.hashing import content_hash
 
-# Verdicts of another prompt answered another question. After changing a prompt, a
-# schema or the request settings, bump PROMPT_VERSION and record the new fingerprint here.
+# Verdicts of another prompt answered another question. After changing a path's prompt,
+# a schema or the request settings, bump its PROMPT_VERSIONS and record the new
+# fingerprint here.
 PROMPT_FINGERPRINTS = {
-    1: "575e341c11187fc48d374ca717c1b991428533e35f892d9c141f8dc93e2e6fa9",
-    2: "ab9fa4a5bfa55ea5f2d319384378226474617d0cbc624061b2e4ffadb1febf15",
+    ("knowledge", 1): "575e341c11187fc48d374ca717c1b991428533e35f892d9c141f8dc93e2e6fa9",
+    ("knowledge", 2): "ab9fa4a5bfa55ea5f2d319384378226474617d0cbc624061b2e4ffadb1febf15",
+    ("list", 1): "6afa4be2339fb7193dad18a88e9610bf297cda7a9abe688b18733ff4ef4f9d26",
 }
 
 EVIDENCE = {
@@ -68,7 +74,7 @@ ITEM = JudgeInput(
     reply="可以拆下清潔。",
     labelled=frozenset({"document_page:whizpad_catalog:9"}),
     found=found_keys(EVIDENCE),
-    mentions_passed=True,
+    checked=True,
 )
 
 
@@ -91,9 +97,10 @@ def grades(expected=True, supported=True, language=True):
     }
 
 
-def test_a_changed_prompt_comes_with_a_new_version():
-    fingerprint = content_hash(
-        {
+def prompts_of(path):
+    """What a path's verdicts depend on: its prompts, schemas and request settings."""
+    if path == "knowledge":
+        return {
             "rubric": RUBRIC,
             "statements": STATEMENTS,
             "verdicts": VERDICTS,
@@ -105,9 +112,19 @@ def test_a_changed_prompt_comes_with_a_new_version():
             "reasoning_effort": REASONING_EFFORT,
             "max_output_tokens": MAX_OUTPUT_TOKENS,
         }
-    )
+    return {
+        "rubric": LIST_RUBRIC,
+        "schemas": [Rubric.model_json_schema()],
+        "reasoning_effort": REASONING_EFFORT,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+    }
 
-    assert PROMPT_FINGERPRINTS.get(PROMPT_VERSION) == fingerprint
+
+@pytest.mark.parametrize("path", PROMPT_VERSIONS)
+def test_a_changed_prompt_comes_with_a_new_version(path):
+    fingerprint = content_hash(prompts_of(path))
+
+    assert PROMPT_FINGERPRINTS.get((path, PROMPT_VERSIONS[path])) == fingerprint
 
 
 # --- The requests -------------------------------------------------------------------------
@@ -276,8 +293,8 @@ def test_takes_every_reply_of_the_chosen_candidates_that_came():
     first, second = items
     assert first.message == "KN-1 message" and first.question == "q1"
     assert first.expected == "Say x." and first.labelled == {"k"}
-    assert first.mentions_passed is True
-    assert second.mentions_passed is None  # a case the text check did not score
+    assert first.checked is True
+    assert second.checked is None  # a case the text check did not score
     assert len(judge_inputs(RUN, DATASET, {})) == 3  # every candidate by default
 
 
@@ -308,7 +325,7 @@ async def test_a_judged_reply_keeps_its_verdicts_and_cause():
     assert judged.criteria["expected"] == {"reason": "the reply says 可以拆", "passed": False}
     assert judged.cause == "retrieval"  # page 9 was labelled, page 4 found
     assert (judged.faithfulness, judged.grounded) == (0.5, False)
-    assert judged.unlike_mentions  # the text check passed it
+    assert judged.unlike_check  # the text check passed it
     assert judged.calls == 3 and judged.error is None
 
 
@@ -323,7 +340,7 @@ async def test_a_failed_judge_call_is_the_replys_error_not_a_verdict():
     assert a.judged[1].error == "RuntimeError('judge down')" and a.judged[1].criteria == {}
     assert b.passes("expected") == 1 and b.grounded == 0 and b.stated == 1
     assert b.faithfulness == 0.5
-    assert [j.case_id for j in b.unlike_mentions] == ["KN-1"]  # the text check failed it
+    assert [j.case_id for j in b.unlike_check] == ["KN-1"]  # the text check failed it
 
 
 async def test_the_report_counts_each_criterion_and_lists_the_disagreements():
@@ -333,6 +350,165 @@ async def test_the_report_counts_each_criterion_and_lists_the_disagreements():
     text = judge_markdown(results, {"judge": "gpt-6.1-sol:low", "run": "x-answer.json"})
 
     assert "| model-b:none | 1 / 1 | 0 / 0 | 0 / 1 | 1 / 1 | 0 / 1 | 0.50 | 1 |" in text
-    assert "- **KN-1 model-b:none run 0**: the text check fails; expected passes: ok" in text
+    assert "- **KN-1 model-b:none run 0**: the run's check fails; expected passes: ok" in text
     assert "- supported FAILS: the reply says 可以拆" in text
     assert "- unsupported: s (r)" in text
+
+
+# --- The list path ------------------------------------------------------------------------
+
+
+def paper(n):
+    return {
+        "id": f"r-{n}",
+        "key": f"publication:{n}",
+        "source": "https://example.org/publications",
+        "fields": {"year": 2024, "category": "Journal papers", "item_text": f"paper {n}"},
+    }
+
+
+LIST_EVIDENCE = {
+    "q-1": {
+        "result_id": "q-1",
+        "tool": "list_publications",
+        "kind": "publication",
+        "filters": {"year_from": 2024, "year_to": 2024},
+        "window": None,
+        "items": [paper(1), paper(2)],
+        "uncertain": [],
+    },
+    "q-2": {  # found, and not shown
+        "result_id": "q-2",
+        "tool": "list_publications",
+        "kind": "publication",
+        "filters": {"year_from": 2023, "year_to": 2023},
+        "window": None,
+        "items": [paper(3)],
+        "uncertain": [],
+    },
+}
+LIST_RUN = {
+    "meta": {"dataset": "lists-v1 abc"},
+    "cases": [
+        {"case_id": "LS-1", "calls": [], "expected": ["publication:1"], "results": LIST_EVIDENCE},
+        {"case_id": "LS-2", "calls": [], "expected": None, "results": LIST_EVIDENCE},
+    ],
+    "candidates": [
+        {
+            "candidate": "model-a:none",
+            "replies": [
+                {
+                    "case_id": "LS-1",
+                    "run": 0,
+                    "text": "共 2 篇。另一句。\n\n1. paper 1\n2. paper 2",
+                    "shown": ["publication:1", "publication:2"],
+                    "missing": [],
+                    "unexpected": ["publication:2"],
+                    "lacking": [],
+                    "error": None,
+                },
+                {
+                    "case_id": "LS-2",
+                    "run": 0,
+                    "text": "來源沒有列出。",
+                    "shown": [],
+                    "missing": [],
+                    "unexpected": [],
+                    "lacking": [],
+                    "error": None,
+                },
+            ],
+        }
+    ],
+}
+
+
+def list_case(case_id, history=()):
+    return Case(
+        case_id=case_id,
+        scenario="fixed_date_list",
+        split="dev",
+        user_input=f"{case_id} message",
+        expected_behavior=f"{case_id} expected",
+        reference=None,
+        check={"kind": "list_path", "calls": []},
+        pending=None,
+        history=list(history),
+    )
+
+
+LIST_DATASET = Dataset(
+    "lists-v1",
+    "",
+    "",
+    [list_case("LS-1", [{"user": "earlier", "answer": "said"}]), list_case("LS-2")],
+    "abc",
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "shown", "words"),
+    [
+        ("共 2 場。\n\n1. talk 1\n\n2023（1 筆）", ["k"], "共 2 場。"),
+        ("來源沒有列出。\n\n可另外詢問。", [], "來源沒有列出。\n\n可另外詢問。"),
+    ],
+    ids=["lists shown", "none shown"],
+)
+def test_the_words_are_what_comes_before_the_lists(text, shown, words):
+    assert list_words(text, shown) == words
+
+
+def test_a_list_reply_is_judged_on_its_words_and_the_lists_found():
+    first, second = list_judge_inputs(LIST_RUN, LIST_DATASET)
+
+    assert (first.path, first.reply) == ("list", "共 2 篇。另一句。")
+    found = first.evidence["found"]
+    assert [f["result_id"] for f in found] == ["q-1", "q-2"]
+    assert found[0]["count"] == 2 and found[0]["list"] == "list_publications"  # as the writer read
+    assert first.evidence["shown"] == [{"result_id": "q-1", "shown": 2}]
+    assert first.history == ({"user": "earlier", "answer": "said"},)
+    assert first.checked is False  # it showed an item it should not
+    assert second.checked is None  # a case whose lists cannot tell what to show
+    assert second.evidence["shown"] == []
+
+
+async def test_a_list_reply_is_graded_by_the_list_rubric_alone():
+    requests = []
+    client = openai_answering(output_text(grades(supported=False)), requests)
+    (item, _) = list_judge_inputs(LIST_RUN, LIST_DATASET)
+
+    judged = await judge_one(OpenAIJudge(client, "judge-test"), item)
+
+    (sent,) = requests  # no statements, no verdicts
+    assert sent["instructions"] == LIST_RUBRIC
+    data = json.loads(sent["input"])
+    assert list(data) == [
+        "history",
+        "message",
+        "expected",
+        "lists_found",
+        "lists_shown",
+        "words",
+    ]
+    assert data["words"] == "共 2 篇。另一句。"
+    assert judged.passed("supported") is False and judged.path == "list"
+    assert (judged.grounded, judged.faithfulness, judged.cause) == (None, None, None)
+    assert judged.calls == 1
+
+
+def test_the_list_report_leaves_out_what_only_the_knowledge_path_has():
+    judged = Judged(
+        candidate="model-a:none",
+        case_id="LS-1",
+        run=0,
+        reply="共 2 場。",
+        criteria=grades(expected=False),
+        checked=True,
+        path="list",
+    )
+
+    text = judge_markdown(by_candidate([judged]), {"judge": "gpt-6.1-sol:low", "path": "list"})
+
+    assert "| Candidate | Expected | Supported | Language | Unlike check |" in text
+    assert "| model-a:none | 0 / 1 | 1 / 1 | 1 / 1 | 1 |" in text
+    assert "Grounded" not in text

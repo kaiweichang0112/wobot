@@ -157,7 +157,7 @@ run` scores them on the version ingestion built.
 
 `judge-labels.yaml` holds a person's verdicts on replies a `wobot-eval answer` run kept,
 which the judge is measured against. `wobot-eval judge-sample <judge report>` writes it
-blank: every reply the judge failed or the text check disagreed with, filled up with
+blank: every reply the judge failed or the run's check disagreed with, filled up with
 replies it passed, shuffled, without the judge's verdicts. It refuses to write over a file
 that holds a label.
 
@@ -183,3 +183,12 @@ checked on replies it was not shaped by: the held-out cases' replies go to
 `judge-labels-heldout.yaml` (`judge-sample --out`), labelled the same way and read with
 `--labels`. A labels file is committed only when every verdict is given; a test reads
 each.
+
+`judge-labels-lists.yaml` holds the same verdicts on the words the list path wrote before
+its lists, from a `wobot-eval write-list` run; `judge-sample` and `judge-agreement` choose
+it for a judge report of that run. Each entry gives the lists it shows and how many items
+of each (`lists_shown`), and `evidence` gives each case's lists found with their counts,
+not their items: code writes the items, and lists-v1 scores them. `expected` passes when
+the words, with the lists shown, do what the case expects, though they need not repeat
+the items; `supported` when every fact they state, such as what a list holds and its
+count, is in the lists found.

@@ -1,16 +1,18 @@
+import json
 from dataclasses import replace
 
 import pytest
 import yaml
 
-from wobot.eval.dataset import Case, Dataset
-from wobot.eval.judge import Judged, by_candidate
+from wobot.eval.judge import Judged, JudgeInput, by_candidate
 from wobot.eval.judge_labels import (
     Agreement,
     against_labels,
     agreement,
     any_filled,
+    key_of,
     labels_template,
+    load_judged,
     read_labels,
     reply_sha,
     sample,
@@ -18,7 +20,9 @@ from wobot.eval.judge_labels import (
 from wobot.eval.report import judge_markdown
 
 
-def judged(case_id, run=0, *, expected=True, supported=True, grounded=True, mentions=None):
+def judged(
+    case_id, run=0, *, expected=True, supported=True, grounded=True, mentions=None, path="knowledge"
+):
     def grade(passed):
         return {"reason": f"{case_id} reason", "passed": passed}
 
@@ -35,7 +39,8 @@ def judged(case_id, run=0, *, expected=True, supported=True, grounded=True, ment
         statements=[{"statement": f"{case_id} says", "supported": grounded, "reason": "r"}],
         faithfulness=1.0 if grounded else 0.0,
         grounded=grounded,
-        mentions_passed=mentions,
+        checked=mentions,
+        path=path,
     )
 
 
@@ -65,38 +70,31 @@ def test_leaves_out_replies_the_judge_could_not_judge():
     assert "KN-9" not in {s.judged.case_id for s in sample([failed, *FLAGGED], size=10)}
 
 
-def case(case_id, history=()):
-    return Case(
-        case_id=case_id,
-        scenario="product_detail",
-        split="dev",
-        user_input=f"{case_id} message",
-        expected_behavior=f"{case_id} expected",
-        reference=None,
-        check={"kind": "knowledge", "mentions": ["x"]},
-        pending=None,
-        history=list(history),
-    )
-
-
 EVIDENCE = {
     "passages": [{"id": "k-1", "header": "page", "text": "line one\nline two", "records": []}],
     "records": [],
 }
-RUN = {
-    "meta": {"dataset": "knowledge-v1 abc"},
-    "cases": [
-        {"case_id": c, "question": "q", "mentions": [], "evidence": EVIDENCE}
-        for c in ("KN-1", "KN-2", "KN-3")
-    ],
+
+
+def given(j, history=()):
+    """What the judge read of a reply."""
+    return JudgeInput(
+        candidate=j.candidate,
+        case_id=j.case_id,
+        run=j.run,
+        message=f"{j.case_id} message",
+        question="q",
+        expected=f"{j.case_id} expected",
+        evidence=EVIDENCE,
+        reply=j.reply,
+        history=tuple(history),
+    )
+
+
+INPUTS = {
+    key_of(j): given(j, [{"user": "earlier", "answer": "said"}] if j.case_id == "KN-1" else ())
+    for j in FLAGGED
 }
-DATASET = Dataset(
-    "knowledge-v1",
-    "",
-    "",
-    [case("KN-1", [{"user": "earlier", "answer": "said"}]), case("KN-2"), case("KN-3")],
-    "abc",
-)
 
 
 @pytest.fixture
@@ -104,7 +102,7 @@ def template(tmp_path):
     sampled = sample(FLAGGED, size=3, supported=1, seed=0)
     path = tmp_path / "judge-labels.yaml"
     path.write_text(
-        labels_template(sampled, RUN, "x-answer.json", 788, DATASET, "x-judge.json", 0),
+        labels_template(sampled, INPUTS, "x-answer.json", 788, "x-judge.json", 0),
         encoding="utf-8",
     )
     return path
@@ -223,3 +221,94 @@ def test_the_report_shows_agreement_and_each_disagreement(template):
     assert "| expected | 3 | 67% | 0.40 | 1 | 0 |" in text
     assert "the person fails it; the judge: KN-3 reason." in text
     assert "the person passes it; the judge: KN-2 says. Note: a close call" in text
+
+
+def test_a_report_before_v8d_reads_back(tmp_path):
+    report = tmp_path / "old-judge.json"
+    old = {k: v for k, v in vars(judged("KN-1", mentions=False)).items() if k != "path"}
+    old["mentions_passed"] = old.pop("checked")
+    report.write_text(
+        json.dumps({"meta": {"run": "x"}, "candidates": [{"candidate": "m", "judged": [old]}]}),
+        encoding="utf-8",
+    )
+
+    _, (read,) = load_judged(report)
+
+    assert read.checked is False and read.path == "knowledge"
+
+
+# --- The list path ------------------------------------------------------------------------
+
+
+LISTS = {
+    "found": [
+        {
+            "result_id": "q-1",
+            "list": "list_projects",
+            "filters": {"year_from": 2024, "year_to": 2024},
+            "count": 7,
+            "items": [{"id": "r-1", "title_zh": "計畫"}],
+        },
+        {
+            "result_id": "q-2",
+            "list": "list_lectures",
+            "filters": {"last_years": 3},
+            "count": 9,
+            "items": [],
+            "window": {"from": "2023-10-07", "to": "2026-10-07"},
+            "uncertain_count": 1,
+            "uncertain": [],
+        },
+    ],
+    "shown": [{"result_id": "q-1", "shown": 7}],
+}
+LIST_JUDGED = [
+    judged("LS-1", expected=False, grounded=None, path="list"),
+    judged("LS-2", grounded=None, path="list"),
+]
+
+
+def test_the_list_template_shows_the_lists_not_their_items(tmp_path):
+    inputs = {key_of(j): replace(given(j), evidence=LISTS) for j in LIST_JUDGED}
+    sampled = sample(LIST_JUDGED, size=2, supported=2)
+
+    text = labels_template(sampled, inputs, "x-write-list.json", 788, "x-judge.json", 0)
+
+    assert text.startswith("# Judge labels: a person's verdicts on the words")
+    data = yaml.safe_load(text)
+    first = data["replies"][0]
+    assert first["lists_shown"] == [
+        {"list": "list_projects", "filters": {"year_from": 2024, "year_to": 2024}, "shown": 7}
+    ]
+    assert first["supported"] == ""
+    lists = data["evidence"][first["case_id"]]["lists"]
+    assert lists[0] == {
+        "list": "list_projects",
+        "filters": {"year_from": 2024, "year_to": 2024},
+        "count": 7,
+    }
+    assert lists[1]["window"] == {"from": "2023-10-07", "to": "2026-10-07"}
+    assert lists[1]["uncertain_count"] == 1
+    assert "計畫" not in text  # no item
+
+
+def test_a_path_without_faithfulness_is_never_compared_on_grounded(tmp_path):
+    inputs = {key_of(j): replace(given(j), evidence=LISTS) for j in LIST_JUDGED}
+    path = tmp_path / "judge-labels-lists.yaml"
+    path.write_text(
+        labels_template(sample(LIST_JUDGED, 2, 2), inputs, "x", 788, "y", 0), encoding="utf-8"
+    )
+    fill(
+        path,
+        **{
+            "LS-1": {"expected": "fail", "supported": "fail"},
+            "LS-2": {"expected": "pass", "supported": "pass"},
+        },
+    )
+
+    against = against_labels(LIST_JUDGED, read_labels(path))
+
+    by_name = {c.name: c.agreement for c in against.comparisons}
+    assert by_name["expected"] == Agreement(both_pass=1, both_fail=1)
+    assert by_name["supported"] == Agreement(both_pass=1, judge_passes=1)
+    assert by_name["grounded"].labelled == 0  # not a pass for every reply

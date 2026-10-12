@@ -6,7 +6,8 @@ a shuffled order and without the judge's verdicts. A label belongs to a reply's 
 to a verdict, so one file measures every version of the judge. Agreement is the share of
 replies the judge and the person decide alike, and Cohen's kappa, which takes out what
 two raters agree on by chance: when nearly every reply passes, a judge that passes all
-of them agrees often and measures nothing.
+of them agrees often and measures nothing. Each path has a file of its own, since each
+path's prompt is measured apart.
 """
 
 import hashlib
@@ -21,10 +22,12 @@ from typing import Any
 import yaml
 
 from wobot.eval import gold
-from wobot.eval.dataset import Dataset
-from wobot.eval.judge import CRITERIA, Judged, shown_evidence
+from wobot.eval.judge import CRITERIA, PATHS, Judged, JudgeInput, shown_evidence
 
-LABELS = gold.GOLD_DIR / "judge-labels.yaml"
+LABELS = {
+    "knowledge": gold.GOLD_DIR / "judge-labels.yaml",
+    "list": gold.GOLD_DIR / "judge-labels-lists.yaml",
+}
 VERDICTS = {"pass": True, "fail": False}
 # What each label compares with: the rubric's criteria, and faithfulness's verdict that
 # every statement is supported, against the person's supported.
@@ -44,10 +47,27 @@ HEADER = """\
 #
 """
 
+LIST_HEADER = """\
+# Judge labels: a person's verdicts on the words the list path wrote before its lists,
+# which the judge is measured against (V8). Read the message, what the case expects, the
+# words (reply) and how many items of each list they show (lists_shown); for supported,
+# also the case's lists under evidence. Code writes the items, and lists-v1 scores them.
+# Write pass or fail. A blank is not a label, and the judge's own verdicts are not shown.
+#
+#   expected   the words, with the lists shown, do what expected says: judge the meaning,
+#              not the wording or the order; the items shown count, so the words need
+#              not repeat them
+#   supported  every fact the words state is in the lists under evidence, such as what a
+#              list holds and its count; saying the sources list nothing, or that a part
+#              can be asked again, is not a fact
+#
+"""
+HEADERS = {"knowledge": HEADER, "list": LIST_HEADER}
+
 type Key = tuple[str, str, int]  # candidate, case, run
 
 
-def key_of(judged: Judged) -> Key:
+def key_of(judged: Judged | JudgeInput) -> Key:
     return judged.candidate, judged.case_id, judged.run
 
 
@@ -60,11 +80,12 @@ def load_judged(path: Path) -> tuple[dict[str, Any], list[Judged]]:
     """A judge report's meta and every reply it judged."""
     data = json.loads(path.read_text(encoding="utf-8"))
     names = {f.name for f in fields(Judged)}
-    judged = [
-        Judged(**{k: v for k, v in j.items() if k in names})
-        for candidate in data["candidates"]
-        for j in candidate["judged"]
-    ]
+    judged = []
+    for candidate in data["candidates"]:
+        for j in candidate["judged"]:
+            if "mentions_passed" in j:  # reports before V8d
+                j["checked"] = j.pop("mentions_passed")
+            judged.append(Judged(**{k: v for k, v in j.items() if k in names}))
     return data["meta"], judged
 
 
@@ -72,11 +93,11 @@ def load_judged(path: Path) -> tuple[dict[str, Any], list[Judged]]:
 
 
 def flagged(judged: Judged) -> bool:
-    """The judge failed it, found a statement unsupported, or the text check disagreed."""
+    """The judge failed it, found a statement unsupported, or the run's check disagreed."""
     return (
         any(judged.passed(name) is False for name in CRITERIA)
         or judged.grounded is False
-        or judged.unlike_mentions
+        or judged.unlike_check
     )
 
 
@@ -127,49 +148,41 @@ _Dumper.add_representer(_Text, _text_block)
 
 def labels_template(
     sampled: Sequence[Sampled],
-    run: Mapping[str, Any],
+    inputs: Mapping[Key, JudgeInput],
     run_name: str,
     index_version: int | None,
-    dataset: Dataset,
     made_from: str,
     seed: int,
 ) -> str:
     """The file a person labels: each reply with what its case expects, blank verdicts,
-    and the evidence of the cases where supported is asked, once a case."""
-    cases = {case.case_id: case for case in dataset.cases}
-    saved = {case["case_id"]: case for case in run["cases"]}
+    and, once a case, what its model read where supported is asked."""
+    path = sampled[0].judged.path if sampled else "knowledge"
     replies = []
     for number, item in enumerate(sampled, start=1):
         j = item.judged
+        given = inputs[key_of(j)]
         entry: dict[str, Any] = {
             "id": f"JL-{number:02d}",
             "case_id": j.case_id,
             "candidate": j.candidate,
             "run": j.run,
             "reply_sha": reply_sha(j.reply),
-            **(
-                {"history": [dict(turn) for turn in cases[j.case_id].history]}
-                if cases[j.case_id].history
-                else {}
-            ),
-            "message": cases[j.case_id].user_input,
-            "expected_behavior": cases[j.case_id].expected_behavior,
+            **({"history": [dict(turn) for turn in given.history]} if given.history else {}),
+            "message": given.message,
+            "expected_behavior": given.expected,
             "reply": _Text(j.reply),
-            "expected": "",
         }
+        if path == "list":
+            entry["lists_shown"] = _lists_shown(given)
+        entry["expected"] = ""
         if item.asks_supported:
             entry["supported"] = ""
         entry["note"] = ""
         replies.append(entry)
     evidence = {}
     for case_id in sorted({i.judged.case_id for i in sampled if i.asks_supported}):
-        seen = shown_evidence(saved[case_id]["evidence"])
-        evidence[case_id] = {
-            "passages": [
-                {"header": p["header"], "text": _Text(p["text"])} for p in seen["passages"]
-            ],
-            **({"records": seen["records"]} if seen["records"] else {}),
-        }
+        given = next(inputs[key_of(i.judged)] for i in sampled if i.judged.case_id == case_id)
+        evidence[case_id] = _lists_found(given) if path == "list" else _passages(given)
     body = {
         "run": run_name,
         "index_version": index_version,
@@ -179,7 +192,39 @@ def labels_template(
     }
     made = f"# Made by wobot-eval judge-sample from {made_from}, seed {seed}.\n"
     dumped = yaml.dump(body, Dumper=_Dumper, allow_unicode=True, sort_keys=False, width=88)
-    return HEADER + made + dumped
+    return HEADERS[path] + made + dumped
+
+
+def _passages(given: JudgeInput) -> dict[str, Any]:
+    seen = shown_evidence(given.evidence)
+    return {
+        "passages": [{"header": p["header"], "text": _Text(p["text"])} for p in seen["passages"]],
+        **({"records": seen["records"]} if seen["records"] else {}),
+    }
+
+
+def _list_name(found: Mapping[str, Any]) -> dict[str, Any]:
+    return {"list": found["list"], "filters": found["filters"]}
+
+
+def _lists_shown(given: JudgeInput) -> list[dict[str, Any]]:
+    found = {f["result_id"]: f for f in given.evidence["found"]}
+    return [
+        {**_list_name(found[s["result_id"]]), "shown": s["shown"]} for s in given.evidence["shown"]
+    ]
+
+
+def _lists_found(given: JudgeInput) -> dict[str, Any]:
+    """Each list's count, and its span where it has one; the facts the words state are
+    these, not the items, which a list of 153 would bury."""
+    lists = []
+    for found in given.evidence["found"]:
+        shown = {**_list_name(found), "count": found["count"]}
+        if "window" in found:
+            shown["window"] = found["window"]
+            shown["uncertain_count"] = found["uncertain_count"]
+        lists.append(shown)
+    return {"lists": lists}
 
 
 # --- The labels ---------------------------------------------------------------------------
@@ -291,7 +336,10 @@ def agreement(pairs: Iterable[tuple[bool, bool]]) -> Agreement:
 
 def judge_verdict(judged: Judged, compared: str) -> bool | None:
     if compared == "grounded":
-        return None if judged.error else judged.grounded is not False
+        # A path without faithfulness has no grounded verdict: never a pass.
+        if judged.error or not PATHS[judged.path].faithfulness:
+            return None
+        return judged.grounded is not False
     return judged.passed(compared)
 
 

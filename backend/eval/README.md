@@ -50,6 +50,7 @@ uv run --env-file .env wobot-eval recommend --model gpt-6-luna:low
 uv run --env-file .env wobot-eval turns
 DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge eval/runs/<stamp>-answer.json --candidate gpt-6-luna:none
+uv run --env-file .env wobot-eval judge eval/runs/<stamp>-write-list.json --candidate gpt-6-luna:none
 uv run wobot-eval judge-sample eval/runs/<stamp>-judge.json
 uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
 ```
@@ -75,6 +76,12 @@ uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
   `gold/judge-labels.yaml`, and each judge report then gives the share of labelled
   replies decided alike and Cohen's kappa, which takes out agreement by chance. It must
   agree on 90% or more and fail every reply the person fails.
+- `judge` grades a `write-list` run's replies too, on the words before the lists alone:
+  code writes each item and the run already scores them. The rubric reads the lists as
+  the writer read them and how many items of each were shown; the words are a sentence or
+  two, so there is no faithfulness, and no database is read. Each path's prompts have
+  their own version and their own labels, `gold/judge-labels-lists.yaml` for this one, so
+  changing one path's prompt leaves the other's measurement standing.
 
 ## Checks
 

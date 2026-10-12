@@ -1570,6 +1570,7 @@ def judge_markdown(
     against: AgainstLabels | None = None,
 ) -> str:
     judge_model = str(meta["judge"]).partition(":")[0]
+    knowledge = meta.get("path", "knowledge") == "knowledge"
     lines = [
         "# Judged replies",
         "",
@@ -1577,45 +1578,68 @@ def judge_markdown(
         "",
         "## Candidates",
         "",
-        "Each criterion counts the replies the judge passed, of those it judged. Expected "
-        "is whether the reply does what a person says it should; a miss is put down to "
-        "retrieval when the search found none of the items labelled for the case, and to "
-        "the answer otherwise. Supported is whether every fact the reply states is in what "
-        "the search found, and language whether it answers in the user's language. "
-        "Grounded counts the replies all of whose statements the passages support; "
-        "faithfulness is RAGAS's share of supported statements, averaged. Unlike mentions "
-        "counts the replies where the text check and expected disagree.",
-        "",
-        "| Candidate | Expected | Missed by answer / retrieval | Supported | Language "
-        "| Grounded | Faithfulness | Unlike mentions | Judge $ | Errors |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
+    if knowledge:
+        lines += [
+            "Each criterion counts the replies the judge passed, of those it judged. Expected "
+            "is whether the reply does what a person says it should; a miss is put down to "
+            "retrieval when the search found none of the items labelled for the case, and to "
+            "the answer otherwise. Supported is whether every fact the reply states is in "
+            "what the search found, and language whether it answers in the user's language. "
+            "Grounded counts the replies all of whose statements the passages support; "
+            "faithfulness is RAGAS's share of supported statements, averaged. Unlike check "
+            "counts the replies where the run's check, on mentions, and expected disagree.",
+            "",
+            "| Candidate | Expected | Missed by answer / retrieval | Supported | Language "
+            "| Grounded | Faithfulness | Unlike check | Judge $ | Errors |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    else:
+        lines += [
+            "Each criterion counts the replies the judge passed, of those it judged, on the "
+            "words written before the lists: code writes the items, and the run's check "
+            "scores them. Expected is whether the words, with the lists shown, do what a "
+            "person says the reply should; supported whether every fact they state is in the "
+            "lists found, and language whether they are in the user's language. Unlike check "
+            "counts the replies where the run's check and expected disagree.",
+            "",
+            "| Candidate | Expected | Supported | Language | Unlike check | Judge $ | Errors |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
     for r in results:
         judged = len(r.verdicts)
         cost = r.cost(judge_model)
-        lines.append(
-            f"| {r.candidate} | {r.passes('expected')} / {judged} "
-            f"| {r.causes('answer')} / {r.causes('retrieval')} "
-            f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
-            f"| {r.grounded} / {r.stated} | {_num(r.faithfulness)} "
-            f"| {len(r.unlike_mentions)} | {'?' if cost is None else f'{cost:.2f}'} "
-            f"| {r.errors} |"
-        )
+        dollars = "?" if cost is None else f"{cost:.2f}"
+        if knowledge:
+            lines.append(
+                f"| {r.candidate} | {r.passes('expected')} / {judged} "
+                f"| {r.causes('answer')} / {r.causes('retrieval')} "
+                f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+                f"| {r.grounded} / {r.stated} | {_num(r.faithfulness)} "
+                f"| {len(r.unlike_check)} | {dollars} | {r.errors} |"
+            )
+        else:
+            lines.append(
+                f"| {r.candidate} | {r.passes('expected')} / {judged} "
+                f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+                f"| {len(r.unlike_check)} | {dollars} | {r.errors} |"
+            )
     if against is not None:
         lines += _against_labels(against)
     lines += [
         "",
-        "## Unlike mentions",
+        "## Unlike check",
         "",
-        "Replies the text check and the judge's expected decide differently: where the "
-        "check is blind, as to a negation, or the judge is wrong.",
+        "Replies the run's check and the judge's expected decide differently: where the "
+        "check is blind, as to a negation or to the words before a list, or the judge is "
+        "wrong.",
     ]
     for r in results:
-        for j in r.unlike_mentions:
-            check = "passes" if j.mentions_passed else "fails"
+        for j in r.unlike_check:
+            check = "passes" if j.checked else "fails"
             lines += [
                 "",
-                f"- **{j.case_id} {j.candidate} run {j.run}**: the text check {check}; "
+                f"- **{j.case_id} {j.candidate} run {j.run}**: the run's check {check}; "
                 f"{_criterion(j, 'expected')}",
                 f"  > {' '.join(j.reply.split())}",
             ]
@@ -1662,6 +1686,8 @@ def _against_labels(against: AgainstLabels) -> list[str]:
     ]
     for c in against.comparisons:
         a = c.agreement
+        if not a.labelled:  # grounded, on a path without faithfulness
+            continue
         share = "–" if a.share is None else f"{a.share:.0%}"
         lines.append(
             f"| {c.name} | {a.labelled} | {share} | {_num(a.kappa)} | {a.judge_passes} "
