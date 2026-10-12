@@ -23,6 +23,8 @@
 # decided that only 病床 and 醫護人員 do not tie a product to institutions, while wards,
 # institutions or long-term care settings alone do; that 中央監控軟體 is viewing on a
 # computer; and that a product shown is not shown again when the user drops a condition.
+# On 2026-10-12 the expected behaviour of NE-008, REC-FX-04 and NE-011 was written to allow
+# asking, as their checks had since 2026-10-08.
 dataset: recommendation-v2
 query_time: "2026-10-08T10:00:00+08:00"
 timezone: Asia/Taipei
@@ -148,7 +150,8 @@ cases:
     scenario: interface_constraint  # NE-101
     split: dev
     user_input: 我需要長輩離床時能通知照護人員，而且照護人員要能在電腦上查看。請推薦一項產品。
-    expected_behavior: Recommend only a product the catalog states can be viewed on a computer.
+    expected_behavior: Recommend only a product the catalog states can be viewed on a computer, or ask about a difference among those that fit.
+    # Asking and recommending are both right (person, 2026-10-08; the text says so from 2026-10-12).
     check:
       kind: recommendation
       query: {functions: [離床偵測], must: {viewing: [computer]}}
@@ -166,7 +169,8 @@ cases:
           - 離床偵測：符合
           - 不用穿戴：符合
     user_input: 另外要能用電腦看
-    expected_behavior: Keep the earlier needs, add viewing on a computer, and recommend again.
+    expected_behavior: Keep the earlier needs, add viewing on a computer, and recommend again or ask about a difference among those that fit.
+    # Asking and recommending are both right (person, 2026-10-08; the text says so from 2026-10-12).
     check:
       kind: recommendation
       query: {functions: [離床偵測], must: {viewing: [computer]}, must_not: {form: [worn]}}
@@ -206,7 +210,8 @@ cases:
           - 離床偵測：符合
           - 不用穿戴：符合
     user_input: 其實穿戴的也可以
-    expected_behavior: Drop the condition taken back and recommend another product with bed-exit alerts.
+    expected_behavior: Drop the condition taken back, and recommend another product with bed-exit alerts or ask about a difference among those that fit.
+    # Asking and recommending are both right (person, 2026-10-08; the text says so from 2026-10-12).
     check:
       kind: recommendation
       query: {functions: [離床偵測]}
