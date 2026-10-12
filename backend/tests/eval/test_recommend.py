@@ -198,6 +198,7 @@ def test_the_rule_keeps_the_right_then_takes_the_fastest():
         ({"functions": ["跌倒偵測"], "count": 3, "must": {"places": []}}, True),  # same needs
         ({"functions": ["跌倒偵測", "跌倒預防"]}, False),  # a nearby function added
         ({"functions": ["跌倒偵測"], "must_not": {"form": ["worn"]}}, False),
+        ({"functions": ["跌倒偵測"], "other": ["通知照護人員"]}, False),  # a need in other
         ({"functions": ["跌倒感應"]}, False),  # no find at all: refused
     ],
 )

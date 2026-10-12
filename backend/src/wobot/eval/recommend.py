@@ -238,6 +238,9 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
     finds = [c["args"] for m in asked for c in m.tool_calls if c["name"] == "find_products"]
     searches = len(finds)
     last_find = query_of(finds[-1]) if finds else None
+    # Every need a case labels is in the vocabulary: a need the agent puts in other sends
+    # the turn to its own reading of the catalog text, where code should have judged.
+    other = [need for need in (finds[-1].get("other") or []) if need.strip()] if finds else []
     text = reply.get("text", "")
     nodes: dict[str, float] = defaultdict(float)
     for step in flow:
@@ -258,11 +261,15 @@ async def play(app: CompiledStateGraph, item: RecCase, version_id: int, run: int
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         error=error,
-        asked=None if last_find is None else query_text(last_find),
+        asked=(
+            None
+            if last_find is None
+            else query_text(last_find) + (f" other={'; '.join(other)}" if other else "")
+        ),
         query_right=(
             None
             if item.query is None or not finds
-            else last_find is not None and same_query(last_find, item.query)
+            else last_find is not None and same_query(last_find, item.query) and not other
         ),
         words=agent_words(reply, scratch),
         tools=tuple(tool_steps(scratch)),
