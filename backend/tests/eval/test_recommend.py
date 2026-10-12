@@ -51,9 +51,9 @@ def test_the_cases_are_recommendation_v2s_less_the_routers():
     cases = rec_cases([load_dataset("recommendation-v2")], ["dev", "heldout"])
 
     ids = [c.case.case_id for c in cases]
-    assert "REC-FX-06" not in ids and len(ids) == 17  # the thanks checks the route
+    assert "REC-FX-06" not in ids and len(ids) == 20  # the thanks checks the route
     case_022 = next(c for c in cases if c.case.case_id == "CASE-022")
-    assert case_022.actions == ("recommend",) and case_022.prefers == FIT
+    assert case_022.actions == ("replied",) and case_022.prefers == FIT  # asks first (DEC-075)
     assert NEVER in case_022.never and FIT in case_022.recommends
     asking = next(c for c in cases if c.case.case_id == "CASE-021")
     assert asking.searches is False and asking.recommends is None and asking.query is None
