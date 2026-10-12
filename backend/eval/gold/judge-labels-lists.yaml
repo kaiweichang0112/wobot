@@ -1,0 +1,335 @@
+# Judge labels: a person's verdicts on the words the list path wrote before its lists,
+# which the judge is measured against (V8). Read the message, what the case expects, the
+# words (reply) and how many items of each list they show (lists_shown); for supported,
+# also the case's lists under evidence. Code writes the items, and lists-v1 scores them.
+# Write pass or fail. A blank is not a label, and the judge's own verdicts are not shown.
+#
+#   expected   the words, with the lists shown, do what expected says: judge the meaning,
+#              not the wording or the order; the items shown count, so the words need
+#              not repeat them
+#   supported  every fact the words state is in the lists under evidence, such as what a
+#              list holds and its count; saying the sources list nothing, or that a part
+#              can be asked again, is not a fact
+#
+# Made by wobot-eval judge-sample from 20261012-093317-judge.json, seed 0.
+run: 20261007-144922-write-list.json
+index_version: 788
+labelled_on: '2026-10-12'
+replies:
+- id: JL-01
+  case_id: LS-008
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 487e5c0f7ec7
+  message: 列出 GRC 2024 年的期刊論文，再用一句話介紹 GRC 的研究方向。
+  expected_behavior: List every 2024 journal paper, then invite asking about the research
+    directions apart.
+  reply: GRC 2024 年的期刊論文共 4 篇。
+  lists_shown:
+  - list: list_publications
+    filters: &id001
+      category: Journal papers
+      year_from: 2024
+      year_to: 2024
+    shown: 4
+  expected: fail
+  supported: pass
+  note: ''
+- id: JL-02
+  case_id: LS-006
+  candidate: gpt-6-luna:none
+  run: 0
+  reply_sha: 5f3642de4ee4
+  message: 請完整列出產品表中分類為「臥床監測、離床預警、壓傷防護」的產品與公司。
+  expected_behavior: List every product of the category with its company.
+  reply: 產品表中分類為「臥床監測、離床預警、壓傷防護」的產品與公司共 12 項，完整列表如下：
+  lists_shown:
+  - list: list_products
+    filters: &id008
+      category: 1-3
+    shown: 12
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-03
+  case_id: LS-016
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: 04194ec65f6d
+  message: GRC 2030 年有哪些研究計畫？
+  expected_behavior: Say the sources list no project for 2030, and list none.
+  reply: 來源中沒有列出 GRC 2030 年的研究計畫。
+  lists_shown: []
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-04
+  case_id: LS-001
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 2d70474f3a87
+  message: 請完整列出徐業良 2024 年的演講，並附可點擊來源。
+  expected_behavior: List every talk of 2024, leaving out none.
+  reply: 來源列出徐業良 2024 年的演講共 32 項；每項均附有可點擊的來源資料。
+  lists_shown:
+  - list: list_lectures
+    filters: &id003
+      year_from: 2024
+      year_to: 2024
+    shown: 32
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-05
+  case_id: LS-003
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: f86da90e4bee
+  message: 請列出 GRC 2021 年碩士畢業生的姓名與英文論文題目。
+  expected_behavior: List only the 2021 master graduates.
+  reply: 以下是 GRC 2021 年碩士畢業生及其英文論文題目，共 5 筆。
+  lists_shown:
+  - list: list_students
+    filters: &id002
+      degree: master
+      year_from: 2021
+      year_to: 2021
+    shown: 5
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-06
+  case_id: LS-008
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: f19cea1849b1
+  message: 列出 GRC 2024 年的期刊論文，再用一句話介紹 GRC 的研究方向。
+  expected_behavior: List every 2024 journal paper, then invite asking about the research
+    directions apart.
+  reply: GRC 2024 年的期刊論文共有 4 篇。GRC 主要研究高齡者生活監測、智慧照護、跌倒預防，以及高齡智慧科技的適用性評估與落地應用。
+  lists_shown:
+  - list: list_publications
+    filters: *id001
+    shown: 4
+  expected: fail
+  supported: pass
+  note: 'The themes summarize the four titles; a close call on "主要研究".'
+- id: JL-07
+  case_id: LS-008
+  candidate: gpt-5.6-luna:none
+  run: 2
+  reply_sha: c1e2945ee327
+  message: 列出 GRC 2024 年的期刊論文，再用一句話介紹 GRC 的研究方向。
+  expected_behavior: List every 2024 journal paper, then invite asking about the research
+    directions apart.
+  reply: 以下列出 GRC 2024 年的期刊論文，共 4 篇。GRC 聚焦於高齡者生活監測、智慧照護、跌倒預防，以及高齡智慧科技的產品評估與落地應用。
+  lists_shown:
+  - list: list_publications
+    filters: *id001
+    shown: 4
+  expected: fail
+  supported: pass
+  note: 'The themes summarize the four titles; a close call on "主要研究".'
+- id: JL-08
+  case_id: LS-008
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: 9d6bc5941c59
+  message: 列出 GRC 2024 年的期刊論文，再用一句話介紹 GRC 的研究方向。
+  expected_behavior: List every 2024 journal paper, then invite asking about the research
+    directions apart.
+  reply: GRC 2024 年的期刊論文共 4 篇。研究方向介紹未列於這份資料中，可另外單獨詢問。
+  lists_shown:
+  - list: list_publications
+    filters: *id001
+    shown: 4
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-09
+  case_id: LS-008
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: efe63d59cee7
+  message: 列出 GRC 2024 年的期刊論文，再用一句話介紹 GRC 的研究方向。
+  expected_behavior: List every 2024 journal paper, then invite asking about the research
+    directions apart.
+  reply: GRC 2024 年的期刊論文共有 4 篇。GRC 主要研究高齡者生活監測、智慧照護、跌倒預防，以及高齡智慧科技與福祉服務的落地應用。
+  lists_shown:
+  - list: list_publications
+    filters: *id001
+    shown: 4
+  expected: fail
+  supported: pass
+  note: 'The themes summarize the four titles; a close call on "主要研究".'
+- id: JL-10
+  case_id: LS-004
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 9609ace8f0bf
+  message: 請分年度列出 GRC 2021、2022 年碩士畢業生與各年人數。
+  expected_behavior: List the 2021 and 2022 master graduates by year, with each year's count.
+  reply: 2021 年碩士畢業生共 5 人，2022 年共 3 人，以下依年度分列。
+  lists_shown:
+  - list: list_students
+    filters: &id004
+      degree: master
+      year_from: 2021
+      year_to: 2021
+    shown: 5
+  - list: list_students
+    filters: &id005
+      degree: master
+      year_from: 2022
+      year_to: 2022
+    shown: 3
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-11
+  case_id: LS-003
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: 4f7c53b373f5
+  message: 請列出 GRC 2021 年碩士畢業生的姓名與英文論文題目。
+  expected_behavior: List only the 2021 master graduates.
+  reply: GRC 2021 年碩士畢業生共有 5 位，以下列出姓名與英文論文題目。
+  lists_shown:
+  - list: list_students
+    filters: *id002
+    shown: 5
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-12
+  case_id: LS-007
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: ddb551346f30
+  message: 請列出 GRC 2024 年的研究計畫，含委託單位、執行期間與金額。
+  expected_behavior: List every 2024 project with its funder, period and amount.
+  reply: 以下為 GRC 2024 年研究計畫，共 6 件，包含委託單位、執行期間與金額。
+  lists_shown:
+  - list: list_projects
+    filters: &id009
+      year_from: 2024
+      year_to: 2024
+    shown: 6
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-13
+  case_id: LS-005
+  candidate: gpt-5.6-luna:none
+  run: 0
+  reply_sha: c0f123dcbe65
+  message: 列出 GRC 2021、2022 年的碩士畢業生。
+  expected_behavior: List every master graduate of 2021 and 2022.
+  reply: 2021 年碩士畢業生共 5 位；2022 年碩士畢業生共 3 位。
+  lists_shown:
+  - list: list_students
+    filters: &id006
+      degree: master
+      year_from: 2021
+      year_to: 2021
+    shown: 5
+  - list: list_students
+    filters: &id007
+      degree: master
+      year_from: 2022
+      year_to: 2022
+    shown: 3
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-14
+  case_id: LS-015
+  candidate: gpt-6-luna:none
+  run: 2
+  reply_sha: b7b0012ffa5b
+  message: 世大智科在目錄裡有哪些產品？
+  expected_behavior: List the catalog's products whose company is 世大智科.
+  reply: 目錄中找到世大智科的 2 項產品：
+  lists_shown:
+  - list: list_products
+    filters: &id011
+      contains: 世大智科
+    shown: 2
+  expected: pass
+  supported: pass
+  note: ''
+- id: JL-15
+  case_id: LS-014
+  candidate: gpt-5.6-luna:none
+  run: 1
+  reply_sha: 50f5753cdcf4
+  message: 哪些學生的論文和地墊有關？
+  expected_behavior: List every student whose thesis title holds 地墊.
+  reply: 共有7位學生的論文與地墊有關。
+  lists_shown:
+  - list: list_students
+    filters: &id010
+      contains: 地墊
+    shown: 7
+  expected: pass
+  supported: pass
+  note: ''
+evidence:
+  LS-001:
+    lists:
+    - list: list_lectures
+      filters: *id003
+      count: 32
+  LS-003:
+    lists:
+    - list: list_students
+      filters: *id002
+      count: 5
+  LS-004:
+    lists:
+    - list: list_students
+      filters: *id004
+      count: 5
+    - list: list_students
+      filters: *id005
+      count: 3
+  LS-005:
+    lists:
+    - list: list_students
+      filters: *id006
+      count: 5
+    - list: list_students
+      filters: *id007
+      count: 3
+  LS-006:
+    lists:
+    - list: list_products
+      filters: *id008
+      count: 12
+  LS-007:
+    lists:
+    - list: list_projects
+      filters: *id009
+      count: 6
+  LS-008:
+    lists:
+    - list: list_publications
+      filters: *id001
+      count: 4
+  LS-014:
+    lists:
+    - list: list_students
+      filters: *id010
+      count: 7
+  LS-015:
+    lists:
+    - list: list_products
+      filters: *id011
+      count: 2
+  LS-016:
+    lists:
+    - list: list_projects
+      filters:
+        year_from: 2030
+        year_to: 2030
+      count: 0

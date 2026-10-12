@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from tests.agent.conftest import knowledge  # noqa: F401  # a small published version
 from tests.agent.fakes import FakeToolModel, calls
@@ -14,6 +14,7 @@ from wobot.eval.recommend import (
     RecCase,
     RecPlay,
     RecResult,
+    agent_words,
     compare,
     play,
     preferred,
@@ -21,6 +22,7 @@ from wobot.eval.recommend import (
     rec_cases,
     rec_path,
     rule_pick,
+    tool_steps,
 )
 from wobot.eval.report import recommend_markdown
 from wobot.knowledge.facets import FacetQuery
@@ -113,6 +115,24 @@ async def test_a_play_keeps_the_flow_and_scores_the_card(knowledge):  # noqa: F8
     assert played.searches == 1 and set(played.nodes) == {"rec_agent", "rec_tools"}
     assert played.asked == "離床偵測" and played.query_right is None  # the case has no query
     assert played.seconds == pytest.approx(sum(step.seconds for step in played.flow))
+    assert played.words is None  # code wrote the cards and their opening
+    (step,) = played.tools
+    assert step["tool"] == "find_products" and list(step["returned"]) == ["shown"]
+
+
+async def test_a_play_keeps_the_agents_words_and_what_its_tools_returned(knowledge):  # noqa: F811
+    app = rec_path(
+        FakeToolModel(FIND_NONE, AIMessage("目錄裡沒有能監測翻身的產品。")),
+        knowledge.db,
+        knowledge.embedder,
+    )
+
+    played = await play(app, rec_case(actions=("replied",)), knowledge.version_id, run=0)
+
+    assert played.words == "目錄裡沒有能監測翻身的產品。"
+    (step,) = played.tools
+    assert step["args"] == {"functions": ["翻身監測"]}
+    assert step["returned"]["matched"] == 0 and step["returned"]["gaps"]
 
 
 async def test_a_play_that_fails_is_wrong_and_says_why(knowledge):  # noqa: F811
@@ -178,6 +198,7 @@ def test_the_rule_keeps_the_right_then_takes_the_fastest():
         ({"functions": ["跌倒偵測"], "count": 3, "must": {"places": []}}, True),  # same needs
         ({"functions": ["跌倒偵測", "跌倒預防"]}, False),  # a nearby function added
         ({"functions": ["跌倒偵測"], "must_not": {"form": ["worn"]}}, False),
+        ({"functions": ["跌倒偵測"], "other": ["通知照護人員"]}, False),  # a need in other
         ({"functions": ["跌倒感應"]}, False),  # no find at all: refused
     ],
 )
@@ -203,3 +224,34 @@ def test_the_report_lists_the_finds_that_asked_for_another_query():
 
     assert "| a:none | 1.0 / 1 (1–1) | 0 | 0 / 0 | 0 / 1 |" in report
     assert "| C0 | a:none | 跌倒偵測 | 跌倒偵測 跌倒預防 |" in report
+
+
+def show(intro, call_id="c-2"):
+    return AIMessage(
+        "",
+        tool_calls=[
+            {"name": "show_products", "args": {"products": ["r-1"], "intro": intro}, "id": call_id}
+        ],
+    )
+
+
+def test_the_agents_words_are_its_reply_or_its_show_intro():
+    recommended = {"action": "recommend", "text": "這項產品符合：\n\n推薦：..."}
+
+    assert agent_words({"action": "replied", "text": "在家裡用嗎？"}, []) == "在家裡用嗎？"
+    assert agent_words(recommended, [show("  這項產品符合：  ")]) == "這項產品符合："
+    assert agent_words(recommended, [show("")]) is None  # code's opening
+    assert agent_words(recommended, []) is None  # find showed the cards at once
+    assert agent_words({"action": "unverified", "text": "x"}, []) is None
+
+
+def test_a_refused_call_is_read_back_as_text():
+    scratch = [
+        show("", call_id="c-1"),
+        ToolMessage("Not done: products: too short.", tool_call_id="c-1", status="error"),
+    ]
+
+    (step,) = tool_steps(scratch)
+
+    assert step["tool"] == "show_products" and step["refused"] is True
+    assert step["returned"] == "Not done: products: too short."

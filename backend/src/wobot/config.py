@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # never be, at 2.07s p50 and $0.45 per 1,000 turns.
     rec_agent_model: str = "gpt-6-luna"
     rec_agent_effort: str = "low"
+    # Judges saved replies in evaluation (V8). Never a model a node's comparison tried, so
+    # it does not grade writing like its own (spec 07).
+    judge_model: str = "gpt-6.1-sol"
+    judge_effort: str = "low"
     # For Jev; in the cloud it comes from Secret Manager.
     typesafe_api_key: SecretStr | None = None
     # Raw source bytes go to this bucket, or to the local directory when it is unset.

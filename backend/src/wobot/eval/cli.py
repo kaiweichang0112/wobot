@@ -14,11 +14,15 @@ what the knowledge path finds. `list-agent` and `write-list` compare models for 
 path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
 turns-v1's conversations through the configured graph and scores each last turn.
 `recommend` compares models for rec_agent on recommendation-v2, finding products by their
-facets as the recommendation path does.
+facets as the recommendation path does. `judge` grades the replies an `answer`,
+`write-list` or `recommend` run kept, and the last turns of a `turns` run, by a rubric
+and, on the knowledge path, by faithfulness, with a model none of those comparisons tried;
+it reads an answer run's version only to match the labels to records.
 """
 
 import argparse
 import asyncio
+import json
 import subprocess
 from collections.abc import Sequence
 from datetime import datetime
@@ -49,9 +53,30 @@ from wobot.eval.candidates import Candidate, parse_candidate
 from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
-from wobot.eval.dataset import dataset_names, load_dataset
+from wobot.eval.dataset import Dataset, dataset_names, load_dataset
 from wobot.eval.facets import Decisions, decide, labelled_products, need_checks
 from wobot.eval.facets import compare_models as compare_facet_models
+from wobot.eval.judge import PROMPT_VERSIONS as JUDGE_PROMPT_VERSIONS
+from wobot.eval.judge import (
+    RUN_PATHS,
+    OpenAIJudge,
+    by_candidate,
+    gold_keys,
+    inputs_of,
+    judge_replies,
+    run_path,
+)
+from wobot.eval.judge_labels import (
+    LABELS,
+    AgainstLabels,
+    against_labels,
+    any_filled,
+    key_of,
+    labels_template,
+    load_judged,
+    read_labels,
+    sample,
+)
 from wobot.eval.lists import DATASET as LIST_DATASET
 from wobot.eval.lists import (
     ModelWriter,
@@ -69,6 +94,7 @@ from wobot.eval.report import (
     write_answer_report,
     write_chat_report,
     write_facets_report,
+    write_judge_report,
     write_list_agent_report,
     write_recommend_report,
     write_report,
@@ -230,6 +256,62 @@ def main(argv: Sequence[str] | None = None) -> int:
     answer.add_argument("--index-version", type=int, help="a version other than the active one")
     answer.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     answer.set_defaults(handler=_answer)
+
+    judge = commands.add_parser(
+        "judge",
+        help="judge the replies a saved answer, write-list or recommend run kept (paid calls)",
+    )
+    judge.add_argument(
+        "run", type=Path, help="the JSON report of a wobot-eval answer, write-list or recommend run"
+    )
+    judge.add_argument(
+        "--judge",
+        type=parse_candidate,
+        metavar="MODEL:EFFORT",
+        help="the judge (default: JUDGE_MODEL and JUDGE_EFFORT)",
+    )
+    judge.add_argument(
+        "--candidate",
+        action="append",
+        default=[],
+        help="a candidate of the run, as labelled there; repeat for more (default: all)",
+    )
+    judge.add_argument(
+        "--index-version", type=int, help="the version the run searched, if it does not say"
+    )
+    judge.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    judge.add_argument(
+        "--labels",
+        type=Path,
+        help="a person's labels to measure the judge by (default: the path's)",
+    )
+    judge.set_defaults(handler=_judge)
+
+    judge_sample = commands.add_parser(
+        "judge-sample", help="write a sample of a judged run for a person to label blind"
+    )
+    judge_sample.add_argument("report", type=Path, help="the JSON report of a judge run")
+    judge_sample.add_argument("--size", type=int, default=40, help="replies to label")
+    judge_sample.add_argument(
+        "--supported", type=int, default=15, help="of them, replies to label supported for"
+    )
+    judge_sample.add_argument("--seed", type=int, default=0, help="for the sample and its order")
+    judge_sample.add_argument(
+        "--out", type=Path, help="the labels file (default: the path's in eval/gold)"
+    )
+    judge_sample.set_defaults(handler=_judge_sample)
+
+    judge_agreement = commands.add_parser(
+        "judge-agreement",
+        help="measure a judge run against a person's labels, rewriting its report (no calls)",
+    )
+    judge_agreement.add_argument("report", type=Path, help="the JSON report of a judge run")
+    judge_agreement.add_argument(
+        "--labels",
+        type=Path,
+        help="a person's labels to measure the judge by (default: the path's)",
+    )
+    judge_agreement.set_defaults(handler=_judge_agreement)
 
     agent = commands.add_parser(
         "list-agent", help="compare models for list_agent by the calls they make (paid calls)"
@@ -591,6 +673,7 @@ async def _answer(args: argparse.Namespace, settings: Settings) -> int:
             f"rewrite {rewrite.label} prompt {rewriting.PROMPT_VERSION}, index version "
             f"{version_id}, depth {retrieval.FUSION_DEPTH}, k {retrieval.SEARCHED_CHUNKS}"
         ),
+        "index_version": version_id,
         "dataset": f"{dataset.name} {dataset.sha256[:12]}",
         "splits": list(splits),
         "cases": len(cases),
@@ -606,6 +689,180 @@ async def _answer(args: argparse.Namespace, settings: Settings) -> int:
         )
     print(f"report: {path}")
     return 0
+
+
+async def _judge(args: argparse.Namespace, settings: Settings) -> int:
+    if settings.openai_api_key is None:
+        print("OPENAI_API_KEY is not set")
+        return 1
+    run = json.loads(args.run.read_text(encoding="utf-8"))
+    path = run_path(run)
+    if path is None:
+        print(f"{args.run.name}: judge reads runs of {', '.join(RUN_PATHS)}")
+        return 1
+    version_id = args.index_version or run["meta"].get("index_version")
+    if path == "knowledge" and version_id is None:
+        print(f"{args.run.name} does not say which version it searched; pass --index-version")
+        return 1
+    if path == "turns" and args.candidate:
+        print(f"{args.run.name} plays the configured graph: it has no candidates to choose")
+        return 1
+    if unknown := set(args.candidate) - {c["candidate"] for c in run.get("candidates", [])}:
+        print(f"{sorted(unknown)}: not candidates of {args.run.name}")
+        return 1
+    # The labels as they are now: a case's expected behaviour may have changed since.
+    dataset = load_dataset(run["meta"]["dataset"].split()[0])
+    judge_with = args.judge or Candidate(settings.judge_model, settings.judge_effort)
+    labelled = None
+    if path == "knowledge":  # the labels' records are matched in the run's version
+        engine, connector = await create_engine(settings)
+        try:
+            async with engine.connect() as conn:
+                corpus = await load_corpus(conn, version_id)
+        finally:
+            await engine.dispose()
+            if connector is not None:
+                await connector.close_async()
+        labelled = gold_keys(dataset, corpus)
+    items = inputs_of(run, dataset, labelled, args.candidate)
+    if not items:
+        print(
+            f"{args.run.name}: no words to judge; a recommend run before V8d keeps no tool "
+            "results: run wobot-eval recommend again"
+            if path == "recommend"
+            else f"{args.run.name}: no replies to judge; a turns run before V8d keeps no "
+            "evidence: run wobot-eval turns again"
+            if path == "turns"
+            else f"{args.run.name}: no replies to judge"
+        )
+        return 1
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(),
+        timeout=settings.openai_timeout_seconds,
+        max_retries=3,
+    )
+    judge = OpenAIJudge(client, judge_with.model, judge_with.effort)
+    started = datetime.now().astimezone()
+    results = by_candidate(await judge_replies(judge, items, progress=print))
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "judge": judge.label,
+        "path": path,
+        # A turns run's last turns go to their routes' rubrics.
+        "prompt_version": (
+            {p: JUDGE_PROMPT_VERSIONS[p] for p in sorted({i.path for i in items})}
+            if path == "turns"
+            else JUDGE_PROMPT_VERSIONS[path]
+        ),
+        **({"models": run["meta"]["models"]} if "models" in run["meta"] else {}),
+        "run": args.run.name,
+        "index_version": version_id,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]} (the run read {run['meta']['dataset']})",
+        "replies": len(items),
+        "prices": "spec 07, checked 2026-10-01",
+    }
+    judged = [j for r in results for j in r.judged]
+    against = _against(args.labels or LABELS.get(path), args.run.name, judged, dataset)
+    report = write_judge_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-judge", against)
+    for r in results:
+        count = len(r.verdicts)
+        cost = r.cost(judge_with.model)
+        on_knowledge = r.judged[0].path == "knowledge"
+        knowledge = (
+            f" (missed by answer {r.causes('answer')}, retrieval {r.causes('retrieval')})"
+            if on_knowledge
+            else ""
+        )
+        grounded = f", grounded {r.grounded}/{r.stated}" if on_knowledge else ""
+        print(
+            f"{r.candidate}: expected {r.passes('expected')}/{count}{knowledge}, "
+            f"supported {r.passes('supported')}/{count}{grounded}, "
+            f"{len(r.unlike_check)} unlike the run's check, {r.errors} errors, "
+            f"judge ${'?' if cost is None else f'{cost:.2f}'}"
+        )
+    _print_against(against)
+    print(f"report: {report}")
+    return 0
+
+
+async def _judge_sample(args: argparse.Namespace, settings: Settings) -> int:
+    meta, judged = load_judged(args.report)
+    if meta.get("path") not in (None, *LABELS):
+        print(f"{meta['path']} runs are judged, not labelled: read the failures in the report")
+        return 1
+    out = args.out or LABELS[meta.get("path", "knowledge")]
+    if any_filled(out):
+        print(f"{out} holds a person's labels; move it away to sample again")
+        return 1
+    run = json.loads((args.report.parent / meta["run"]).read_text(encoding="utf-8"))
+    dataset = load_dataset(run["meta"]["dataset"].split()[0])
+    inputs = {key_of(i): i for i in inputs_of(run, dataset)}
+    sampled = sample(judged, args.size, args.supported, args.seed)
+    template = labels_template(
+        sampled, inputs, meta["run"], meta["index_version"], args.report.name, args.seed
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(template, encoding="utf-8")
+    asked = [s for s in sampled if s.asks_supported]
+    print(
+        f"{len(sampled)} replies to label, supported asked of {len(asked)}, the evidence of "
+        f"{len({s.judged.case_id for s in asked})} cases: {out}"
+    )
+    return 0
+
+
+async def _judge_agreement(args: argparse.Namespace, settings: Settings) -> int:
+    meta, judged = load_judged(args.report)
+    labels = args.labels or LABELS.get(meta.get("path", "knowledge"))
+    if labels is None:
+        print(f"{meta['path']} runs are judged, not labelled: read the failures in the report")
+        return 1
+    # What each case expects now, from the dataset the judge read.
+    dataset = load_dataset(meta["dataset"].split()[0])
+    against = _against(labels, meta["run"], judged, dataset)
+    if against is None:
+        print(f"{labels} does not label {meta['run']}")
+        return 1
+    path = write_judge_report(
+        by_candidate(judged), meta, args.report.parent, args.report.stem, against
+    )
+    _print_against(against)
+    print(f"report: {path}")
+    return 0
+
+
+def _against(
+    path: Path | None, run_name: str, judged: Sequence[Any], dataset: Dataset
+) -> AgainstLabels | None:
+    """The judge against a person's labels, when they label this run."""
+    if path is None or not path.exists():
+        return None
+    labels = read_labels(path)
+    if labels.run != run_name:
+        return None
+    expected = {case.case_id: case.expected_behavior for case in dataset.cases}
+    return against_labels(judged, labels, expected)
+
+
+def _print_against(against: AgainstLabels | None) -> None:
+    if against is None:
+        return
+    for c in against.comparisons:
+        a = c.agreement
+        if not a.labelled:  # grounded, on a path without faithfulness
+            continue
+        share = "-" if a.share is None else f"{a.share:.0%}"
+        kappa = "-" if a.kappa is None else f"{a.kappa:.2f}"
+        print(f"against labels, {c.name}: {share} of {a.labelled} alike, kappa {kappa}")
+    if against.blank:
+        print(f"{against.blank} verdicts not labelled yet")
+    if against.outdated:
+        print(
+            f"{len(against.outdated)} labels outdated, what their case expects changed: "
+            f"{', '.join(against.outdated)}; relabel them, or confirm each by writing the "
+            "case's expected_behavior into it"
+        )
 
 
 def _list_meta(

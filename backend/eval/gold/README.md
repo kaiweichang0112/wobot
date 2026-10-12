@@ -153,3 +153,56 @@ It makes paid calls, so ask before running it, and keeps the answers where inges
 does, which takes the ingestion role. The heldout cases are never read by it; `wobot-eval
 run` scores them on the version ingestion built.
 
+## Judge labels
+
+`judge-labels.yaml` holds a person's verdicts on replies a `wobot-eval answer` run kept,
+which the judge is measured against. `wobot-eval judge-sample <judge report>` writes it
+blank: every reply the judge failed or the run's check disagreed with, filled up with
+replies it passed, shuffled, without the judge's verdicts. It refuses to write over a file
+that holds a label.
+
+- Read the earlier turns, the message, what the case expects and the reply, and write
+  `pass` or `fail` under `expected`: the reply does what the case expects. Judge the
+  meaning, not the wording or the order, and do not require what the case marks optional
+  ("may").
+- Where an entry has `supported`, also read its case's passages and records under
+  `evidence`: it passes when every fact the reply states is in them. A greeting, advice,
+  encouragement and wording the user asked to be written are not facts, and neither is
+  saying the sources do not state something. True is not enough: a fact the passages do
+  not hold fails.
+- Leave a verdict blank to come back to it; a blank is not a label. Add a `note`, in
+  English, when the call was close.
+- `reply_sha` ties a label to the reply's text: a label is never compared with another
+  reply. Set `labelled_on` when the labels are finished.
+- A label holds for the reply and for what its case expected when it was labelled:
+  `judge-agreement` sets aside, as outdated, an entry whose `expected_behavior` the dataset
+  no longer holds, until it is relabelled or confirmed by copying the new text in.
+
+`wobot-eval judge-agreement <judge report>` measures a judge run against the labels,
+rewriting its report without a call; `wobot-eval judge` does so for each new run.
+
+A judge prompt changed after reading these labels is measured on them too, so it is also
+checked on replies it was not shaped by: the held-out cases' replies go to
+`judge-labels-heldout.yaml` (`judge-sample --out`), labelled the same way and read with
+`--labels`. A labels file is committed only when every verdict is given; a test reads
+each.
+
+`judge-labels-lists.yaml` holds the same verdicts on the words the list path wrote before
+its lists, from a `wobot-eval write-list` run; `judge-sample` and `judge-agreement` choose
+it for a judge report of that run. Each entry gives the lists it shows and how many items
+of each (`lists_shown`), and `evidence` gives each case's lists found as the writer read
+them, with their counts and at most 50 items: code writes the items, and lists-v1 scores
+them. `expected` passes when
+the words, with the lists shown, do what the case expects, though they need not repeat
+the items; `supported` when every fact they state, such as what a list holds and its
+count, is in the lists found.
+
+`judge-labels-recommend.yaml` holds the verdicts on the words the recommendation agent
+wrote itself, from a `wobot-eval recommend` run: a question, why no product fits, or the
+sentence before the products it chose. Each entry gives the products shown as cards
+(`products_shown`) and, where `supported` is asked, every tool the agent called with what
+it returned (`tools`), since each turn found its own. `expected` passes when the words,
+with the products shown, do what the case expects, though they need not name the
+products; `supported` when every fact they state about the products or the catalog is in
+what the tools returned or in the conversation. A question and the choices it offers are
+not facts.

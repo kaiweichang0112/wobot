@@ -14,6 +14,8 @@ from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
 from wobot.eval.facets import ModelResult as FacetModelResult
+from wobot.eval.judge import CRITERIA, Judged, JudgeResult
+from wobot.eval.judge_labels import AgainstLabels
 from wobot.eval.lists import (
     AgentResult,
     Call,
@@ -1556,4 +1558,232 @@ def write_recommend_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(recommend_markdown(results, cases, meta), encoding="utf-8")
+    return markdown
+
+
+# --- Judging saved replies ----------------------------------------------------------------
+
+
+def judge_markdown(
+    results: Sequence[JudgeResult],
+    meta: Mapping[str, Any],
+    against: AgainstLabels | None = None,
+) -> str:
+    judge_model = str(meta["judge"]).partition(":")[0]
+    path = meta.get("path", "knowledge")
+    # A turns run's last turns are knowledge and list replies: the knowledge table, with a
+    # dash where a list reply has nothing to count.
+    knowledge = path in ("knowledge", "turns")
+    lines = [
+        "# Judged replies",
+        "",
+        *(f"- {name}: {_text(value)}" for name, value in meta.items()),
+        "",
+        "## Candidates",
+        "",
+    ]
+    if knowledge:
+        lines += [
+            "Each criterion counts the replies the judge passed, of those it judged. Expected "
+            "is whether the reply does what a person says it should; a miss is put down to "
+            "retrieval when the search found none of the items labelled for the case, and to "
+            "the answer otherwise. Supported is whether every fact the reply states is in "
+            "what the search found, and language whether it answers in the user's language. "
+            "Grounded counts the replies all of whose statements the passages support; "
+            "faithfulness is RAGAS's share of supported statements, averaged. Unlike check "
+            "counts the replies where the run's check, on mentions, and expected disagree.",
+            *(
+                [
+                    "",
+                    "Here each row is a route of the last turn of a conversation, judged by "
+                    "that route's rubric with the conversation the graph kept; chat is not "
+                    "judged, and list replies are judged on the words before the lists. A "
+                    "knowledge reply is judged against the question as rewritten: whether "
+                    "the rewrite understood the follow-up is the run's own check (question "
+                    "mentions), and with no labelled items every miss is put down to the "
+                    "answer.",
+                ]
+                if path == "turns"
+                else []
+            ),
+            "",
+            "| Candidate | Expected | Missed by answer / retrieval | Supported | Language "
+            "| Grounded | Faithfulness | Unlike check | Judge $ | Errors |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    else:
+        judged_words = {
+            "list": "the words written before the lists: code writes the items, and the "
+            "run's check scores them. Expected is whether the words, with the lists shown, "
+            "do what a person says the reply should; supported whether every fact they "
+            "state is in the lists found",
+            "recommend": "the agent's own words, a question, why nothing fits or the "
+            "sentence before the products it chose: code chooses the products and writes "
+            "their cards, and the run's check scores them; turns whose reply code wrote are "
+            "not judged. Expected is whether the words, with the tools called and the "
+            "products shown, do what a person says the turn should; supported whether every "
+            "fact they state about the products is in what the tools returned or in the "
+            "conversation",
+        }[meta["path"]]
+        lines += [
+            f"Each criterion counts the replies the judge passed, of those it judged, on "
+            f"{judged_words}; language is whether they are in the user's language. Unlike "
+            "check counts the replies where the run's check and expected disagree.",
+            "",
+            "| Candidate | Expected | Supported | Language | Unlike check | Judge $ | Errors |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    for r in results:
+        judged = len(r.verdicts)
+        cost = r.cost(judge_model)
+        dollars = "?" if cost is None else f"{cost:.2f}"
+        if knowledge and r.judged[0].path != "knowledge":
+            lines.append(
+                f"| {r.candidate} | {r.passes('expected')} / {judged} | – "
+                f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+                f"| – | – | {len(r.unlike_check)} | {dollars} | {r.errors} |"
+            )
+        elif knowledge:
+            lines.append(
+                f"| {r.candidate} | {r.passes('expected')} / {judged} "
+                f"| {r.causes('answer')} / {r.causes('retrieval')} "
+                f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+                f"| {r.grounded} / {r.stated} | {_num(r.faithfulness)} "
+                f"| {len(r.unlike_check)} | {dollars} | {r.errors} |"
+            )
+        else:
+            lines.append(
+                f"| {r.candidate} | {r.passes('expected')} / {judged} "
+                f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+                f"| {len(r.unlike_check)} | {dollars} | {r.errors} |"
+            )
+    if against is not None:
+        lines += _against_labels(against)
+    lines += [
+        "",
+        "## Unlike check",
+        "",
+        "Replies the run's check and the judge's expected decide differently: where the "
+        "check is blind, as to a negation or to the words before a list, or the judge is "
+        "wrong.",
+    ]
+    for r in results:
+        for j in r.unlike_check:
+            check = "passes" if j.checked else "fails"
+            lines += [
+                "",
+                f"- **{j.case_id} {j.candidate} run {j.run}**: the run's check {check}; "
+                f"{_criterion(j, 'expected')}",
+                f"  > {' '.join(j.reply.split())}",
+            ]
+    lines += [
+        "",
+        "## Failures",
+        "",
+        "Each reply that failed a criterion or stated something unsupported, with the "
+        "judge's reasons.",
+    ]
+    for r in results:
+        for j in r.verdicts:
+            failed = [name for name in CRITERIA if j.passed(name) is False]
+            unsupported = [s for s in j.statements if not s["supported"]]
+            if not failed and not unsupported:
+                continue
+            cause = f" (missed by {j.cause})" if j.cause else ""
+            lines += ["", f"### {j.case_id} {j.candidate} run {j.run}{cause}", ""]
+            lines.append(f"> {' '.join(j.reply.split())}")
+            lines.append("")
+            lines += [f"- {_criterion(j, name)}" for name in failed]
+            lines += [f"- unsupported: {s['statement']} ({s['reason']})" for s in unsupported]
+    errors = [j for r in results for j in r.judged if j.error]
+    if errors:
+        lines += ["", "## Errors", ""]
+        lines += [f"- {j.case_id} {j.candidate} run {j.run}: {j.error}" for j in errors]
+    return "\n".join(lines) + "\n"
+
+
+def _against_labels(against: AgainstLabels) -> list[str]:
+    lines = [
+        "",
+        "## Against a person's labels",
+        "",
+        "Each comparison counts the labelled replies the judge and the person decide alike, "
+        "and Cohen's kappa, which takes out what they would agree on by chance. Grounded is "
+        "faithfulness's verdict that every statement is supported, against the person's "
+        "supported. The judge is trusted when it agrees on 90% or more and fails every "
+        "reply the person fails.",
+        "",
+        "| Compared | Labelled | Agree | Kappa | Judge passes, person fails "
+        "| Judge fails, person passes |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for c in against.comparisons:
+        a = c.agreement
+        if not a.labelled:  # grounded, on a path without faithfulness
+            continue
+        share = "–" if a.share is None else f"{a.share:.0%}"
+        lines.append(
+            f"| {c.name} | {a.labelled} | {share} | {_num(a.kappa)} | {a.judge_passes} "
+            f"| {a.judge_fails} |"
+        )
+    if against.blank:
+        lines += ["", f"{against.blank} verdicts are not labelled yet."]
+    if against.stale:
+        lines += [
+            "",
+            f"Not compared, their reply changed or this run lacks it: {', '.join(against.stale)}.",
+        ]
+    if against.outdated:
+        lines += [
+            "",
+            "Not compared, what their case expects changed since they were labelled: "
+            f"{', '.join(against.outdated)}. Relabel them, or confirm each by writing the "
+            "case's expected behaviour into it.",
+        ]
+    for c in against.comparisons:
+        for judged, label in c.unlike:
+            person = (
+                "passes"
+                if getattr(label, "supported" if c.name == "grounded" else c.name)
+                else "fails"
+            )
+            reason = (
+                "; ".join(s["statement"] for s in judged.statements if not s["supported"])
+                if c.name == "grounded"
+                else judged.criteria[c.name]["reason"]
+            )
+            note = f" Note: {label.note}" if label.note else ""
+            lines += [
+                "",
+                f"- **{label.id} {c.name}, {judged.case_id} {judged.candidate} run {judged.run}**: "
+                f"the person {person} it; the judge: {reason}.{note}",
+                f"  > {' '.join(judged.reply.split())}",
+            ]
+    return lines
+
+
+def _criterion(judged: Judged, name: str) -> str:
+    verdict = "passes" if judged.passed(name) else "FAILS"
+    return f"{name} {verdict}: {judged.criteria[name]['reason']}"
+
+
+def write_judge_report(
+    results: Sequence[JudgeResult],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+    against: AgainstLabels | None = None,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "candidates": [
+            {"candidate": r.candidate, "judged": [asdict(j) for j in r.judged]} for r in results
+        ],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(judge_markdown(results, meta, against), encoding="utf-8")
     return markdown

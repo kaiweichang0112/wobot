@@ -15,7 +15,7 @@ import statistics
 import time
 import uuid
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -23,10 +23,11 @@ from typing import Any
 from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 
+from wobot.agent.write_list import lists_that_count
 from wobot.eval import candidates
 from wobot.eval.candidates import lacking
 from wobot.eval.dataset import Case, Dataset
-from wobot.eval.lists import Call, calls_right, counted_calls
+from wobot.eval.lists import Call, calls_right, counted_calls, shown_keys
 
 DATASET = "turns-v1"
 
@@ -77,6 +78,9 @@ class Played:
     question_lacking: tuple[str, ...]
     lacking: tuple[str, ...]
     error: str | None = None
+    # What the last turn's model read, for the judge (V8): the passages and records on the
+    # knowledge path; on the list path, the lists write_list read and the items shown.
+    evidence: dict[str, Any] = field(default_factory=dict)
 
     @property
     def right(self) -> bool:
@@ -146,7 +150,19 @@ async def play(app: CompiledStateGraph, item: TurnCase, version_id: int, run: in
         question_lacking=tuple(lacking(final.get("question") or "", item.question_mentions)),
         lacking=tuple(lacking(text, item.mentions)),
         error=error,
+        evidence=_read(route, final, reply),
     )
+
+
+def _read(route: str | None, final: Mapping[str, Any], reply: Mapping[str, Any]) -> dict[str, Any]:
+    if route == "knowledge":
+        return dict(final.get("evidence") or {})
+    if route == "list":
+        return {
+            "results": lists_that_count(final.get("list_results") or {}),
+            "shown": sorted(shown_keys(reply)),
+        }
+    return {}
 
 
 @dataclass

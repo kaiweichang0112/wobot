@@ -27,6 +27,9 @@ DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <mode
 DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>]
 uv run --env-file .env wobot-eval route|chat|rewrite|answer|list-agent|write-list|recommend --model <model:effort> [--model ...]
 uv run --env-file .env wobot-eval turns
+DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge <answer run>.json [--candidate <model:effort>]
+uv run --env-file .env wobot-eval judge <write-list, recommend or turns run>.json [--candidate <model:effort>]
+uv run wobot-eval judge-sample|judge-agreement <judge run>.json
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only

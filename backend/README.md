@@ -196,13 +196,15 @@ uv run wobot-eval check-gold
 uv run wobot-eval run
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
 DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
+DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge <answer run>.json
 ```
 
 `vision` compares vision models on the dev transcriptions, and `facets` models reading
 the dev products' facets; both make paid calls, except for answers already cached. See
 `eval/gold/README.md`. `route`, `chat`, `rewrite`, `answer`, `list-agent`, `write-list`
 and `recommend` compare models for one model node each, `turns` plays conversations
-through the configured graph; all make paid calls. See `eval/README.md`.
+through the configured graph; all make paid calls. `judge` grades the replies an
+`answer` run kept, by a rubric and by faithfulness, also paid. See `eval/README.md`.
 
 ## Migrations
 
@@ -269,6 +271,7 @@ docker build -t wobot-api:local .
 | `LIST_AGENT_MODEL`, `LIST_AGENT_EFFORT` | `gpt-6-luna`, `none` | Chooses the list queries (DEC-063) |
 | `WRITE_LIST_MODEL`, `WRITE_LIST_EFFORT` | `gpt-6-luna`, `none` | Introduces the lists (DEC-063) |
 | `REC_AGENT_MODEL`, `REC_AGENT_EFFORT` | `gpt-6-luna`, `low` | Turns a need into a facet query (DEC-071) |
+| `JUDGE_MODEL`, `JUDGE_EFFORT` | `gpt-6.1-sol`, `low` | Judges saved replies in `wobot-eval judge`; never a model a node's comparison tried |
 | `CHECKPOINT_POOL_SIZE` | `2` | Connections the conversation checkpoints hold, on a psycopg pool of their own |
 | `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
 | `KNOWLEDGE_BUCKET` | none | Bucket for raw source files; unset, they go to `KNOWLEDGE_LOCAL_DIR` |
