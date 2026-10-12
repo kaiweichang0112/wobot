@@ -15,9 +15,9 @@ path's two model nodes on lists-v1, querying the records as the path does. `turn
 turns-v1's conversations through the configured graph and scores each last turn.
 `recommend` compares models for rec_agent on recommendation-v2, finding products by their
 facets as the recommendation path does. `judge` grades the replies an `answer`,
-`write-list` or `recommend` run kept, by a rubric and, on the knowledge path, by
-faithfulness, with a model none of those comparisons tried; it reads an answer run's
-version only to match the labels to records.
+`write-list` or `recommend` run kept, and the last turns of a `turns` run, by a rubric
+and, on the knowledge path, by faithfulness, with a model none of those comparisons tried;
+it reads an answer run's version only to match the labels to records.
 """
 
 import argparse
@@ -704,7 +704,10 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
     if path == "knowledge" and version_id is None:
         print(f"{args.run.name} does not say which version it searched; pass --index-version")
         return 1
-    if unknown := set(args.candidate) - {c["candidate"] for c in run["candidates"]}:
+    if path == "turns" and args.candidate:
+        print(f"{args.run.name} plays the configured graph: it has no candidates to choose")
+        return 1
+    if unknown := set(args.candidate) - {c["candidate"] for c in run.get("candidates", [])}:
         print(f"{sorted(unknown)}: not candidates of {args.run.name}")
         return 1
     # The labels as they are now: a case's expected behaviour may have changed since.
@@ -727,6 +730,9 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
             f"{args.run.name}: no words to judge; a recommend run before V8d keeps no tool "
             "results: run wobot-eval recommend again"
             if path == "recommend"
+            else f"{args.run.name}: no replies to judge; a turns run before V8d keeps no "
+            "evidence: run wobot-eval turns again"
+            if path == "turns"
             else f"{args.run.name}: no replies to judge"
         )
         return 1
@@ -743,7 +749,13 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
         "code_version": _code_version(),
         "judge": judge.label,
         "path": path,
-        "prompt_version": JUDGE_PROMPT_VERSIONS[path],
+        # A turns run's last turns go to their routes' rubrics.
+        "prompt_version": (
+            {p: JUDGE_PROMPT_VERSIONS[p] for p in sorted({i.path for i in items})}
+            if path == "turns"
+            else JUDGE_PROMPT_VERSIONS[path]
+        ),
+        **({"models": run["meta"]["models"]} if "models" in run["meta"] else {}),
         "run": args.run.name,
         "index_version": version_id,
         "dataset": f"{dataset.name} {dataset.sha256[:12]} (the run read {run['meta']['dataset']})",
@@ -751,17 +763,18 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
         "prices": "spec 07, checked 2026-10-01",
     }
     judged = [j for r in results for j in r.judged]
-    against = _against(args.labels or LABELS[path], args.run.name, judged, dataset)
+    against = _against(args.labels or LABELS.get(path), args.run.name, judged, dataset)
     report = write_judge_report(results, meta, args.out, f"{started:%Y%m%d-%H%M%S}-judge", against)
     for r in results:
         count = len(r.verdicts)
         cost = r.cost(judge_with.model)
+        on_knowledge = r.judged[0].path == "knowledge"
         knowledge = (
             f" (missed by answer {r.causes('answer')}, retrieval {r.causes('retrieval')})"
-            if path == "knowledge"
+            if on_knowledge
             else ""
         )
-        grounded = f", grounded {r.grounded}/{r.stated}" if path == "knowledge" else ""
+        grounded = f", grounded {r.grounded}/{r.stated}" if on_knowledge else ""
         print(
             f"{r.candidate}: expected {r.passes('expected')}/{count}{knowledge}, "
             f"supported {r.passes('supported')}/{count}{grounded}, "
@@ -775,6 +788,9 @@ async def _judge(args: argparse.Namespace, settings: Settings) -> int:
 
 async def _judge_sample(args: argparse.Namespace, settings: Settings) -> int:
     meta, judged = load_judged(args.report)
+    if meta.get("path") not in (None, *LABELS):
+        print(f"{meta['path']} runs are judged, not labelled: read the failures in the report")
+        return 1
     out = args.out or LABELS[meta.get("path", "knowledge")]
     if any_filled(out):
         print(f"{out} holds a person's labels; move it away to sample again")
@@ -798,7 +814,10 @@ async def _judge_sample(args: argparse.Namespace, settings: Settings) -> int:
 
 async def _judge_agreement(args: argparse.Namespace, settings: Settings) -> int:
     meta, judged = load_judged(args.report)
-    labels = args.labels or LABELS[meta.get("path", "knowledge")]
+    labels = args.labels or LABELS.get(meta.get("path", "knowledge"))
+    if labels is None:
+        print(f"{meta['path']} runs are judged, not labelled: read the failures in the report")
+        return 1
     # What each case expects now, from the dataset the judge read.
     dataset = load_dataset(meta["dataset"].split()[0])
     against = _against(labels, meta["run"], judged, dataset)
@@ -814,10 +833,10 @@ async def _judge_agreement(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _against(
-    path: Path, run_name: str, judged: Sequence[Any], dataset: Dataset
+    path: Path | None, run_name: str, judged: Sequence[Any], dataset: Dataset
 ) -> AgainstLabels | None:
     """The judge against a person's labels, when they label this run."""
-    if not path.exists():
+    if path is None or not path.exists():
         return None
     labels = read_labels(path)
     if labels.run != run_name:

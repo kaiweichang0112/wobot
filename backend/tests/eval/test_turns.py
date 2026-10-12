@@ -10,7 +10,7 @@ from tests.agent.test_graph import Broken
 from wobot.agent.graph import build_graph
 from wobot.eval.dataset import Case, load_dataset
 from wobot.eval.report import turns_markdown
-from wobot.eval.turns import TurnCase, play, play_all, turn_cases
+from wobot.eval.turns import TurnCase, _read, play, play_all, turn_cases
 
 QUERY_TIME = datetime(2026, 10, 7, 10, tzinfo=ZoneInfo("Asia/Taipei"))
 MASTERS_2022 = {"tool": "list_students", "degree": "master", "year_from": 2022, "year_to": 2022}
@@ -59,6 +59,10 @@ async def test_the_graph_answers_the_earlier_messages_and_the_last_is_scored(kno
     # The last turn read the first: the conversation was kept between them.
     [_, (seen, _)] = models.router.calls
     assert [m.text for m in seen] == ["列出 2021 年的碩士畢業生", "沒有找到。", "那 2022 年的呢？"]
+    # What write_list read, for the judge: the list found and the items it showed.
+    (found,) = played.evidence["results"].values()
+    assert found["filters"] == {"degree": "master", "year_from": 2022, "year_to": 2022}
+    assert played.evidence["shown"] == []  # the fake writer chooses no list to show
 
 
 async def test_a_last_turn_is_wrong_on_its_path_its_question_or_its_words():
@@ -75,6 +79,23 @@ async def test_a_last_turn_is_wrong_on_its_path_its_question_or_its_words():
     assert played.route == "chat" and not played.route_right
     assert played.lacking == ("455-5726",) and played.calls_right is None
     assert not played.right
+    assert played.evidence == {}  # chat reads nothing the judge grades
+
+
+def test_a_knowledge_turn_keeps_what_the_answer_read():
+    evidence = {"passages": [{"header": "h", "text": "t", "records": []}], "records": []}
+
+    assert _read("knowledge", {"evidence": evidence}, {"text": "x"}) == evidence
+
+
+def test_a_list_turn_keeps_the_lists_that_count_and_the_items_shown():
+    found = {"result_id": "q-1", "items": [{"key": "student:a"}], "uncertain": []}
+    empty = {"result_id": "q-0", "items": [], "uncertain": []}  # the agent then changed filters
+    reply = {"lists": [{"keys": ["student:a"], "uncertain_keys": []}]}
+
+    read = _read("list", {"list_results": {"q-0": empty, "q-1": found}}, reply)
+
+    assert read == {"results": {"q-1": found}, "shown": ["student:a"]}
 
 
 async def test_conversations_are_played_each_run_and_reported():

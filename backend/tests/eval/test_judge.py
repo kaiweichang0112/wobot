@@ -33,6 +33,7 @@ from wobot.eval.judge import (
     list_judge_inputs,
     list_words,
     rec_judge_inputs,
+    turn_judge_inputs,
 )
 from wobot.eval.report import judge_markdown
 from wobot.knowledge.hashing import content_hash
@@ -602,3 +603,89 @@ async def test_a_recommendation_turn_is_graded_on_its_tools_by_the_rec_rubric():
     assert list(data) == ["history", "message", "expected", "tools", "products_shown", "words"]
     assert data["tools"] == [FOUND_NONE]
     assert judged.path == "recommend" and judged.calls == 1 and judged.grounded is None
+
+
+# --- The last turns of conversations ------------------------------------------------------
+
+
+def turn(case_id, run, route, **kept):
+    return {
+        "case_id": case_id,
+        "run": run,
+        "earlier": ["2021 年共 5 位。"],
+        "route": route,
+        "question": "",
+        "text": "",
+        "right": True,
+        "error": None,
+        **kept,
+    }
+
+
+TURNS_RUN = {
+    "meta": {"dataset": "turns-v1 abc", "models": "answer gpt-6-luna:none"},
+    "plays": [
+        turn(
+            "TN-1",
+            0,
+            "knowledge",
+            question="張維益的論文題目是什麼？",
+            text="題目是《地墊》。",
+            evidence=EVIDENCE,
+            right=False,
+        ),
+        turn(
+            "TN-1",
+            1,
+            "list",
+            text="共 2 篇。\n\n1. paper 1\n2. paper 2",
+            evidence={"results": LIST_EVIDENCE, "shown": ["publication:1", "publication:2"]},
+        ),
+        turn("TN-1", 2, "chat", text="不客氣！", evidence={}),
+        turn("TN-1", 3, "knowledge", error="boom", evidence=EVIDENCE),
+        turn("TN-1", 4, "knowledge", text="old"),  # a run before V8d kept no evidence
+    ],
+}
+TURNS_DATASET = Dataset(
+    "turns-v1",
+    "",
+    "",
+    [
+        Case(
+            case_id="TN-1",
+            scenario="s",
+            split="dev",
+            user_input="那張維益的呢？",
+            expected_behavior="Give his thesis title.",
+            reference=None,
+            check={"kind": "turns"},
+            pending=None,
+            turns=["列出 2021 年的碩士畢業生"],
+        )
+    ],
+    "abc",
+)
+
+
+def test_a_last_turn_goes_to_its_routes_rubric_with_the_conversation_the_graph_kept():
+    knowledge, listed = turn_judge_inputs(TURNS_RUN, TURNS_DATASET)  # no chat, error or old
+
+    conversation = ({"user": "列出 2021 年的碩士畢業生", "answer": "2021 年共 5 位。"},)
+    assert (knowledge.path, knowledge.candidate) == ("knowledge", "knowledge")
+    assert knowledge.question == "張維益的論文題目是什麼？"  # as rewritten
+    assert knowledge.history == conversation and knowledge.checked is False
+    assert knowledge.found == found_keys(EVIDENCE)
+    assert (listed.path, listed.reply) == ("list", "共 2 篇。")
+    assert listed.evidence["shown"] == [{"result_id": "q-1", "shown": 2}]
+    assert listed.history == conversation
+
+
+async def test_the_turns_report_dashes_what_a_list_reply_has_not():
+    items = turn_judge_inputs(TURNS_RUN, TURNS_DATASET)
+    results = by_candidate(await judge_replies(FakeJudge(), items))
+
+    text = judge_markdown(results, {"judge": "gpt-6.1-sol:low", "path": "turns"})
+
+    assert "| list | 1 / 1 | – | 1 / 1 | 1 / 1 | – | – | 0 | " in text
+    assert "| knowledge | 1 / 1 | 0 / 0 | 1 / 1 | 1 / 1 | 0 / 1 | 0.50 | 1 | " in text
+    assert "chat is not judged" in text

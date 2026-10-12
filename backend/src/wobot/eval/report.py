@@ -1570,7 +1570,10 @@ def judge_markdown(
     against: AgainstLabels | None = None,
 ) -> str:
     judge_model = str(meta["judge"]).partition(":")[0]
-    knowledge = meta.get("path", "knowledge") == "knowledge"
+    path = meta.get("path", "knowledge")
+    # A turns run's last turns are knowledge and list replies: the knowledge table, with a
+    # dash where a list reply has nothing to count.
+    knowledge = path in ("knowledge", "turns")
     lines = [
         "# Judged replies",
         "",
@@ -1589,6 +1592,20 @@ def judge_markdown(
             "Grounded counts the replies all of whose statements the passages support; "
             "faithfulness is RAGAS's share of supported statements, averaged. Unlike check "
             "counts the replies where the run's check, on mentions, and expected disagree.",
+            *(
+                [
+                    "",
+                    "Here each row is a route of the last turn of a conversation, judged by "
+                    "that route's rubric with the conversation the graph kept; chat is not "
+                    "judged, and list replies are judged on the words before the lists. A "
+                    "knowledge reply is judged against the question as rewritten: whether "
+                    "the rewrite understood the follow-up is the run's own check (question "
+                    "mentions), and with no labelled items every miss is put down to the "
+                    "answer.",
+                ]
+                if path == "turns"
+                else []
+            ),
             "",
             "| Candidate | Expected | Missed by answer / retrieval | Supported | Language "
             "| Grounded | Faithfulness | Unlike check | Judge $ | Errors |",
@@ -1620,7 +1637,13 @@ def judge_markdown(
         judged = len(r.verdicts)
         cost = r.cost(judge_model)
         dollars = "?" if cost is None else f"{cost:.2f}"
-        if knowledge:
+        if knowledge and r.judged[0].path != "knowledge":
+            lines.append(
+                f"| {r.candidate} | {r.passes('expected')} / {judged} | – "
+                f"| {r.passes('supported')} / {judged} | {r.passes('language')} / {judged} "
+                f"| – | – | {len(r.unlike_check)} | {dollars} | {r.errors} |"
+            )
+        elif knowledge:
             lines.append(
                 f"| {r.candidate} | {r.passes('expected')} / {judged} "
                 f"| {r.causes('answer')} / {r.causes('retrieval')} "

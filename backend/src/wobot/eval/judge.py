@@ -18,7 +18,7 @@ import asyncio
 import json
 import statistics
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -248,7 +248,14 @@ PATHS = {
     "recommend": JudgedPath(REC_RUBRIC, rec_view, faithfulness=False),
 }
 # Which path a saved run's replies came from, by its dataset.
-RUN_PATHS = {"knowledge-v1": "knowledge", "lists-v1": "list", "recommendation-v2": "recommend"}
+# Which path a saved run's replies came from, by its dataset; a turns run's last turns
+# each go to the rubric of their route.
+RUN_PATHS = {
+    "knowledge-v1": "knowledge",
+    "lists-v1": "list",
+    "recommendation-v2": "recommend",
+    "turns-v1": "turns",
+}
 
 
 class Judge(Protocol):
@@ -518,8 +525,6 @@ def list_judge_inputs(
     items = []
     for candidate, reply in _replies(run, candidates):
         case, kept = cases[reply["case_id"]], saved[reply["case_id"]]
-        results = list(kept["results"].values())
-        shown = set(reply["shown"])
         items.append(
             JudgeInput(
                 candidate=candidate,
@@ -528,14 +533,7 @@ def list_judge_inputs(
                 message=case.user_input,
                 question=case.user_input,
                 expected=case.expected_behavior,
-                evidence={
-                    "found": [result_content(r) for r in results],
-                    "shown": [
-                        {"result_id": r["result_id"], "shown": n}
-                        for r in results
-                        if (n := sum(i["key"] in shown for i in r["items"] + r["uncertain"]))
-                    ],
-                },
+                evidence=_lists_read(kept["results"].values(), set(reply["shown"])),
                 reply=list_words(reply["text"], reply["shown"]),
                 checked=(
                     None
@@ -546,6 +544,67 @@ def list_judge_inputs(
                 history=tuple(case.history),
             )
         )
+    return items
+
+
+def _lists_read(results: Iterable[Mapping[str, Any]], shown: set[str]) -> dict[str, Any]:
+    """The lists as the writer read them, and how many items of each it showed."""
+    results = list(results)
+    return {
+        "found": [result_content(r) for r in results],
+        "shown": [
+            {"result_id": r["result_id"], "shown": n}
+            for r in results
+            if (n := sum(i["key"] in shown for i in r["items"] + r["uncertain"]))
+        ],
+    }
+
+
+def turn_judge_inputs(run: Mapping[str, Any], dataset: Dataset) -> list[JudgeInput]:
+    """The last turn of each conversation a turns run kept, on its route's rubric, with
+    the conversation as the graph had it: the user's earlier messages and its own replies.
+    Chat is not judged, nor a play that failed or a route no rubric reads."""
+    cases = {case.case_id: case for case in dataset.cases}
+    items = []
+    for play in run["plays"]:
+        route = play["route"]
+        if play.get("error") or route not in ("knowledge", "list") or "evidence" not in play:
+            continue
+        case = cases[play["case_id"]]
+        history = tuple(
+            {"user": user, "answer": answer}
+            for user, answer in zip(case.turns, play["earlier"], strict=True)
+        )
+        common: dict[str, Any] = {
+            "candidate": route,  # one configured graph: the report reads per route
+            "case_id": case.case_id,
+            "run": play["run"],
+            "message": case.user_input,
+            "expected": case.expected_behavior,
+            "checked": play["right"],
+            "path": route,
+            "history": history,
+        }
+        if route == "knowledge":
+            items.append(
+                JudgeInput(
+                    **common,
+                    question=play["question"],
+                    evidence=play["evidence"],
+                    reply=play["text"],
+                    found=found_keys(play["evidence"]),
+                )
+            )
+        else:
+            read = play["evidence"]
+            items.append(
+                JudgeInput(
+                    **common,
+                    question=case.user_input,
+                    evidence=_lists_read(read["results"].values(), set(read["shown"])),
+                    reply=list_words(play["text"], read["shown"]),
+                )
+            )
     return items
 
 
@@ -595,6 +654,8 @@ def inputs_of(
         return list_judge_inputs(run, dataset, candidates)
     if path == "recommend":
         return rec_judge_inputs(run, dataset, candidates)
+    if path == "turns":
+        return turn_judge_inputs(run, dataset)
     return judge_inputs(run, dataset, labelled or {}, candidates)
 
 

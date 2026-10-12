@@ -52,6 +52,7 @@ DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge eval/runs/<stamp>-answer.json --candidate gpt-6-luna:none
 uv run --env-file .env wobot-eval judge eval/runs/<stamp>-write-list.json --candidate gpt-6-luna:none
 uv run --env-file .env wobot-eval judge eval/runs/<stamp>-recommend.json
+uv run --env-file .env wobot-eval judge eval/runs/<stamp>-turns.json
 uv run wobot-eval judge-sample eval/runs/<stamp>-judge.json
 uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
 ```
@@ -88,6 +89,12 @@ uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
   code wrote is not judged; the run scores it. Each play keeps every tool call with what
   the agent read back, which the rubric reads, so a run made before V8d cannot be judged.
   Its labels are `gold/judge-labels-recommend.yaml`.
+- `judge` grades a `turns` run's last turns by their route's rubric, with the
+  conversation the graph kept: knowledge replies whole, list replies on their words; chat
+  is not judged. Each play keeps what its last turn's model read. A knowledge reply is
+  judged against the question as rewritten; whether the rewrite understood the follow-up
+  is the run's own check. These are not labelled: the rubrics are measured on their own
+  paths, and a person reads the turns the judge fails.
 
 ## Checks
 
