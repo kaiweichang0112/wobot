@@ -43,6 +43,13 @@ def heeded(args: FindProducts, messages: Sequence[BaseMessage]) -> FindProducts:
     return args.model_copy(update={"no_preference": []})
 
 
+def asking(evidence: Mapping[str, Any]) -> str | None:
+    """Why no find or show may follow a find that named decisive facets this turn: the
+    user's answer decides (DEC-075)."""
+    facets = (evidence.get("found") or {}).get("decisive")
+    return f"ask the user about {', '.join(facets)} first: their answer decides" if facets else None
+
+
 def shown_count(count: int | Literal["all"] | None) -> int:
     """How many products a recommendation shows: up to five unless the user named fewer."""
     if count is None or count == "all":
@@ -140,6 +147,8 @@ LABELS = {
         "seen": "以下是這次找到的產品，供你參考：",
         "item": "- {name}（{company}）",
         "more": "可以再多告訴我一些你的需求，我再幫你找找看。",
+        "ask": "符合的產品不只一項，請告訴我你對{facets}的偏好，我再幫你挑選。",
+        "and": "、",
         "none": "我目前沒辦法用資料確認適合的產品。",
         "others": "另有 {n} 項產品也符合，想看的話再跟我說。",
         "gap": "",  # between sentences
@@ -163,6 +172,9 @@ LABELS = {
         "seen": "These are the products I found, for your reference:",
         "item": "- {name} ({company})",
         "more": "Tell me a little more about what you need, and I will look again.",
+        "ask": "Several products fit; tell me what you prefer for {facets}, and I will "
+        "narrow them down.",
+        "and": " and ",
         "none": "I could not confirm a product that fits from the sources.",
         "others": "Products that also fit but are not shown: {n}. Ask me to see them.",
         "gap": " ",
@@ -247,13 +259,18 @@ def recommended_reply(
 
 
 def fallback_reply(evidence: Mapping[str, Any], chinese: bool) -> dict[str, Any]:
-    """What code says when the agent's rounds ran out with nothing shown. Products the
-    last find judged to fit are shown; those found for a need only the agent could judge
-    from their text are named, unconfirmed."""
+    """What code says when the agent's rounds ran out with nothing shown. While the last
+    find left facets to ask about, code asks about them (DEC-075). Otherwise products it
+    judged to fit are shown; those found for a need only the agent could judge from their
+    text are named, unconfirmed."""
     found = evidence.get("found")
+    label = LABELS["zh" if chinese else "en"]
+    if found and found.get("decisive"):
+        names = [FACET_LABELS[facet][0 if chinese else 1] for facet in found["decisive"]]
+        facets = label["and"].join(names if chinese else [n.lower() for n in names])
+        return {"text": label["ask"].format(facets=facets), "action": "replied", "products": []}
     if found and found["products"] and not found["reads_text"]:
         return recommended_reply(found, first_fitting(found), chinese)
-    label = LABELS["zh" if chinese else "en"]
     if not found or not found["products"]:
         text = label["none"] + label["gap"] + label["more"]
         return {"text": text, "action": "unverified", "products": []}

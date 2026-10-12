@@ -32,7 +32,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([rec_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (rec_agent.PROMPT_VERSION, fingerprint) == (10, "85f5fa48c899")
+    assert (rec_agent.PROMPT_VERSION, fingerprint) == (11, "1e18e453a858")
 
 
 def test_the_agent_finds_and_shows():
@@ -111,7 +111,7 @@ def test_the_agent_reads_the_best_fitting_products_and_what_splits_them():
     }
     assert content["decisive"] == [] and content["gaps"] == []
     assert kept["needs"] == ["離床偵測", "places=home"] and kept["count"] is None
-    assert kept["matched"] == 12
+    assert kept["matched"] == 12 and kept["decisive"] == []
     assert kept["reads_text"] is False and len(kept["products"]) == PRODUCTS_READ
     assert kept["products"][0]["fields"] == {"product_name": "P1", "company_name": "Co"}
     json.dumps(kept)  # plain values, as the checkpointer stores them

@@ -7,6 +7,7 @@ from wobot.agent.rec_agent import ShowProducts
 from wobot.agent.recommend import (
     MOST_PRODUCTS,
     VALUE_LABELS,
+    asking,
     fallback_reply,
     first_fitting,
     heeded,
@@ -195,6 +196,31 @@ def test_the_fallback_shows_what_the_last_find_judged_to_fit():
 
     assert reply["action"] == "recommend"
     assert [p["id"] for p in reply["products"]] == ["r-bbbbbbbb", "r-aaaaaaaa"]  # up to five
+
+
+def test_no_find_or_show_follows_a_find_that_left_facets_to_ask_about():
+    waiting = {"found": found(WHIZPAD, IPROTEK) | {"decisive": ["places", "viewing"]}}
+
+    assert asking(waiting) == "ask the user about places, viewing first: their answer decides"
+    assert asking({"found": found(WHIZPAD) | {"decisive": []}}) is None
+    assert asking({}) is None  # no find yet this turn
+
+
+def test_the_fallback_asks_while_the_last_find_left_facets_to_ask_about():
+    waiting = found(WHIZPAD, IPROTEK) | {"decisive": ["places", "viewing"]}
+
+    chinese = fallback_reply({"found": waiting}, chinese=True)
+    english = fallback_reply({"found": waiting}, chinese=False)
+
+    assert chinese == {
+        "text": "符合的產品不只一項，請告訴我你對使用場所、查看方式的偏好，我再幫你挑選。",
+        "action": "replied",
+        "products": [],
+    }
+    assert english["text"] == (
+        "Several products fit; tell me what you prefer for place of use and viewed on, "
+        "and I will narrow them down."
+    )
 
 
 def test_the_fallback_names_unconfirmed_what_only_the_agent_could_judge():

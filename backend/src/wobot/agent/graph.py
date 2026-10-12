@@ -47,6 +47,7 @@ from wobot.agent.rec_agent import (
     refused,
 )
 from wobot.agent.recommend import (
+    asking,
     fallback_reply,
     first_fitting,
     heeded,
@@ -383,7 +384,9 @@ def build_graph(
         reply: dict[str, Any] = {}
         for call in scratch[-1].tool_calls:
             args = read_call(call)
-            if isinstance(args, FindProducts):
+            if isinstance(args, FindProducts | ShowProducts) and (problem := asking(evidence)):
+                answer = refused(call, problem)
+            elif isinstance(args, FindProducts):
                 args = heeded(args, state["messages"])
                 earlier = (m.text for m in state["messages"] if isinstance(m, AIMessage))
                 try:

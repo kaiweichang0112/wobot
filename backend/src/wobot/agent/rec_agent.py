@@ -27,7 +27,7 @@ from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 10
+PROMPT_VERSION = 11
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -84,12 +84,14 @@ condition above already says.
 - count: the number the user asked for, left out when they named none; all when they ask \
 for every product that fits.
 - no_preference: only when the user answers your question by saying any of its choices \
-will do. 都可以 names the facets that question asked about and no other; all only when \
-they leave the whole choice to you, such as 你推薦就好 or 你決定. Leave it out otherwise: \
-a request such as 推薦三個 leaves nothing open. A question answered with a value goes in \
-must or must_not instead.
+will do. all when they leave the choice to you, such as 你推薦就好 or 你決定, even when \
+the question asked about one thing; otherwise 都可以 names the facets that question asked \
+about and no other. Leave it out when the user did not answer a question: a request such \
+as 推薦三個 leaves nothing open. A question answered with a value goes in must or \
+must_not instead, and leaves every other facet out of no_preference.
 When the user asks for more, such as 還有其他的嗎, call find_products with the same needs \
-and count: code leaves out what it showed before.
+and the count the user gave, if any: asking for more names no number, and code leaves out \
+what it showed before.
 
 Functions, with how a user may say them and the nearby ones they are not:
 {vocabulary()}
@@ -178,6 +180,7 @@ def found_evidence(found: Found, args: FindProducts) -> dict[str, Any]:
         "needs": needs_of(args),
         "count": args.count,
         "matched": len(found.fitting),
+        "decisive": [split.facet for split in found.decisive],
         "reads_text": reads_text(args),
         "products": [
             {
