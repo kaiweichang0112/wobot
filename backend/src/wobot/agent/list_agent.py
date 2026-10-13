@@ -298,6 +298,17 @@ def _refused(call: dict[str, Any], reason: str) -> ToolMessage:
     )
 
 
+def without_category_words(given: dict[str, Any]) -> dict[str, Any]:
+    """A product list's filters without a contains its category's label already holds,
+    such as 跌倒偵測 for 1-1: contains looks in names, which seldom repeat the category,
+    so it would only leave out products the category holds (V9-2)."""
+    label = PRODUCT_CATEGORIES.get(given.get("category", ""))
+    contains = given.get("contains")
+    if label and contains and contains in label:
+        return {k: v for k, v in given.items() if k != "contains"}
+    return given
+
+
 async def run_list_call(
     db: Database, version_id: int, today: date, call: dict[str, Any]
 ) -> tuple[ToolMessage, dict[str, Any] | None]:
@@ -312,6 +323,8 @@ async def run_list_call(
         problems = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in error.errors())
         return _refused(call, problems), None
     given = args.model_dump(exclude_none=True)
+    if tool is ListProducts:
+        given = without_category_words(given)
     last_years = given.get("last_years")
     window = None if last_years is None else last_years_window(today, last_years)
     query = RecordQuery(

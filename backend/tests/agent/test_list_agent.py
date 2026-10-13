@@ -18,6 +18,7 @@ from wobot.agent.list_agent import (
     result_content,
     run_list_call,
     turn_date,
+    without_category_words,
 )
 from wobot.agent.retrieval import LookupFailed
 
@@ -177,3 +178,16 @@ def answered(count: int, status: str = "success", uncertain: int | None = None) 
 )
 def test_the_agent_is_asked_again_only_when_a_round_left_something_to_fix(scratch, will_do):
     assert lists_will_do(scratch) is will_do
+
+
+@pytest.mark.parametrize(
+    ("given", "kept"),
+    [
+        ({"category": "1-1", "contains": "跌倒偵測"}, {"category": "1-1"}),  # the label's words
+        ({"category": "1-1", "contains": "WhizPad"}, {"category": "1-1", "contains": "WhizPad"}),
+        ({"contains": "跌倒偵測"}, {"contains": "跌倒偵測"}),  # no category to hold them
+        ({"category": "1-1"}, {"category": "1-1"}),
+    ],
+)
+def test_a_product_list_drops_words_its_category_already_says(given, kept):
+    assert without_category_words(given) == kept
