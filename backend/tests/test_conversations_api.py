@@ -4,60 +4,15 @@ a conversation leaves nothing of it in either store."""
 
 import asyncio
 import uuid
-from collections.abc import Iterator
 
 import pytest
 from langgraph.checkpoint.base import empty_checkpoint
 
+from tests.api import AUTH, start
 from tests.database import run_as_migrator
 from wobot.agent.checkpoints import open_checkpointer
 from wobot.api.conversations import thread_of
 from wobot.config import get_settings
-
-AUTH = {"Authorization": "Bearer test-token"}
-MEMBERS = {"uid-a": "a@example.com", "uid-b": "b@example.com"}
-
-
-@pytest.fixture
-def members() -> Iterator[dict[str, str]]:
-    async def setup() -> None:
-        for email in MEMBERS.values():
-            await run_as_migrator(
-                "INSERT INTO app.allowed_emails (email) VALUES ($1) ON CONFLICT DO NOTHING", email
-            )
-
-    async def cleanup() -> None:
-        # Deleting the accounts deletes what they own: conversations, turns, settings.
-        rows = await run_as_migrator(
-            "SELECT conversation_id FROM app.conversations WHERE owner_id = ANY($1)",
-            list(MEMBERS),
-        )
-        for row in rows:
-            await run_as_migrator(
-                "DELETE FROM app.checkpoints WHERE thread_id = $1", str(row["conversation_id"])
-            )
-        await run_as_migrator("DELETE FROM app.accounts WHERE account_id = ANY($1)", list(MEMBERS))
-        await run_as_migrator(
-            "DELETE FROM app.allowed_emails WHERE email = ANY($1)", list(MEMBERS.values())
-        )
-
-    asyncio.run(setup())
-    yield MEMBERS
-    asyncio.run(cleanup())
-
-
-@pytest.fixture
-def as_member(sign_in):
-    def _as(uid: str) -> None:
-        sign_in(uid, MEMBERS[uid])
-
-    return _as
-
-
-def start(client) -> str:
-    response = client.post("/v1/conversations", headers=AUTH)
-    assert response.status_code == 201
-    return response.json()["conversation_id"]
 
 
 async def add_turns(conversation_id: str, count: int) -> None:

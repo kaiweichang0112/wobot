@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'auth.dart';
@@ -149,9 +151,28 @@ class _HomePageState extends State<HomePage> {
               onPressed: checkAgain,
               child: const Text('Check again'),
             ),
+            // Debug builds only: lets a developer call the API from a terminal with
+            // curl. The token is valid for an hour; release builds never show it.
+            if (kDebugMode) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => _copyIdToken(user),
+                child: const Text('Copy ID token'),
+              ),
+            ],
           ],
         );
       },
+    );
+  }
+
+  Future<void> _copyIdToken(User user) async {
+    final token = await user.getIdToken();
+    if (token == null) return;
+    await Clipboard.setData(ClipboardData(text: token));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('ID token copied. It expires in an hour.')),
     );
   }
 }

@@ -177,6 +177,8 @@ automatic replication, no rotation or expiry.
 | Secret | Accessor |
 | --- | --- |
 | `openai-api-key` | `wobot-api`, `wobot-ingest` |
+| `typesafe-api-key` | `wobot-api` (Jev, the router's model) |
+| `langsmith-api-key` | `wobot-api` (traces without content, a key of its own) |
 | `elevenlabs-api-key` | none yet (voice features, phase D) |
 
 Grant on the secret itself (secret → Permissions → Grant access → Secret
@@ -192,6 +194,11 @@ for sa in wobot-api wobot-ingest; do
     --member="serviceAccount:$sa@$PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 done
+# A secret only the API reads, such as typesafe-api-key and langsmith-api-key:
+read -s KEY && printf %s "$KEY" | gcloud secrets create typesafe-api-key --data-file=- && unset KEY
+gcloud secrets add-iam-policy-binding typesafe-api-key \
+  --member="serviceAccount:wobot-api@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 `read -s` keeps the key off the screen and out of shell history; `printf %s`
@@ -202,9 +209,13 @@ Verify:
 ```sh
 gcloud secrets list
 gcloud secrets get-iam-policy openai-api-key   # only wobot-api and wobot-ingest, secretAccessor
-# Prints a verdict, never the key:
-[[ "$(gcloud secrets versions access latest --secret=openai-api-key | tail -c 1 | xxd -p)" == "0a" ]] \
-  && echo "ends with newline" || echo "OK: no trailing newline"
+gcloud secrets get-iam-policy typesafe-api-key   # only wobot-api
+gcloud secrets get-iam-policy langsmith-api-key  # only wobot-api
+# Prints a verdict per secret, never the key:
+for s in openai-api-key typesafe-api-key langsmith-api-key; do
+  [[ "$(gcloud secrets versions access latest --secret=$s | tail -c 1 | xxd -p)" == "0a" ]] \
+    && echo "$s: ends with newline" || echo "$s: OK"
+done
 ```
 
 ## 6. Cloud Storage
@@ -517,7 +528,8 @@ Container tab), then Redeploy: a new revision with the same image.
 | Ingress | All | Phones reach it over the internet |
 | Port / command | 8080 / image default | |
 | Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit |
-| Secret as variable | `OPENAI_API_KEY` from `openai-api-key`, version `1` | A pinned version changes only with a deploy, for every instance at once |
+| Secrets as variables | `OPENAI_API_KEY`, `TYPESAFE_API_KEY` and `LANGSMITH_API_KEY` from the secret of the same name in lower case, each version `1` | A pinned version changes only with a deploy, for every instance at once |
+| Tracing | `LANGSMITH_TRACING=true`, `LANGSMITH_HIDE_INPUTS=true`, `LANGSMITH_HIDE_OUTPUTS=true`, `LANGSMITH_PROJECT=wobot-api` | Traces carry structure, timings and tokens, never what was said; a project apart from local runs |
 | Service account | `wobot-api` | |
 | Cloud SQL connections | `wobot-pg` | The checkpointer's socket ("Conversations on Cloud SQL" below); the rest goes through the Python Connector |
 
@@ -531,8 +543,8 @@ Equivalent:
 gcloud run deploy wobot-api --image "$IMAGE" --region $REGION \
   --no-invoker-iam-check --ingress all --cpu-throttling --cpu-boost --min 0 --max 3 \
   --service-account wobot-api@$PROJECT_ID.iam.gserviceaccount.com \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam" \
-  --set-secrets OPENAI_API_KEY=openai-api-key:1 \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam,LANGSMITH_TRACING=true,LANGSMITH_HIDE_INPUTS=true,LANGSMITH_HIDE_OUTPUTS=true,LANGSMITH_PROJECT=wobot-api" \
+  --set-secrets OPENAI_API_KEY=openai-api-key:1,TYPESAFE_API_KEY=typesafe-api-key:1,LANGSMITH_API_KEY=langsmith-api-key:1 \
   --set-cloudsql-instances $INSTANCE_CONNECTION_NAME
 ```
 
@@ -551,7 +563,9 @@ URL=$(gcloud run services describe wobot-api --region $REGION --format="value(st
 curl -s "$URL/health"    # version is the deployed commit
 curl -si "$URL/v1/me"    # 401
 gcloud run services describe wobot-api --region $REGION
-# Scaling: Auto (Min: 0, Max: 3); the secret appears only as openai-api-key:1
+# Scaling: Auto (Min: 0, Max: 3); the secrets appear only by name and version 1
+gcloud run services describe wobot-api --region $REGION \
+  --format="yaml(spec.template.spec.containers[0].env)"   # secrets as secretKeyRef, the LANGSMITH_* values
 gcloud run services describe wobot-api --region $REGION \
   --format="value(spec.template.metadata.annotations['run.googleapis.com/cloudsql-instances'])"   # the instance
 gcloud run services get-iam-policy wobot-api --region $REGION   # no bindings

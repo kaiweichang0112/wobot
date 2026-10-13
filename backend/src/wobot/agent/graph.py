@@ -70,6 +70,12 @@ logger = logging.getLogger(__name__)
 MAX_LIST_ROUNDS = 3
 MAX_REC_ROUNDS = 3
 
+# The nodes whose model writes the reply as plain text, so its words may reach the user
+# as they come (DEC-080). The others' output is not the user's to see as it streams:
+# rewrite_query and write_list answer in JSON, rec_agent's words pass own_words() first,
+# and code renders lists and product cards whole.
+STREAMED_NODES = frozenset({"chat_reply", "answer"})
+
 
 class ChatState(TypedDict):
     # Kept across turns by the checkpointer: the conversation as text, without tool

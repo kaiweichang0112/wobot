@@ -81,14 +81,15 @@ def _response(conversation: Conversation) -> ConversationResponse:
 
 
 async def owned(
-    session: AsyncSession, principal: Principal, conversation_id: uuid.UUID
+    session: AsyncSession, principal: Principal, conversation_id: uuid.UUID, lock: bool = False
 ) -> Conversation:
-    conversation = await session.scalar(
-        select(Conversation).where(
-            Conversation.conversation_id == conversation_id,
-            Conversation.owner_id == principal.account_id,
-        )
+    """The account's conversation, or 404. With `lock`, its row is held until the
+    transaction ends, so two turns cannot be numbered at once."""
+    query = select(Conversation).where(
+        Conversation.conversation_id == conversation_id,
+        Conversation.owner_id == principal.account_id,
     )
+    conversation = await session.scalar(query.with_for_update() if lock else query)
     if conversation is None:
         raise not_found()
     return conversation
