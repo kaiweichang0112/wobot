@@ -1,19 +1,34 @@
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Annotated
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import firebase_admin
-from fastapi import Depends, FastAPI, Request
+import psycopg
+import psycopg_pool
+import sqlalchemy.exc
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
-from sqlalchemy import func
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from wobot.api.auth import Principal, current_principal
-from wobot.api.errors import ApiError, handle_api_error
+from wobot.agent.checkpoints import open_checkpointer
+from wobot.api import accounts, conversations
+from wobot.api.errors import (
+    ApiError,
+    handle_api_error,
+    handle_database_unavailable,
+    handle_invalid_request,
+)
 from wobot.config import get_settings
 from wobot.db import create_engine
-from wobot.models import Account
+
+# Raised when the database cannot be reached or a connection cannot be had in time.
+DATABASE_UNAVAILABLE = (
+    sqlalchemy.exc.OperationalError,
+    sqlalchemy.exc.InterfaceError,
+    sqlalchemy.exc.TimeoutError,
+    psycopg.OperationalError,
+    psycopg_pool.PoolTimeout,
+)
 
 
 @asynccontextmanager
@@ -24,18 +39,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except ValueError:
         # Token verification needs only the project ID, not service account keys.
         firebase_admin.initialize_app(options={"projectId": settings.google_cloud_project})
-    engine, connector = await create_engine(settings)
-    app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        yield
-    finally:
-        await engine.dispose()
+    async with AsyncExitStack() as stack:
+        engine, connector = await create_engine(settings)
+        stack.push_async_callback(engine.dispose)
         if connector is not None:
-            await connector.close_async()
+            stack.push_async_callback(connector.close_async)
+        app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+        # The graph's memory of each conversation, on its own psycopg pool: in the cloud
+        # through the service's Cloud SQL connection (DEC-078).
+        app.state.checkpointer = await stack.enter_async_context(open_checkpointer(settings))
+        yield
 
 
 app = FastAPI(title="Wobot API", lifespan=lifespan)
 app.add_exception_handler(ApiError, handle_api_error)
+app.add_exception_handler(RequestValidationError, handle_invalid_request)
+for error in DATABASE_UNAVAILABLE:
+    app.add_exception_handler(error, handle_database_unavailable)
+app.include_router(accounts.router)
+app.include_router(conversations.router)
 
 
 class HealthResponse(BaseModel):
@@ -43,28 +65,7 @@ class HealthResponse(BaseModel):
     version: str
 
 
-class MeResponse(BaseModel):
-    account_id: str
-    email: str
-
-
 @app.get("/health")
 async def health() -> HealthResponse:
     # Liveness only: no database call, so a database outage doesn't restart instances.
     return HealthResponse(status="ok", version=get_settings().app_version)
-
-
-@app.get("/v1/me")
-async def me(
-    request: Request, principal: Annotated[Principal, Depends(current_principal)]
-) -> MeResponse:
-    async with request.app.state.sessionmaker() as session, session.begin():
-        await session.execute(
-            insert(Account)
-            .values(account_id=principal.account_id, email=principal.email)
-            .on_conflict_do_update(
-                index_elements=[Account.account_id],
-                set_={"email": principal.email, "last_seen_at": func.now()},
-            )
-        )
-    return MeResponse(account_id=principal.account_id, email=principal.email)

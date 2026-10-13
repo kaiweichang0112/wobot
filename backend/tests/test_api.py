@@ -53,7 +53,11 @@ def test_me_registers_an_allowlisted_account(client, sign_in, allowlisted):
     response = client.get("/v1/me", headers=AUTH)
 
     assert response.status_code == 200
-    assert response.json() == {"account_id": "uid-member", "email": allowlisted}
+    assert response.json() == {
+        "account_id": "uid-member",
+        "email": allowlisted,
+        "settings": {"chatbot_name": "Wobot", "version": 0},  # never renamed
+    }
     # The response alone would not reveal a write that was never committed.
     rows = asyncio.run(
         run_as_migrator("SELECT email FROM app.accounts WHERE account_id = $1", "uid-member")
