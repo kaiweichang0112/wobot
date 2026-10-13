@@ -1,8 +1,9 @@
 # Wobot backend
 
 The FastAPI service, the chat graph and the database migrations, packaged as one
-container image. The API keeps each account's conversations; the chat graph runs from a terminal
-(`wobot-chat`) until the API streams its turns (phase C). Google Cloud setup is in [`infra/README.md`](../infra/README.md).
+container image. The API keeps each account's conversations and streams the chat graph's
+replies; `wobot-chat` runs the same graph from a terminal. Google Cloud setup is in
+[`infra/README.md`](../infra/README.md).
 
 ## Layout
 
@@ -73,10 +74,31 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 | `GET /v1/conversations` | The account's conversations, most recently active first, a `cursor` page at a time |
 | `GET /v1/conversations/{id}/turns` | The latest turns, oldest first, with stopped and failed ones; `cursor` reads earlier ones |
 | `DELETE /v1/conversations/{id}` | Deletes the graph's checkpoints, then the rows; safe to send again after a failure |
+| `POST /v1/conversations/{id}/turns` | Sends a message (`turn_id` made by the app, `text`); the reply streams back as server-sent events |
 
 Another account's conversation is answered `404`, as one that does not exist. A
 conversation points at the checkpoint its last completed turn left
 (`head_checkpoint_id`), and the database allows one running turn per conversation.
+
+A turn is refused before its stream opens, as an ordinary HTTP error, when the message
+is not 1–2,000 characters (`422`), the conversation is not the account's (`404`), a
+reply is already being written in it (`409 TURN_IN_PROGRESS`) or the same `turn_id` was
+sent before (`409 TURN_EXISTS`). Otherwise the events are, in order:
+
+| Event | Data, besides `turn_id` and `attempt` |
+| --- | --- |
+| `accepted` | none: the turn is saved as running |
+| `status` | `stage`: `searching` while a path looks things up, `writing` once only words are left |
+| `text_delta` | `text`: the next words, from chat and knowledge answers only |
+| `reply` | the whole reply: `text`, and `action` and `products` on the recommendation path. It replaces the deltas; the lists' record keys stay in the turn's row |
+| `completed` | none: the turn is saved and the conversation remembers it |
+| `error` | `code`, `message`, `retryable`: the turn failed and is not remembered |
+
+The graph runs inside the request, from the checkpoint the conversation points at, and
+saves one checkpoint when it ends (`durability="exit"`). A client that disconnects stops
+the turn, which keeps the words already sent. Each turn logs one `turn finished` line
+with its route, each node's seconds and the time to the first status and first word; no
+message text.
 
 ## Knowledge ingestion
 
