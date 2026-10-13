@@ -75,6 +75,8 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 | `GET /v1/conversations/{id}/turns` | The latest turns, oldest first, with stopped and failed ones; `cursor` reads earlier ones |
 | `DELETE /v1/conversations/{id}` | Deletes the graph's checkpoints, then the rows; safe to send again after a failure |
 | `POST /v1/conversations/{id}/turns` | Sends a message (`turn_id` made by the app, `text`); the reply streams back as server-sent events |
+| `POST /v1/turns/{id}/cancel` | Stops the `attempt` given; answers how the turn stands, and changes nothing sent again or too late |
+| `POST /v1/turns/{id}/retry` | Writes a stopped or failed reply again, given the `expected_attempt`; streams as a turn does |
 
 Another account's conversation is answered `404`, as one that does not exist. A
 conversation points at the checkpoint its last completed turn left
@@ -92,13 +94,32 @@ sent before (`409 TURN_EXISTS`). Otherwise the events are, in order:
 | `text_delta` | `text`: the next words, from chat and knowledge answers only |
 | `reply` | the whole reply: `text`, and `action` and `products` on the recommendation path. It replaces the deltas; the lists' record keys stay in the turn's row |
 | `completed` | none: the turn is saved and the conversation remembers it |
-| `error` | `code`, `message`, `retryable`: the turn failed and is not remembered |
+| `error` | `code` (`PROVIDER_UNAVAILABLE`, `TURN_TIMEOUT` or `INTERNAL_ERROR`), `message`, `retryable`: the turn failed and is not remembered |
 
 The graph runs inside the request, from the checkpoint the conversation points at, and
-saves one checkpoint when it ends (`durability="exit"`). A client that disconnects stops
-the turn, which keeps the words already sent. Each turn logs one `turn finished` line
-with its route, each node's seconds and the time to the first status and first word; no
-message text.
+saves one checkpoint when it ends (`durability="exit"`). Each turn logs one `turn
+finished` line with its route, each node's seconds and the time to the first status and
+first word; no message text.
+
+How a turn can end besides completing, each saved by a compare-and-swap on the turn's
+ID, attempt and status, so the first end written stands:
+
+- **Stopped.** The app closes its stream and sends `cancel`; the two may reach different
+  instances. The turn keeps the words already sent, and a reply that completes after
+  the stop is neither saved nor sent. A stream that ends without `completed` or `error`
+  was ended elsewhere: read the turn.
+- **Timed out.** A turn still running after 90 s fails with `TURN_TIMEOUT`.
+- **Lost.** A turn still running after 3 min lost its request, such as to an instance
+  that stopped; it is failed with `STREAM_INTERRUPTED` when its conversation is next
+  read or written, so the conversation never stays locked.
+- **Deleted.** A turn ending after its conversation was deleted deletes the checkpoint
+  it saved; the delete and the turn's end hold the conversation's row in turn.
+
+A retry is the conversation's last turn only, stopped or failed (`409
+TURN_NOT_RETRYABLE` otherwise), and a stale `expected_attempt` is `409
+REVISION_CONFLICT`. It runs again from the same checkpoint as the attempt before, so
+the question is in the conversation's memory once, and the turn keeps only its latest
+reply.
 
 ## Knowledge ingestion
 
