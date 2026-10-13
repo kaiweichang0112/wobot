@@ -44,6 +44,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from wobot.agent.streaming import Played, play
+from wobot.agent.title import shortened, write_title
 from wobot.api.accounts import register, settings_of
 from wobot.api.auth import Principal, current_principal
 from wobot.api.conversations import end_stale, owned, thread_of
@@ -63,6 +64,7 @@ TEXT_LIMIT = 2000  # characters; the table's CHECK holds the same
 TURN_SECONDS = 90  # a turn still running then fails, and may be tried again (DEC-079)
 CHECK_SECONDS = 1.0  # how often a running turn reads whether it was stopped
 SHOWN_LIMIT = 20_000  # characters of a stopped reply the app may send back
+TITLE_WAIT_SECONDS = 1.0  # how long a finished reply waits for its title
 
 
 class TurnRequest(BaseModel):
@@ -98,6 +100,7 @@ class Started:
     chatbot_name: str
     index_version: int
     head_checkpoint_id: str | None
+    needs_title: bool = False  # the conversation has none yet: this turn writes it
 
 
 class TurnTimedOut(Exception):
@@ -195,6 +198,7 @@ async def start_turn(
         chatbot_name=settings.chatbot_name,
         index_version=version,
         head_checkpoint_id=conversation.head_checkpoint_id,
+        needs_title=conversation.title is None,
     )
 
 
@@ -242,6 +246,7 @@ async def restart_turn(
         chatbot_name=settings.chatbot_name,
         index_version=version,
         head_checkpoint_id=conversation.head_checkpoint_id,
+        needs_title=conversation.title is None,
     )
 
 
@@ -374,11 +379,53 @@ async def still_running(state: Any, started: Started) -> bool:
     return status == "running"
 
 
+async def keep_title(state: Any, started: Started, title: str) -> bool:
+    """Keeps the conversation's title, unless it has one by now. It never raises: a turn
+    goes on without one."""
+    try:
+        async with state.sessionmaker() as session, session.begin():
+            named = await session.execute(
+                update(Conversation)
+                .where(
+                    Conversation.conversation_id == started.conversation_id,
+                    Conversation.title.is_(None),
+                )
+                .values(title=title)
+            )
+    except Exception:
+        logger.warning("the title could not be kept", exc_info=True)
+        return False
+    return named.rowcount == 1
+
+
 async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEvent]:
     """Runs a started turn and streams it, then saves how it ended."""
     begun = time.perf_counter()
     played = Played()
     ended = "failed"
+    # The title is written alongside the reply, so it costs the reply no time (D16).
+    titling = (
+        asyncio.create_task(write_title(state.title_model, started.text))
+        if started.needs_title
+        else None
+    )
+    told = False
+
+    async def titled() -> AsyncIterable[ServerSentEvent]:
+        """The `title` event, once the title is kept: told before the turn's last event."""
+        nonlocal told
+        if titling is None or told:
+            return
+        told = True
+        try:
+            title = await asyncio.wait_for(asyncio.shield(titling), TITLE_WAIT_SECONDS)
+        except TimeoutError:
+            # Slower than the reply: the question stands in, rather than keep it waiting.
+            titling.cancel()
+            title = shortened(started.text)
+        if await keep_title(state, started, title):
+            yield _event("title", started, title=title)
+
     yield _event("accepted", started)
     try:
         thread = thread_of(started.conversation_id)
@@ -451,6 +498,8 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                 "PROVIDER_UNAVAILABLE",
             ):
                 yield shown
+                async for event in titled():
+                    yield event
                 yield _event("error", started, **_error("PROVIDER_UNAVAILABLE"))
             else:
                 ended = "superseded"
@@ -465,6 +514,8 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
         ):
             ended = "completed"
             yield shown
+            async for event in titled():
+                yield event
             yield _event("completed", started)
         else:
             ended = "superseded"  # ended elsewhere meanwhile, such as stopped
@@ -484,6 +535,8 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                 route=played.route,
                 error_code="TURN_TIMEOUT",
             )
+        async for event in titled():
+            yield event
         yield _event("error", started, **_error("TURN_TIMEOUT"))
     except Exception:
         logger.exception("turn failed")
@@ -496,6 +549,8 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                 route=played.route,
                 error_code="INTERNAL_ERROR",
             )
+        async for event in titled():
+            yield event
         yield _event("error", started, **_error("INTERNAL_ERROR"))
     except BaseException:
         # The client went away, or the server is stopping: the turn is stopped, and keeps
@@ -511,6 +566,14 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             )
         raise
     finally:
+        if titling is not None and not told:
+            # A stopped turn still names its conversation: the request stays open till
+            # then, as Cloud Run gives CPU only while it is.
+            with anyio.CancelScope(shield=True):
+                [title] = await asyncio.gather(titling, return_exceptions=True)
+                if not isinstance(title, str):
+                    title = shortened(started.text)
+                await keep_title(state, started, title)
         logger.info(
             "turn finished",
             extra={

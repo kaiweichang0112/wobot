@@ -30,11 +30,11 @@ def test_a_chat_reply_streams_word_by_word_then_completes(client, as_member, cha
     events = sse_events(response.text)
     names = [name for name, _ in events]
     assert names[0] == "accepted" and names[1] == "status"
-    assert names[-2:] == ["reply", "completed"]
+    assert names[-3:] == ["reply", "title", "completed"]
     assert events[1][1]["stage"] == "writing"
     deltas = [data["text"] for name, data in events if name == "text_delta"]
     assert len(deltas) > 1  # word by word, not at once
-    assert "".join(deltas) == events[-2][1]["text"] == "你好 我是 Wobot"
+    assert "".join(deltas) == events[-3][1]["text"] == "你好 我是 Wobot"
     assert all(data["turn_id"] == str(turn_id) for _, data in events)
     assert "你好" in response.text  # sent as UTF-8, not as \u escapes
     row = turn_row(turn_id)

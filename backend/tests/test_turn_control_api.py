@@ -327,7 +327,7 @@ def test_a_reply_past_its_time_limit_fails(client, as_member, chat_graph, monkey
     events = sse_events(send(client, start(client), "嗨", turn_id).text)
 
     assert time.perf_counter() - began < 3
-    assert [name for name, _ in events] == ["accepted", "status", "error"]
+    assert [name for name, _ in events] == ["accepted", "status", "title", "error"]
     assert events[-1][1]["code"] == "TURN_TIMEOUT"
     assert events[-1][1]["retryable"] is True
     row = turn_row(turn_id)

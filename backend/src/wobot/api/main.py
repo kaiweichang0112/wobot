@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from wobot.agent.checkpoints import open_checkpointer
 from wobot.agent.graph import build_graph, models_for
+from wobot.agent.models import openai_model
 from wobot.api import accounts, conversations, turns
 from wobot.api.errors import (
     ApiError,
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # through the service's Cloud SQL connection (DEC-078).
         app.state.checkpointer = await stack.enter_async_context(open_checkpointer(settings))
         app.state.graph = None
+        app.state.title_model = None  # titles are then the question, shortened
         if settings.openai_api_key is not None:
             client = AsyncOpenAI(
                 api_key=settings.openai_api_key.get_secret_value(),
@@ -70,6 +72,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             stack.push_async_callback(client.close)
             embedder = OpenAIEmbedder(client, settings.embedding_model)
             app.state.graph = chat_graph(settings, engine, embedder, app.state.checkpointer)
+            # A title is worth a short wait at most: the question, shortened, does too.
+            app.state.title_model = openai_model(
+                settings, settings.title_model, settings.title_effort, timeout=10, max_retries=1
+            )
             await warm_up(embedder)
         yield
 
