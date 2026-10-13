@@ -1,7 +1,13 @@
 """Helpers for tests that call the API as signed-in accounts."""
 
+import asyncio
 import json
+import uuid
 from typing import Any
+
+from langchain_core.runnables import RunnableLambda
+
+from tests.database import run_as_migrator
 
 AUTH = {"Authorization": "Bearer test-token"}
 # Two allowlisted accounts, by Firebase UID: the `members` fixture adds and removes them.
@@ -26,3 +32,32 @@ def sse_events(body: str) -> list[tuple[str, dict[str, Any]]]:
         if fields:
             events.append((fields.get("event", "message"), json.loads(fields["data"])))
     return events
+
+
+def send(client, conversation: str, text: str, turn_id: uuid.UUID | None = None):
+    return client.post(
+        f"/v1/conversations/{conversation}/turns",
+        json={"turn_id": str(turn_id or uuid.uuid4()), "text": text},
+        headers=AUTH,
+    )
+
+
+def turn_row(turn_id: uuid.UUID) -> dict:
+    rows = asyncio.run(
+        run_as_migrator(
+            "SELECT t.status, t.reply_text, t.route, t.error_code, t.seq, c.head_checkpoint_id "
+            "FROM app.turns t JOIN app.conversations c USING (conversation_id) "
+            "WHERE t.turn_id = $1",
+            turn_id,
+        )
+    )
+    return dict(rows[0])
+
+
+def failing_chat() -> RunnableLambda:
+    """A chat model whose provider cannot be reached."""
+
+    def fail(_messages):
+        raise TimeoutError("the provider did not answer")
+
+    return RunnableLambda(fail)

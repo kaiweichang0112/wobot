@@ -108,6 +108,7 @@ for error in DATABASE_UNAVAILABLE:
 app.include_router(accounts.router)
 app.include_router(conversations.router)
 app.include_router(turns.router)
+app.include_router(turns.control)
 
 
 class HealthResponse(BaseModel):

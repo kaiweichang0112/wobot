@@ -7,57 +7,14 @@ import json
 import uuid
 
 import pytest
-from langchain_core.runnables import RunnableLambda
 
 from tests.agent.fakes import fake_models
-from tests.api import AUTH, sse_events, start
+from tests.api import failing_chat, send, sse_events, start, turn_row
 from tests.database import run_as_migrator
 from wobot.agent.graph import Models, build_graph
 from wobot.api.main import app
 
 pytestmark = pytest.mark.usefixtures("members", "published_version")
-
-
-@pytest.fixture
-def chat_graph(client):
-    """Gives the app a graph with the models given, as the lifespan gives it real ones."""
-
-    def _with(models: Models) -> Models:
-        state = app.state
-        state.graph = build_graph(models, state.engine, None, state.checkpointer)
-        return models
-
-    yield _with
-    app.state.graph = None
-
-
-def send(client, conversation: str, text: str, turn_id: uuid.UUID | None = None):
-    return client.post(
-        f"/v1/conversations/{conversation}/turns",
-        json={"turn_id": str(turn_id or uuid.uuid4()), "text": text},
-        headers=AUTH,
-    )
-
-
-def turn_row(turn_id: uuid.UUID) -> dict:
-    rows = asyncio.run(
-        run_as_migrator(
-            "SELECT t.status, t.reply_text, t.route, t.error_code, t.seq, c.head_checkpoint_id "
-            "FROM app.turns t JOIN app.conversations c USING (conversation_id) "
-            "WHERE t.turn_id = $1",
-            turn_id,
-        )
-    )
-    return dict(rows[0])
-
-
-def failing_chat() -> RunnableLambda:
-    """A chat model whose provider cannot be reached."""
-
-    def fail(_messages):
-        raise TimeoutError("the provider did not answer")
-
-    return RunnableLambda(fail)
 
 
 def test_a_chat_reply_streams_word_by_word_then_completes(client, as_member, chat_graph):
