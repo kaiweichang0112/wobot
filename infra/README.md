@@ -517,7 +517,7 @@ SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname IN ('ap
 | Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit |
 | Secret as variable | `OPENAI_API_KEY` from `openai-api-key`, version `1` | A pinned version changes only with a deploy, for every instance at once |
 | Service account | `wobot-api` | |
-| Cloud SQL connections | None | |
+| Cloud SQL connections | None until the API keeps conversations (Phase C), then `wobot-pg` | The checkpointer's socket; the rest goes through the Python Connector |
 
 "Allow public access" disables the invoker IAM check
 (`run.googleapis.com/invoker-iam-disabled`) instead of granting
@@ -1024,6 +1024,36 @@ gcloud run revisions list --service wobot-api --region $REGION --limit 3 \
 gcloud run jobs executions list --job wobot-migrate --region $REGION --limit 2
 # Both list wobot-deployer as the creator and runner of the newest entry.
 ```
+
+## Conversations on Cloud SQL
+
+The chat graph's checkpointer runs on psycopg, and the Cloud SQL Python Connector
+supports only asyncpg for async. It reaches Cloud SQL instead through the Cloud SQL
+connection of the service or job it runs in: Cloud Run opens a socket at
+`/cloudsql/$INSTANCE_CONNECTION_NAME`, its proxy encrypts the link, and the pool logs
+in with an IAM access token as the password, fetched again for each new connection
+(`backend/src/wobot/agent/checkpoints.py`). Cloud SQL checks the token only at login,
+so an hour's lifetime never ends an open connection. The service account needs no role
+beyond the `cloudsql.client` and `cloudsql.instanceUser` it already holds.
+
+To check it, run once as a job with the API's service account and delete the job:
+
+```sh
+IMAGE=$(gcloud run services describe wobot-api --region $REGION \
+  --format="value(spec.template.spec.containers[0].image)")
+gcloud run jobs deploy wobot-checkpoint-check --image "$IMAGE" --region $REGION \
+  --command wobot-checkpoint --args check --tasks 1 --max-retries 0 --task-timeout 5m \
+  --service-account wobot-api@$PROJECT_ID.iam.gserviceaccount.com \
+  --set-cloudsql-instances $INSTANCE_CONNECTION_NAME \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam"
+gcloud run jobs execute wobot-checkpoint-check --region $REGION --wait
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-checkpoint-check"' \
+  --freshness 1h --limit 20 --format "value(textPayload)"   # ...: ok
+gcloud run jobs delete wobot-checkpoint-check --region $REGION
+```
+
+Measured on 2026-10-13: connected in 0.04 s; a thread written, read back and deleted
+in 0.34 s.
 
 ## Connection budget
 
