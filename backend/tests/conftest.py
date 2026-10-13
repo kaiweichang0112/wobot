@@ -30,6 +30,7 @@ Settings.model_config["env_file"] = None
 for key in ("OPENAI_API_KEY", "TYPESAFE_API_KEY"):  # nor from the shell
     os.environ.pop(key, None)
 
+from wobot.agent.graph import Models, build_graph  # noqa: E402
 from wobot.api.auth import get_token_claims  # noqa: E402
 from wobot.api.main import app  # noqa: E402
 
@@ -138,3 +139,16 @@ def published_version() -> Iterator[int]:
     yield version_id
     if run_id is not None:
         asyncio.run(remove(version_id, run_id))
+
+
+@pytest.fixture
+def chat_graph(client):
+    """Gives the app a graph with the models given, as the lifespan gives it real ones."""
+
+    def _with(models: Models) -> Models:
+        state = app.state
+        state.graph = build_graph(models, state.engine, None, state.checkpointer)
+        return models
+
+    yield _with
+    app.state.graph = None
