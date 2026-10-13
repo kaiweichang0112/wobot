@@ -108,6 +108,11 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **Connections are budgeted.** `db-f1-micro` allows 25. Pool sizes and the
   API's cap of 3 instances follow the budget in `infra/README.md`; update it
   before changing either.
+- **Two roads to Cloud SQL.** asyncpg goes through the Cloud SQL Python Connector
+  (`db.py`); the checkpointer's psycopg pool goes through the Cloud SQL connection of
+  the service or job, with an IAM token per connection (`agent/checkpoints.py`), since
+  the connector has no async psycopg. Whatever keeps conversations needs
+  `--set-cloudsql-instances`, and its pool counts in the budget.
 - **Every API request is checked**: Firebase ID token, verified email,
   allowlist. Errors use the `{"error": {"code", "message"}}` envelope.
 - **Cloud resources are created in the console first**, then recorded in
