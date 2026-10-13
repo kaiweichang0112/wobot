@@ -15,9 +15,13 @@ twice.
 
 The request that runs a turn and the one that stops it may reach different instances,
 so they meet only in the database: every end is a compare-and-swap on the turn's ID,
-attempt and status, and whichever is written first stands.
+attempt and status, and whichever is written first stands. The app's closing its stream
+is no stop on Cloud Run: the front end keeps its own connection to the instance open,
+so the run never hears of it. A stop is the cancel request, which the running request
+reads back from the database while it streams.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -34,7 +38,7 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from langchain_core.messages import HumanMessage
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith.utils import tracing_is_enabled
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +61,8 @@ Owner = Annotated[Principal, Depends(current_principal)]
 
 TEXT_LIMIT = 2000  # characters; the table's CHECK holds the same
 TURN_SECONDS = 90  # a turn still running then fails, and may be tried again (DEC-079)
+CHECK_SECONDS = 1.0  # how often a running turn reads whether it was stopped
+SHOWN_LIMIT = 20_000  # characters of a stopped reply the app may send back
 
 
 class TurnRequest(BaseModel):
@@ -67,6 +73,8 @@ class TurnRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     attempt: int  # the attempt the app is showing; a later one is not stopped by it
+    # The words the app had shown: only it knows where the reader saw the reply stop.
+    shown_text: str | None = Field(default=None, max_length=SHOWN_LIMIT)
 
 
 class RetryRequest(BaseModel):
@@ -94,6 +102,10 @@ class Started:
 
 class TurnTimedOut(Exception):
     """The turn ran past TURN_SECONDS."""
+
+
+class TurnStopped(Exception):
+    """The turn was ended elsewhere while it ran: stopped, or its conversation deleted."""
 
 
 def in_progress() -> ApiError:
@@ -333,10 +345,10 @@ async def retry_turn(
 async def cancel_turn(
     turn_id: uuid.UUID, body: CancelRequest, request: Request, principal: Owner
 ) -> TurnState:
-    """Stops a reply being written (CHAT-012). The app also closes its stream, and the
-    request running the turn then saves the words already sent; this saves the stop
-    even when that request is elsewhere or does not notice. Sent again, or for an
-    attempt already ended, it changes nothing and says how the turn stands."""
+    """Stops a reply being written, keeping the words the app had shown (CHAT-012). The
+    request running the turn reads the stop within a second, stops the graph and ends
+    its stream without a reply. Sent again, or for an attempt already ended, it changes
+    nothing and says how the turn stands."""
     async with request.app.state.sessionmaker() as session, session.begin():
         await owned_turn(session, principal, turn_id)
         await session.execute(
@@ -346,10 +358,20 @@ async def cancel_turn(
                 Turn.attempt == body.attempt,
                 Turn.status == "running",
             )
-            .values(status="cancelled", finished_at=func.now())
+            .values(status="cancelled", reply_text=body.shown_text or None, finished_at=func.now())
         )
         turn = await session.get(Turn, turn_id, populate_existing=True)
     return TurnState(turn_id=turn.turn_id, attempt=turn.attempt, status=turn.status)
+
+
+async def still_running(state: Any, started: Started) -> bool:
+    async with state.sessionmaker() as session:
+        status = await session.scalar(
+            select(Turn.status).where(
+                Turn.turn_id == started.turn_id, Turn.attempt == started.attempt
+            )
+        )
+    return status == "running"
 
 
 async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEvent]:
@@ -373,19 +395,46 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             "query_time": datetime.now(UTC),
             "chatbot_name": started.chatbot_name,
         }
-        deadline = anyio.current_time() + TURN_SECONDS
-        async with aclosing(play(state.graph, turn, config, played)) as events:
+        # The graph runs in a task of its own, so this loop can wait for its next event
+        # a second at a time, to read whether the turn was stopped, without cutting into
+        # it. A timeout scope never spans a yield: it would cancel whoever iterates this.
+        events: asyncio.Queue = asyncio.Queue()
+
+        async def run_graph() -> None:
+            try:
+                async with aclosing(play(state.graph, turn, config, played)) as stream:
+                    async for event in stream:
+                        events.put_nowait(event)
+            finally:
+                events.put_nowait(None)
+
+        graph = asyncio.create_task(run_graph())
+        try:
+            deadline = time.monotonic() + TURN_SECONDS
+            checked = time.monotonic()
             while True:
-                # The time limit wraps each wait for the graph, never a yield: a cancel
-                # scope left open across a yield would cancel whoever iterates this.
-                with anyio.move_on_at(deadline) as limit:
-                    event = await anext(events, None)
-                if limit.cancelled_caught:
+                now = time.monotonic()
+                if now >= deadline:
                     raise TurnTimedOut
+                if now - checked >= CHECK_SECONDS:
+                    checked = now
+                    if not await still_running(state, started):
+                        raise TurnStopped
+                try:
+                    wait = min(CHECK_SECONDS, deadline - now)
+                    event = await asyncio.wait_for(events.get(), timeout=wait)
+                except TimeoutError:
+                    continue
                 if event is None:
+                    await graph  # raises what the graph raised
                     break
                 name, data = event
                 yield _event(name, started, **data)
+        finally:
+            if not graph.done():
+                graph.cancel()
+                with anyio.CancelScope(shield=True):
+                    await asyncio.gather(graph, return_exceptions=True)
 
         reply = {k: v for k, v in played.reply.items() if k != "retryable"}
         shown = _event("reply", started, **{k: v for k, v in reply.items() if k in SHOWN_REPLY})
@@ -419,6 +468,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             yield _event("completed", started)
         else:
             ended = "superseded"  # ended elsewhere meanwhile, such as stopped
+    except TurnStopped:
+        # The stop is saved already; the words sent are kept unless the app sent its own.
+        ended = "stopped"
+        with anyio.CancelScope(shield=True):
+            await finish(state, started, "cancelled", played.shown_text or None, route=played.route)
     except TurnTimedOut:
         ended = "timed out"
         with anyio.CancelScope(shield=True):

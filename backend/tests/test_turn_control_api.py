@@ -145,6 +145,48 @@ def test_a_client_that_disconnects_stops_the_turn(client, as_member, chat_graph)
     )
 
 
+@pytest.mark.parametrize(
+    ("app_sends", "kept"), [("第一個", "第一個"), (None, "第一個字")], ids=["app", "stream"]
+)
+def test_a_stop_the_stream_never_hears_of_still_stops_the_turn(
+    client, as_member, chat_graph, app_sends, kept
+):
+    # As on Cloud Run: the app's closing its stream does not reach the instance, so the
+    # stop is only the cancel request, which the running stream reads back.
+    as_member("uid-a")
+    stalled = PausingChat(messages=iter([AIMessage("第一個字 後面的字")]))
+    chat_graph(Models(**{**vars(fake_models()), "chat": stalled}))
+    conversation = start(client)
+    turn_id = uuid.uuid4()
+    streamed = {}
+
+    def stream() -> None:
+        streamed["response"] = send(client, conversation, "嗨", turn_id)
+
+    began = time.perf_counter()
+    runner = threading.Thread(target=stream)
+    runner.start()
+    time.sleep(0.5)  # the first word is out and the model stalls
+    stopped = client.post(
+        f"/v1/turns/{turn_id}/cancel",
+        json={"attempt": 1, "shown_text": app_sends},
+        headers=AUTH,
+    )
+    runner.join()
+
+    assert stopped.json()["status"] == "cancelled"
+    assert time.perf_counter() - began < 5  # not the model's 10 s
+    names = [name for name, _ in sse_events(streamed["response"].text)]
+    assert names[0] == "accepted" and "text_delta" in names
+    assert "reply" not in names and "completed" not in names
+    row = turn_row(turn_id)
+    assert (row["status"], row["reply_text"], row["head_checkpoint_id"]) == (
+        "cancelled",
+        kept,
+        None,
+    )
+
+
 def test_a_stop_holds_against_a_reply_that_completes_after_it(client, as_member, chat_graph):
     as_member("uid-a")
     conversation = start(client)
