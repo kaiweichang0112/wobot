@@ -502,7 +502,9 @@ SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname IN ('ap
 
 ### API service
 
-**Console:** Cloud Run → Services → Deploy container.
+**Console:** Cloud Run → Services → Deploy container. To change a setting later, open
+`wobot-api`, edit it in place on the service's tabs (Cloud SQL connections are on the
+Container tab), then Redeploy: a new revision with the same image.
 
 | Setting | Value | Why |
 | --- | --- | --- |
