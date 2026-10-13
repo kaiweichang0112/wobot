@@ -693,6 +693,27 @@ publishes a held version as it was built, and refuses once another version was
 published after it. `rollback` points back at a version published before, embedded
 with the same model. Both move the pointer by compare-and-swap, as the job does.
 
+### Measuring product facets
+
+A model reads each product's facets, and two reads of the same text differ, so every
+published version is a sample of its own. After a version is published, score what it
+keeps against the gold labels, from `backend/` as the developer. Reads only, asks no
+model:
+
+```sh
+DB_MODE=cloudsql DB_USER=<developer@gmail.com> INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME \
+  uv run wobot-eval facets --stored [--index-version <VERSION>]
+# never passing must be 0: a product a person said may never be recommended would be
+```
+
+Answers are cached by input, so later runs keep a product's facets until its catalog
+text changes; only new and edited products are read again. A version with a product
+that passes a need it must never pass is not left serving recommendations. Version 7
+had two; version 8 was published after the developer, as `wobot_migrator`, replaced
+those cached answers with the ones a local version was measured on, in one transaction.
+That deletion is the one exception to the append-only cache: the ingestion role still
+only inserts.
+
 ### Schedule
 
 Ingestion runs by itself once a month, on the first Sunday at 03:00 Taipei time.

@@ -10,6 +10,10 @@ Only dev products are read here. The model and the prompt are chosen on them, so
 held-out products still measure the choice on products it never saw; `wobot-eval run`
 scores those on what ingestion kept.
 
+`--stored` asks no model: it scores what a version's ingestion kept, dev and held-out
+products alike, and decides every product of the version against the needs. A cloud
+version is another sample of the same prompt, so it is measured on its own (DEC-073).
+
 Answers are kept in knowledge.llm_extractions as ingestion keeps them, so a model and
 prompt already run are not paid for again, and a model chosen here is not paid for again
 at ingestion. Writing there takes the ingestion role: DB_USER=wobot_ingest_user.
@@ -203,6 +207,33 @@ async def compare_models(
         )
         results.append(result)
     return results
+
+
+def stored_result(
+    label: str,
+    corpus: Corpus,
+    stored: Mapping[str, Mapping[str, Mapping[str, str]] | None],
+    products: Sequence[Product],
+    checks: Sequence[NeedCheck] = (),
+) -> ModelResult:
+    """What a version keeps of its products' facets, scored as a model's answers are: the
+    labelled products against their labels, and every product of the version against every
+    need. Each read is one sample (DEC-073), so a version is measured, not assumed. A
+    product no model read keeps no facets, and is named."""
+    result = ModelResult(label)
+    kept_by_product: dict[str, Mapping[str, Mapping[str, str]]] = {}
+    for item in corpus.of("product"):
+        name = item.fields["product_name"]
+        kept = stored.get(item.logical_key)
+        if kept is None:
+            result.failures[name] = "no model read its facets"
+        kept_by_product[name] = kept or {}
+    for product in products:
+        result.score.add(product.name, product.expected, kept_by_product.get(product.name, {}))
+    result.decisions = decide(
+        checks, kept_by_product, {product.name: product.expected for product in products}
+    )
+    return result
 
 
 async def stored_facets(

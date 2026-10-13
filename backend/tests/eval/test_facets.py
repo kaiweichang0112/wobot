@@ -13,6 +13,7 @@ from wobot.eval.facets import (
     decide,
     labelled_products,
     need_checks,
+    stored_result,
 )
 from wobot.eval.metrics import FacetScore
 from wobot.eval.report import facets_markdown, to_json, write_facets_report
@@ -165,3 +166,31 @@ def test_a_product_no_list_names_is_still_decided_against_its_labels():
         "REC-FX-04: 智慧照護解決方案 passes; on its labels, filtered"
     ]
     assert decisions.compared == 1
+
+
+def test_a_version_s_stored_facets_are_scored_and_decided_without_a_model():
+    checks = need_checks([load_dataset("recommendation-v2")])
+    [check] = [c for c in checks if c.case_id == "CASE-022"]
+    corpus = Corpus(
+        1,
+        "c",
+        {},
+        [
+            Item("product:co:tm-1", "product", FIELDS),
+            Item("product:co:ho-140", "product", {"product_name": "家用緊急救援通報系統 HO-140"}),
+            Item("product:co:old", "product", {"product_name": "Old"}),
+        ],
+    )
+    stored = {
+        "product:co:tm-1": {"functions": {"離床偵測": "離床提醒"}},
+        "product:co:ho-140": {"functions": {"離床偵測": "離床"}},  # worn left unstated
+        "product:co:old": None,  # ingested before facets
+    }
+
+    result = stored_result("stored in version 1", corpus, stored, [product()], [check])
+
+    # Every product of the version is decided, labelled or not; the labelled one is scored.
+    assert result.decisions.never_passing == ["CASE-022: 家用緊急救援通報系統 HO-140"]
+    assert result.score.products == 1 and result.score.precision() == 0.0
+    assert result.failures == {"Old": "no model read its facets"}
+    assert result.calls == 0

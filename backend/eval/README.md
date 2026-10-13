@@ -49,6 +49,7 @@ uv run --env-file .env wobot-eval write-list --model gpt-6-luna:none
 uv run --env-file .env wobot-eval recommend --model gpt-6-luna:low
 uv run --env-file .env wobot-eval turns
 DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
+uv run wobot-eval facets --stored [--index-version <version>]
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge eval/runs/<stamp>-answer.json --candidate gpt-6-luna:none
 uv run --env-file .env wobot-eval judge eval/runs/<stamp>-write-list.json --candidate gpt-6-luna:none
 uv run --env-file .env wobot-eval judge eval/runs/<stamp>-recommend.json
@@ -66,6 +67,9 @@ uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
 - `recommend` also checks each turn's `find_products` call against the case's labelled
   query, and `facets` counts product and need pairs decided unlike a person's labels:
   a value can be right while the decision it feeds is wrong.
+- `facets --stored` asks no model: it scores the facets a version's ingestion kept, dev
+  and held-out products alike, and decides every product of the version against the
+  needs. Each read is a sample (DEC-073), so a cloud version is measured on its own.
 - `judge` grades the replies an `answer` run kept, without asking for them again, with
   `JUDGE_MODEL`, a model no comparison tried. A rubric passes or fails three criteria,
   each with a reason first: the reply does what the case's expected behaviour says, every

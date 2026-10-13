@@ -355,9 +355,13 @@ def write_vision_report(
 # --- Facet model comparison -------------------------------------------------------------
 
 
-def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]) -> str:
+def facets_markdown(
+    results: Sequence[FacetModelResult],
+    meta: Mapping[str, Any],
+    title: str = "Facet models on the dev products",
+) -> str:
     lines = [
-        "# Facet models on the dev products",
+        f"# {title}",
         "",
         *(f"- {name}: {_text(value)}" for name, value in meta.items()),
         "",
@@ -421,7 +425,11 @@ def facets_markdown(results: Sequence[FacetModelResult], meta: Mapping[str, Any]
 
 
 def write_facets_report(
-    results: Sequence[FacetModelResult], meta: Mapping[str, Any], directory: Path, stem: str
+    results: Sequence[FacetModelResult],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+    title: str = "Facet models on the dev products",
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     data = {
@@ -445,7 +453,7 @@ def write_facets_report(
         json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
     )
     markdown = directory / f"{stem}.md"
-    markdown.write_text(facets_markdown(results, meta), encoding="utf-8")
+    markdown.write_text(facets_markdown(results, meta, title), encoding="utf-8")
     return markdown
 
 
