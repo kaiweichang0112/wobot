@@ -63,7 +63,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([write_list.INSTRUCTIONS, ListIntro.model_json_schema()])
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (write_list.PROMPT_VERSION, fingerprint) == (2, "6dd3c3ea301f")
+    assert (write_list.PROMPT_VERSION, fingerprint) == (3, "ec36ac37bac2")
 
 
 def test_the_writer_reads_the_message_and_each_lists_count_not_the_loop():
@@ -72,6 +72,13 @@ def test_the_writer_reads_the_message_and_each_lists_count_not_the_loop():
 
     assert shown["message"] == "列出 2021、2022 年的碩士畢業生"
     assert [(r["result_id"], r["count"]) for r in shown["lists"]] == [("q-2021", 1), ("q-2022", 2)]
+    assert shown["language"] == "Traditional Chinese"
+
+
+def test_code_tells_the_writer_the_language_of_the_message():
+    _, human = write_list_prompt("And 2022?", RESULTS)
+
+    assert json.loads(human.content)["language"] == "English"
 
 
 def test_code_writes_every_item_after_the_models_words():

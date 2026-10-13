@@ -18,16 +18,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from typing import Any
 
-from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from wobot.agent.find import CARD_FIELDS, TEXT_FIELDS, FindProducts, Found, stated
+from wobot.agent.rewrite import writes_chinese
 from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 11
+PROMPT_VERSION = 12
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -96,10 +97,9 @@ what it showed before.
 Functions, with how a user may say them and the nearby ones they are not:
 {vocabulary()}
 
-Reply in the language of the user's latest message even though the catalog is in \
-Chinese: English for English, Traditional Chinese for Chinese. Write as in a chat: short \
-plain text without Markdown, and no word of tools, searches, IDs or catalog categories. Do \
-not introduce yourself."""
+Reply in the language given below as language, even though the catalog is in Chinese. \
+Write as in a chat: short plain text without Markdown, and no word of tools, searches, IDs \
+or catalog categories. Do not introduce yourself."""
 
 
 class ShowProducts(BaseModel):
@@ -134,8 +134,15 @@ def own_words(text: str) -> str:
 
 
 def rec_agent_prompt(messages: Sequence[BaseMessage], chatbot_name: str) -> list[BaseMessage]:
-    """The rules, then the conversation's last messages; the loop's own messages follow."""
-    named = f"{INSTRUCTIONS}\n\nchatbot_name: {json.dumps(chatbot_name, ensure_ascii=False)}"
+    """The rules, then the conversation's last messages; the loop's own messages follow.
+    Code tells the language of the user's latest message: reading a Chinese catalog, the
+    model asked English questions in Chinese (V9-2)."""
+    latest = next((m.text for m in reversed(messages) if isinstance(m, HumanMessage)), "")
+    language = "Traditional Chinese" if writes_chinese(latest) else "English"
+    named = (
+        f"{INSTRUCTIONS}\n\nchatbot_name: {json.dumps(chatbot_name, ensure_ascii=False)}"
+        f"\nlanguage: {language}"
+    )
     return [SystemMessage(named), *messages[-RECENT_MESSAGES:]]
 
 
