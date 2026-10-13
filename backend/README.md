@@ -93,6 +93,7 @@ sent before (`409 TURN_EXISTS`). Otherwise the events are, in order:
 | `status` | `stage`: `searching` while a path looks things up, `writing` once only words are left |
 | `text_delta` | `text`: the next words, from chat and knowledge answers only |
 | `reply` | the whole reply: `text`, and `action` and `products` on the recommendation path. It replaces the deltas; the lists' record keys stay in the turn's row |
+| `title` | `title`: the conversation's name, on its first turn only, before the last event. Written by a model alongside the reply, or the question shortened when it cannot be |
 | `completed` | none: the turn is saved and the conversation remembers it |
 | `error` | `code` (`PROVIDER_UNAVAILABLE`, `TURN_TIMEOUT` or `INTERNAL_ERROR`), `message`, `retryable`: the turn failed and is not remembered |
 
@@ -337,6 +338,7 @@ docker build -t wobot-api:local .
 | `LIST_AGENT_MODEL`, `LIST_AGENT_EFFORT` | `gpt-6-luna`, `none` | Chooses the list queries (DEC-063) |
 | `WRITE_LIST_MODEL`, `WRITE_LIST_EFFORT` | `gpt-6-luna`, `none` | Introduces the lists (DEC-063) |
 | `REC_AGENT_MODEL`, `REC_AGENT_EFFORT` | `gpt-6-luna`, `low` | Turns a need into a facet query (DEC-071) |
+| `TITLE_MODEL`, `TITLE_EFFORT` | `gpt-6-luna`, `none` | Names a conversation from its first question (DEC-082); not a graph node, its titles are read by hand |
 | `JUDGE_MODEL`, `JUDGE_EFFORT` | `gpt-6.1-sol`, `low` | Judges saved replies in `wobot-eval judge`; never a model a node's comparison tried |
 | `CHECKPOINT_POOL_SIZE` | `2` | Connections the conversation checkpoints hold, on a psycopg pool of their own |
 | `PUBLISH_MAX_DROP` | `0.2` | A source losing more than this share of its records holds the version for `accept` |
