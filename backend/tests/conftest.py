@@ -19,6 +19,15 @@ os.environ["DB_PASSWORD"] = "wobot"
 # before TRACING, so this wins over a LANGCHAIN_TRACING_V2=true left in the shell.
 os.environ["LANGSMITH_TRACING_V2"] = "false"
 
+from wobot.config import Settings  # noqa: E402
+
+# Tests never read .env: a provider key there would let a test call a paid service,
+# which CI, without one, never could. The app then starts without a chat graph, and a
+# test that needs one builds it from fake models.
+Settings.model_config["env_file"] = None
+for key in ("OPENAI_API_KEY", "TYPESAFE_API_KEY"):  # nor from the shell
+    os.environ.pop(key, None)
+
 from wobot.api.auth import get_token_claims  # noqa: E402
 from wobot.api.main import app  # noqa: E402
 
