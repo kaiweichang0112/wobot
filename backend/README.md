@@ -1,8 +1,8 @@
 # Wobot backend
 
 The FastAPI service, the chat graph and the database migrations, packaged as one
-container image. The chat graph runs from a terminal for now (`wobot-chat`); the API
-serves it in phase C. Google Cloud setup is in [`infra/README.md`](../infra/README.md).
+container image. The API keeps each account's conversations; the chat graph runs from a terminal
+(`wobot-chat`) until the API streams its turns (phase C). Google Cloud setup is in [`infra/README.md`](../infra/README.md).
 
 ## Layout
 
@@ -11,7 +11,7 @@ serves it in phase C. Google Cloud setup is in [`infra/README.md`](../infra/READ
 | `src/wobot/config.py` | Settings from environment variables, and from `.env` locally |
 | `src/wobot/db.py` | Async engine: password login locally, Cloud SQL connector with IAM auth in the cloud |
 | `src/wobot/models.py` | SQLAlchemy models; the migrations define the schema |
-| `src/wobot/api/` | FastAPI app, Firebase ID token verification, error envelope |
+| `src/wobot/api/` | FastAPI app: Firebase ID token verification, the account and its settings, conversations, error envelope |
 | `src/wobot/knowledge/` | Knowledge ingestion: sources → records → chunks → embeddings → versions, and search |
 | `src/wobot/agent/` | The chat graph: the router, its four paths, each model node's prompt, the tools the loops call, and the conversation checkpoints |
 | `src/wobot/eval/` | `wobot-eval`: labelled datasets scored against an index version, and model comparisons for each model node |
@@ -57,6 +57,26 @@ they can never reach Cloud SQL, and leave no rows behind: API tests delete their
 knowledge tests run inside a transaction that is rolled back, so they never touch a
 version you ingested locally. No test calls OpenAI. `DB_HOST` and `DB_PORT` can point
 them at another local instance.
+
+## API
+
+Every route but `/health` takes a Firebase ID token (`Authorization: Bearer`), and the
+token's email must be verified and on the allowlist, checked on each request. Errors
+are `{"error": {"code", "message"}}`, malformed requests included (`INVALID_INPUT`); a
+database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty answer.
+
+| Route | What it does |
+| --- | --- |
+| `GET /v1/me` | Registers the account; returns it and its settings |
+| `PATCH /v1/me/settings` | Renames the assistant (1–40 characters, one line) given the `expected_version` last read; another device's change meanwhile is `409 REVISION_CONFLICT` |
+| `POST /v1/conversations` | Starts an empty conversation |
+| `GET /v1/conversations` | The account's conversations, most recently active first, a `cursor` page at a time |
+| `GET /v1/conversations/{id}/turns` | The latest turns, oldest first, with stopped and failed ones; `cursor` reads earlier ones |
+| `DELETE /v1/conversations/{id}` | Deletes the graph's checkpoints, then the rows; safe to send again after a failure |
+
+Another account's conversation is answered `404`, as one that does not exist. A
+conversation points at the checkpoint its last completed turn left
+(`head_checkpoint_id`), and the database allows one running turn per conversation.
 
 ## Knowledge ingestion
 
@@ -179,8 +199,8 @@ DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>] [--name
 
 `wobot-chat` prints each node with its seconds and what it did (paid calls). Conversations
 are kept in the local database's checkpoint tables as the API's role, and `--thread`
-takes one up again. Only `DB_MODE=local` keeps them for now: async psycopg through the
-Cloud SQL connector is still to be settled. Tracing goes to LangSmith only when run with
+takes one up again. In the cloud the checkpoints reach Cloud SQL through the service's
+Cloud SQL connection, with an IAM token per connection (`infra/README.md`). Tracing goes to LangSmith only when run with
 `--env-file .env` and `LANGSMITH_TRACING=true`; tests never send traces.
 
 ## Evaluation
