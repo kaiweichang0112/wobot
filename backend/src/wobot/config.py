@@ -26,12 +26,14 @@ class Settings(BaseSettings):
 
     # Sized against Cloud SQL's connection budget (infra/README.md).
     db_pool_size: int = 2
-    db_max_overflow: int = 2
+    db_max_overflow: int = 1
     db_pool_timeout_seconds: float = 10
     db_connect_timeout_seconds: float = 10
-    # The chat graph's checkpoints, on a psycopg pool of their own (agent/checkpoints.py).
-    # Local only until R1 settles how they reach Cloud SQL, so the budget does not count it.
-    checkpoint_pool_size: int = 2
+    # The chat graph's checkpoints, on a psycopg pool of their own (agent/checkpoints.py),
+    # counted in the same budget.
+    checkpoint_pool_size: int = 1
+    # cloudsql: where Cloud Run's Cloud SQL connection puts the instance's socket.
+    cloudsql_socket_dir: str = "/cloudsql"
 
     # Needed only by commands that call OpenAI; in the cloud it comes from Secret Manager.
     openai_api_key: SecretStr | None = None

@@ -510,7 +510,7 @@ SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname IN ('ap
 | Name / region | `wobot-api`, `asia-east1` | |
 | Authentication | Allow public access | Users hold Firebase identities, not IAM ones; the app checks the token and the allowlist |
 | Billing | Request-based | CPU only while serving, hence the connector's lazy refresh |
-| Service scaling | Auto, min 0, max 3 | Scales to zero when idle; 3 × 4 pooled connections fit the budget |
+| Service scaling | Auto, min 0, max 3 | Scales to zero when idle; 3 × (3 pooled + 1 checkpoint) connections fit the budget |
 | Startup CPU boost | On (the default) | Extra CPU while an instance starts shortens cold starts |
 | Ingress | All | Phones reach it over the internet |
 | Port / command | 8080 / image default | |
@@ -1033,18 +1033,19 @@ Wobot's roles.
 
 | Client | Connections |
 | --- | --- |
-| API: 3 instances × (pool 2 + overflow 2) | 12 |
+| API: 3 instances × (pool 2 + overflow 1) | 9 |
+| API checkpoints: 3 instances × pool 1 | 3 |
 | Migration job | 1 |
 | Developer (Cloud SQL Studio or proxy) | 2 |
-| Ingestion job (pool 2 + overflow 2, one holding the run lock) | 4 |
-| **Total** | **19 of 22** |
+| Ingestion job (pool 2 + overflow 1, one holding the run lock) | 3 |
+| **Total** | **18 of 22** |
 
 Cap the API at the [service level](https://docs.cloud.google.com/run/docs/configuring/max-instances)
 (`gcloud run services update wobot-api --max 3`), not only per revision:
 `--max-instances` limits each revision separately, so during a deploy the old
 and new revisions can both scale to it. Pools open connections lazily, so real
-usage stays well below the table. If connection-slot errors appear, lower
-`max_overflow` or move to `db-g1-small` (50 connections).
+usage stays well below the table. If connection-slot errors appear, move to
+`db-g1-small` (50 connections): the pools are already at their smallest useful size.
 
 ## Cost controls
 
