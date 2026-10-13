@@ -556,6 +556,14 @@ and the next request waits about 7 s, almost all of it before uvicorn starts.
 Warm requests take under 30 ms. `--min 1` would remove the wait at the cost of
 an instance kept running.
 
+Measured again with the chat graph (one sample, 1 vCPU, 512 MiB): the first turn
+after 20 idle minutes waited 19.5 s for `accepted`. About 16.5 s passed before
+uvicorn logged `Started server process`, which it does once the app is imported,
+so the libraries' imports dominate. The lifespan took 2.4 s, 1.8 s of it warming up
+the OpenAI connection, and the request itself 0.6 s. The service stays at min 0
+while only developers use it; the app warms it with `GET /health` when it opens or
+returns to the foreground, and min 1 is decided before the pilot, from its hours.
+
 Verify:
 
 ```sh
