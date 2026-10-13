@@ -96,7 +96,11 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   only with new numbers. Every prompt's `PROMPT_VERSION` is pinned by a test, so a
   changed prompt fails until the version moves.
 - **Code judges recommendations.** `rec_agent` only turns a need into a facet query;
-  `agent/find.py` decides which products fit, from the facets ingestion read. A need the
+  `agent/find.py` decides which products fit, from the facets ingestion read, and while
+  more fit than were asked for, names the differences to ask about first (DEC-075). Code
+  holds the agent to that, since every model skipped the questions on the prompt alone:
+  what the user left open counts only in an answer to a question, and no find or show
+  follows a find that left differences to ask (`agent/recommend.py`). A need the
   vocabulary cannot say means a new word in `knowledge/facets.py`, which changes the
   facets prompt and its version.
 - **Vectors go through the SQLAlchemy `Vector` type.** Do not register the
