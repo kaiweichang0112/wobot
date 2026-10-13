@@ -6,18 +6,19 @@ Scores come from RAGAS, a dev dependency: this runs from a checkout, not in the 
 
 `vision` and `facets` are the exceptions: they ask models to read the dev pictures, or
 the dev products' catalog text, and keep the answers where ingestion does, so they run as
-the ingestion role. `route` and `chat` compare
-models for the chat graph's nodes on the route dataset; they call the models alone and
-read no database. `rewrite` compares models for rewrite_query by what the retrieve node
-then finds, so it reads the index as `run` does; `answer` compares models for the answer on
-what the knowledge path finds. `list-agent` and `write-list` compare models for the list
-path's two model nodes on lists-v1, querying the records as the path does. `turns` plays
-turns-v1's conversations through the configured graph and scores each last turn.
-`recommend` compares models for rec_agent on recommendation-v2, finding products by their
-facets as the recommendation path does. `judge` grades the replies an `answer`,
-`write-list` or `recommend` run kept, and the last turns of a `turns` run, by a rubric
-and, on the knowledge path, by faithfulness, with a model none of those comparisons tried;
-it reads an answer run's version only to match the labels to records.
+the ingestion role; `facets --stored` asks none and only reads what a version kept.
+`route` and `chat` compare models for the chat graph's nodes on the route dataset; they
+call the models alone and read no database. `rewrite` compares models for rewrite_query
+by what the retrieve node then finds, so it reads the index as `run` does; `answer`
+compares models for the answer on what the knowledge path finds. `list-agent` and
+`write-list` compare models for the list path's two model nodes on lists-v1, querying the
+records as the path does. `turns` plays turns-v1's conversations through the configured
+graph and scores each last turn. `recommend` compares models for rec_agent on
+recommendation-v2, finding products by their facets as the recommendation path does.
+`judge` grades the replies an `answer`, `write-list` or `recommend` run kept, and the
+last turns of a `turns` run, by a rubric and, on the knowledge path, by faithfulness,
+with a model none of those comparisons tried; it reads an answer run's version only to
+match the labels to records.
 """
 
 import argparse
@@ -54,7 +55,14 @@ from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
 from wobot.eval.corpus import Corpus, active_version, load_corpus
 from wobot.eval.dataset import Dataset, dataset_names, load_dataset
-from wobot.eval.facets import Decisions, decide, labelled_products, need_checks
+from wobot.eval.facets import (
+    Decisions,
+    decide,
+    labelled_products,
+    need_checks,
+    stored_facets,
+    stored_result,
+)
 from wobot.eval.facets import compare_models as compare_facet_models
 from wobot.eval.judge import PROMPT_VERSIONS as JUDGE_PROMPT_VERSIONS
 from wobot.eval.judge import (
@@ -178,10 +186,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     vision.set_defaults(handler=_vision)
 
     facets = commands.add_parser(
-        "facets", help="compare models reading the dev products' facets (paid calls)"
+        "facets",
+        help="compare models reading the dev products' facets (paid calls), "
+        "or score the facets a version keeps",
     )
-    facets.add_argument(
-        "--model", action="append", required=True, help="a model to compare; repeat for more"
+    reading = facets.add_mutually_exclusive_group(required=True)
+    reading.add_argument("--model", action="append", help="a model to compare; repeat for more")
+    reading.add_argument(
+        "--stored",
+        action="store_true",
+        help="ask no model: score the facets the version keeps, dev and held-out products",
     )
     facets.add_argument(
         "--index-version", type=int, help="read the products of this version, not the active one"
@@ -460,6 +474,8 @@ async def _vision(args: argparse.Namespace, settings: Settings) -> int:
 
 
 async def _facets(args: argparse.Namespace, settings: Settings) -> int:
+    if args.stored:
+        return await _stored_facets(args, settings)
     if settings.openai_api_key is None:
         print("OPENAI_API_KEY is not set")
         return 1
@@ -507,6 +523,53 @@ async def _facets(args: argparse.Namespace, settings: Settings) -> int:
             f"{len(r.dropped)} dropped, {len(r.failures)} without an answer, "
             f"{r.calls} new calls"
         )
+    print(f"report: {path}")
+    return 0
+
+
+async def _stored_facets(args: argparse.Namespace, settings: Settings) -> int:
+    """What a version's ingestion kept, scored without a model: reads only, so any role."""
+    started = datetime.now().astimezone()
+    engine, connector = await create_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            version_id = args.index_version or await active_version(conn)
+            if version_id is None:
+                print("no active version; pass --index-version")
+                return 1
+            corpus = await load_corpus(conn, version_id)
+            keys = [item.logical_key for item in corpus.of("product")]
+            stored = await stored_facets(conn, version_id, keys)
+    finally:
+        await engine.dispose()
+        if connector is not None:
+            await connector.close_async()
+    datasets = [load_dataset(name) for name in dataset_names()]
+    products = [
+        p for split in ("dev", "heldout") for p in labelled_products(datasets, corpus, split)
+    ]
+    checks = need_checks(datasets)
+    label = f"stored in version {version_id}"
+    result = stored_result(label, corpus, stored, products, checks)
+    meta = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+        "index_version": version_id,
+        "facets": "as ingestion kept them; no model asked",
+        "products_in_version": len(keys),
+        "labelled_products": len(products),
+        "needs": len(checks),
+    }
+    stem = f"{started:%Y%m%d-%H%M%S}-facets-stored"
+    title = f"Facets kept by version {version_id}"
+    path = write_facets_report([result], meta, args.out, stem, title)
+    s = result.score
+    print(
+        f"{label}: {_decided(result.decisions)}, "
+        f"{len(result.decisions.unlike_labels)} of {result.decisions.compared} unlike labels; "
+        f"P {s.precision():.3f} R {s.recall():.3f} F1 {s.f1():.3f}, "
+        f"{len(result.failures)} products without facets"
+    )
     print(f"report: {path}")
     return 0
 

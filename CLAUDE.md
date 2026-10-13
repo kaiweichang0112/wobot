@@ -24,6 +24,7 @@ uv run wobot-eval check-gold [--index-version <version>] [--show <case IDs>]
 uv run wobot-eval run [--dataset seed-v1] [--index-version <version>]
 DB_USER=wobot_ingest_user uv run wobot-eval vision --model <model> --model <model>
 DB_USER=wobot_ingest_user uv run wobot-eval facets --model <model> --model <model>
+uv run wobot-eval facets --stored [--index-version <version>]
 DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>]
 uv run --env-file .env wobot-eval route|chat|rewrite|answer|list-agent|write-list|recommend --model <model:effort> [--model ...]
 uv run --env-file .env wobot-eval turns
