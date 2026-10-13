@@ -3,7 +3,7 @@
 `wobot-eval` scores an index version against labelled datasets with RAGAS metrics that
 need no model, computed on item identities, so no judge runs and every number repeats.
 Model comparisons for the chat graph's nodes play their datasets with the candidate
-models (paid calls). Judge metrics come in V8.
+models (paid calls). A judge model then grades the replies a run kept (`judge`, below).
 
 | Path | Holds |
 | --- | --- |

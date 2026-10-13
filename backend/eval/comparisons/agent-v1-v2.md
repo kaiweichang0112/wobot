@@ -75,7 +75,10 @@ asked of a guard over the model's output are plain code with tests.
 
 ## Limits
 
-- One index version and dev cases only. Held-out cases wait for V9.
+- One index version, and the comparison on dev cases only. V9 ran v2 alone once on each
+  held-out split with its chosen models: route 12 of 12, recommendation 3 of 3 under
+  the rules that came after this comparison, and two failures dev had not covered,
+  fixed through new dev cases (reply language, a category narrowed by its own words).
 - Answer quality is not compared between v1 and v2, since the reply formats differ. V8
   judged v2's own replies with gpt-6.1-sol, on what each model wrote, against a person's
   labels (DEC-074): the knowledge answer met the expected behaviour in 51 of 54 replies,
@@ -83,3 +86,6 @@ asked of a guard over the model's output are plain code with tests.
   the list path's words in 47 of 48; the recommendation agent's own words in 16 of 16;
   the last turns of turns-v1 in 18 of 18. Chat is not judged.
 - recommendation-v2 is labelled by v2's rules, which the misses above separate out.
+  On 2026-10-12 recommendations changed to ask about differences before recommending
+  (DEC-075), so the 13.7 of 14 above scores the rules of 2026-10-11; v1 was not played
+  again under the new ones.
