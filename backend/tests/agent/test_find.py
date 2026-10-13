@@ -102,7 +102,7 @@ def test_products_shown_earlier_are_left_out_and_counted():
     assert found.recommended_before == 1  # C does not fit
 
 
-def test_a_facet_the_user_left_open_that_splits_the_fitting_products_is_decisive():
+def test_while_more_fit_than_asked_for_the_facets_that_split_them_are_decisive():
     catalog = [
         bed_exit("A", places={"home": "居家"}, power={"mains": "插電"}),
         bed_exit("B", places={"home": "居家"}, power={"mains": "插電"}),
@@ -115,11 +115,18 @@ def test_a_facet_the_user_left_open_that_splits_the_fitting_products_is_decisive
 
     # power is stated alike by all that state it, and viewing by one product alone.
     assert found.decisive == [Split("places", {"home": 3, "institution": 2}, 1)]
-    # Once the user said how many, or any condition, code asks nothing.
-    assert find(catalog, BED_EXIT, 1, {}).decisive == []
-    assert find(catalog, BED_EXIT, "all", {}).decisive == []
+    # A number or a condition still asks, of what the user has not settled (DEC-075).
+    assert find(catalog, BED_EXIT, 1, {}).decisive == found.decisive
     unworn = FacetQuery(("離床偵測",), must_not={"form": ("worn",)})
-    assert find(catalog, unworn, None, {}).decisive == []
+    assert find(catalog, unworn, None, {}).decisive == found.decisive
+    home = FacetQuery(("離床偵測",), must={"places": ("home",)})
+    assert find(catalog, home, None, {}).decisive == []  # settled: nothing else splits
+    # Nothing is asked once the user wants all, leaves the choice to us, asks for as many
+    # as fit, or said any place will do.
+    assert find(catalog, BED_EXIT, "all", {}).decisive == []
+    assert find(catalog, BED_EXIT, None, {}, no_preference="all").decisive == []
+    assert find(catalog, BED_EXIT, 5, {}).decisive == []
+    assert find(catalog, BED_EXIT, None, {}, no_preference=["places"]).decisive == []
     assert find(catalog[:1], BED_EXIT, None, {}).decisive == []  # one fits: nothing to ask
 
 

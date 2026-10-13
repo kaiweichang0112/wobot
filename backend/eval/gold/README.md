@@ -200,9 +200,8 @@ count, is in the lists found.
 `judge-labels-recommend.yaml` holds the verdicts on the words the recommendation agent
 wrote itself, from a `wobot-eval recommend` run: a question, why no product fits, or the
 sentence before the products it chose. Each entry gives the products shown as cards
-(`products_shown`) and, where `supported` is asked, every tool the agent called with what
-it returned (`tools`), since each turn found its own. `expected` passes when the words,
-with the products shown, do what the case expects, though they need not name the
-products; `supported` when every fact they state about the products or the catalog is in
+(`products_shown`) and every tool the agent called with what it returned (`tools`), since
+each turn found its own. `expected` passes when the words, with the tools called and the
+products shown, do what the case expects, though they need not name the products; `supported` when every fact they state about the products or the catalog is in
 what the tools returned or in the conversation. A question and the choices it offers are
 not facts.

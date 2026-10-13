@@ -125,7 +125,7 @@ def test_on_the_labels_every_recommendation_need_is_decided_as_a_person_decided(
 
     decisions = decide(checks, labels)
 
-    assert len(checks) == 16  # every case but the one asking and the one routed to chat
+    assert len(checks) == 19  # every case but the one asking and the one routed to chat
     assert (decisions.never_passing, decisions.fits_filtered) == ([], [])
 
 

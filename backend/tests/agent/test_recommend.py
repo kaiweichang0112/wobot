@@ -1,4 +1,5 @@
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
 from tests.agent.test_find import bed_exit
 from wobot.agent.find import FindProducts, find
@@ -6,8 +7,10 @@ from wobot.agent.rec_agent import ShowProducts
 from wobot.agent.recommend import (
     MOST_PRODUCTS,
     VALUE_LABELS,
+    asking,
     fallback_reply,
     first_fitting,
+    heeded,
     need_label,
     picked,
     recommended_before,
@@ -45,17 +48,24 @@ IPROTEK = found_product(
 )
 
 
-def found(*products: dict, count=None, reads_text=False) -> dict:
-    return {"needs": NEEDS, "count": count, "reads_text": reads_text, "products": list(products)}
+def found(*products: dict, count=None, reads_text=False, matched=None) -> dict:
+    return {
+        "needs": NEEDS,
+        "count": count,
+        "matched": len(products) if matched is None else matched,
+        "reads_text": reads_text,
+        "products": list(products),
+    }
 
 
 # --- Which products ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("count", "shown"), [(None, 1), (1, 1), (3, 3), (9, MOST_PRODUCTS), ("all", MOST_PRODUCTS)]
+    ("count", "shown"),
+    [(None, MOST_PRODUCTS), (1, 1), (3, 3), (9, MOST_PRODUCTS), ("all", MOST_PRODUCTS)],
 )
-def test_one_product_is_shown_unless_the_user_named_more(count, shown):
+def test_up_to_five_are_shown_unless_the_user_named_fewer(count, shown):
     assert shown_count(count) == shown
 
 
@@ -69,27 +79,60 @@ def test_code_shows_at_once_what_fits_when_nothing_is_left_to_ask():
         query = FindProducts(**args)
         return shows_at_once(find(catalog, query.query, query.count, {}), query)
 
-    assert at_once(functions=["離床偵測"], count=1)
+    assert at_once(functions=["離床偵測"], must={"places": ["home"]})
+    assert at_once(functions=["離床偵測"], count="all")
     assert not at_once(functions=["離床偵測"])  # where it is used splits them: ask
+    assert not at_once(functions=["離床偵測"], count=1)  # a number still asks (DEC-075)
     assert not at_once(functions=["離床偵測"], count=1, other=["夜間靜音"])  # the agent reads
     assert not at_once(functions=["翻身監測"], count=1)  # none fits: the agent explains
 
 
+def test_what_the_user_left_open_counts_only_in_an_answer_to_a_question():
+    args = FindProducts(functions=["離床偵測"], no_preference="all")
+    asked = [HumanMessage("想找離床偵測的產品"), AIMessage("在家裡用嗎？"), HumanMessage("都可以")]
+    shown = [
+        HumanMessage("想找離床偵測的產品"),
+        AIMessage("推薦：WhizPad（世大智科）"),
+        HumanMessage("都可以"),
+    ]
+
+    assert heeded(args, asked).no_preference == "all"
+    assert heeded(args, shown).no_preference == []  # the last message recommended
+    assert heeded(args, [HumanMessage("推薦三個，都可以")]).no_preference == []  # no question
+    assert heeded(FindProducts(functions=["離床偵測"]), asked).no_preference == []
+
+
 def test_a_find_shows_its_best_ranked_as_many_as_asked_for():
-    assert first_fitting(found(WHIZPAD, IPROTEK)) == ["r-bbbbbbbb"]
-    assert first_fitting(found(WHIZPAD, IPROTEK, count="all")) == ["r-bbbbbbbb", "r-aaaaaaaa"]
+    assert first_fitting(found(WHIZPAD, IPROTEK, count=1)) == ["r-bbbbbbbb"]
+    assert first_fitting(found(WHIZPAD, IPROTEK)) == ["r-bbbbbbbb", "r-aaaaaaaa"]
 
 
 def test_the_agent_shows_only_what_the_find_found_in_code_s_order():
     show = ShowProducts(products=["r-aaaaaaaa", "r-bbbbbbbb"], intro="這兩項都很安靜。")
 
     assert picked(show, found(WHIZPAD, IPROTEK, count=2)) == (["r-bbbbbbbb", "r-aaaaaaaa"], None)
-    assert picked(show, found(WHIZPAD, IPROTEK)) == (["r-bbbbbbbb"], None)  # one asked for
+    assert picked(show, found(WHIZPAD, IPROTEK, count=1)) == (["r-bbbbbbbb"], None)
     assert picked(ShowProducts(products=["r-cccccccc"], intro=""), found(WHIZPAD)) == (
         [],
         "r-cccccccc not among the products find_products found",
     )
     assert picked(show, None)[1] == "call find_products first: this turn found no product"
+
+
+def test_a_recommendation_says_how_many_more_fit_than_it_shows():
+    shown = ["r-bbbbbbbb"]
+
+    reply = recommended_reply(found(WHIZPAD, IPROTEK, count=1, matched=7), shown, True)
+    english = recommended_reply(found(WHIZPAD, matched=3), shown, False)
+    judged = recommended_reply(found(WHIZPAD, IPROTEK, matched=7), shown, True, fitting=2)
+    every = recommended_reply(found(WHIZPAD), shown, True)
+
+    assert reply["text"].endswith("\n\n另有 6 項產品也符合，想看的話再跟我說。")
+    assert english["text"].endswith(
+        "\n\nProducts that also fit but are not shown: 2. Ask me to see them."
+    )
+    assert judged["text"].endswith("另有 1 項產品也符合，想看的話再跟我說。")  # the agent's
+    assert "另有" not in every["text"]
 
 
 # --- Cards ------------------------------------------------------------------------------
@@ -152,7 +195,32 @@ def test_the_fallback_shows_what_the_last_find_judged_to_fit():
     reply = fallback_reply({"found": found(WHIZPAD, IPROTEK)}, chinese=True)
 
     assert reply["action"] == "recommend"
-    assert [p["id"] for p in reply["products"]] == ["r-bbbbbbbb"]
+    assert [p["id"] for p in reply["products"]] == ["r-bbbbbbbb", "r-aaaaaaaa"]  # up to five
+
+
+def test_no_find_or_show_follows_a_find_that_left_facets_to_ask_about():
+    waiting = {"found": found(WHIZPAD, IPROTEK) | {"decisive": ["places", "viewing"]}}
+
+    assert asking(waiting) == "ask the user about places, viewing first: their answer decides"
+    assert asking({"found": found(WHIZPAD) | {"decisive": []}}) is None
+    assert asking({}) is None  # no find yet this turn
+
+
+def test_the_fallback_asks_while_the_last_find_left_facets_to_ask_about():
+    waiting = found(WHIZPAD, IPROTEK) | {"decisive": ["places", "viewing"]}
+
+    chinese = fallback_reply({"found": waiting}, chinese=True)
+    english = fallback_reply({"found": waiting}, chinese=False)
+
+    assert chinese == {
+        "text": "符合的產品不只一項，請告訴我你對使用場所、查看方式的偏好，我再幫你挑選。",
+        "action": "replied",
+        "products": [],
+    }
+    assert english["text"] == (
+        "Several products fit; tell me what you prefer for place of use and viewed on, "
+        "and I will narrow them down."
+    )
 
 
 def test_the_fallback_names_unconfirmed_what_only_the_agent_could_judge():

@@ -1,9 +1,10 @@
 """What code shows of a recommendation (DEC-065, DEC-069): which products, and their cards.
 
 find_products judges and ranks every product (`find.py`); a model never does. When the
-user has said enough, code shows the first that fit at once, as many as the user asked
-for. When the agent read products' text for a need the vocabulary has no word for, it
-names those that meet it, and code shows them in its own order. Code writes each card
+user has said enough, code shows the first that fit at once, up to five unless the user
+asked for fewer, and how many more fit. When the agent read products' text for a need
+the vocabulary has no word for, it names those that meet it, and code shows them in its
+own order. Code writes each card
 from the record: every need with the catalog's own words for it, or that the catalog
 does not state it, and how to reach the maker, so none of it is the model's. A product
 recommended earlier in the conversation is never found again, so never shown twice.
@@ -13,11 +14,13 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
+from langchain_core.messages import AIMessage, BaseMessage
+
 from wobot.agent.find import FindProducts, Found
 from wobot.agent.rec_agent import ShowProducts, reads_text
 from wobot.knowledge.facets import ENGLISH_NAMES
 
-# A recommendation names one product unless the user asks for more; "all" stops here too.
+# A recommendation shows up to five, or as many as the user asked for; "all" stops here too.
 MOST_PRODUCTS = 5
 
 
@@ -30,11 +33,28 @@ def recommended_before(replies: Iterable[str]) -> set[str]:
     return {match["zh"] or match["en"] for reply in replies for match in CARD_NAME.finditer(reply)}
 
 
+def heeded(args: FindProducts, messages: Sequence[BaseMessage]) -> FindProducts:
+    """The find as code runs it: what the user left open counts only when their message
+    answers a question, the assistant's last message being no recommendation (DEC-075)."""
+    earlier = [m for m in messages[:-1] if isinstance(m, AIMessage)]
+    answering = bool(earlier) and not CARD_NAME.search(earlier[-1].text)
+    if answering or not args.no_preference:
+        return args
+    return args.model_copy(update={"no_preference": []})
+
+
+def asking(evidence: Mapping[str, Any]) -> str | None:
+    """Why no find or show may follow a find that named decisive facets this turn: the
+    user's answer decides (DEC-075)."""
+    facets = (evidence.get("found") or {}).get("decisive")
+    return f"ask the user about {', '.join(facets)} first: their answer decides" if facets else None
+
+
 def shown_count(count: int | Literal["all"] | None) -> int:
-    """How many products a recommendation shows: one unless the user named more."""
-    if count is None:
-        return 1
-    return MOST_PRODUCTS if count == "all" else min(count, MOST_PRODUCTS)
+    """How many products a recommendation shows: up to five unless the user named fewer."""
+    if count is None or count == "all":
+        return MOST_PRODUCTS
+    return min(count, MOST_PRODUCTS)
 
 
 def shows_at_once(found: Found, args: FindProducts) -> bool:
@@ -127,7 +147,10 @@ LABELS = {
         "seen": "以下是這次找到的產品，供你參考：",
         "item": "- {name}（{company}）",
         "more": "可以再多告訴我一些你的需求，我再幫你找找看。",
+        "ask": "符合的產品不只一項，請告訴我你對{facets}的偏好，我再幫你挑選。",
+        "and": "、",
         "none": "我目前沒辦法用資料確認適合的產品。",
+        "others": "另有 {n} 項產品也符合，想看的話再跟我說。",
         "gap": "",  # between sentences
     },
     "en": {
@@ -149,7 +172,11 @@ LABELS = {
         "seen": "These are the products I found, for your reference:",
         "item": "- {name} ({company})",
         "more": "Tell me a little more about what you need, and I will look again.",
+        "ask": "Several products fit; tell me what you prefer for {facets}, and I will "
+        "narrow them down.",
+        "and": " and ",
         "none": "I could not confirm a product that fits from the sources.",
+        "others": "Products that also fit but are not shown: {n}. Ask me to see them.",
         "gap": " ",
     },
 }
@@ -197,16 +224,24 @@ def card(product: Mapping[str, Any], needs: Sequence[str], chinese: bool) -> str
 
 
 def recommended_reply(
-    found: Mapping[str, Any], shown: Sequence[str], chinese: bool, intro: str = ""
+    found: Mapping[str, Any],
+    shown: Sequence[str],
+    chinese: bool,
+    intro: str = "",
+    fitting: int | None = None,
 ) -> dict[str, Any]:
-    """The reply showing the products, by ID, in order: an intro, then a card each."""
+    """The reply showing the products, by ID, in order: an intro, a card each and, when
+    more fit than are shown, how many (DEC-075). `fitting` is how many fit: the find's
+    count unless the agent judged them from their text."""
     label = LABELS["zh" if chinese else "en"]
     by_id = {p["id"]: p for p in found["products"]}
     products = [by_id[handle] for handle in shown]
     opening = intro.strip() or label["one" if len(products) == 1 else "many"]
     cards = [card(product, found["needs"], chinese) for product in products]
+    others = (found["matched"] if fitting is None else fitting) - len(products)
+    tail = [label["others"].format(n=others)] if others > 0 else []
     return {
-        "text": "\n\n".join([opening, *cards]),
+        "text": "\n\n".join([opening, *cards, *tail]),
         "action": "recommend",
         "products": [
             {
@@ -224,13 +259,18 @@ def recommended_reply(
 
 
 def fallback_reply(evidence: Mapping[str, Any], chinese: bool) -> dict[str, Any]:
-    """What code says when the agent's rounds ran out with nothing shown. Products the
-    last find judged to fit are shown; those found for a need only the agent could judge
-    from their text are named, unconfirmed."""
+    """What code says when the agent's rounds ran out with nothing shown. While the last
+    find left facets to ask about, code asks about them (DEC-075). Otherwise products it
+    judged to fit are shown; those found for a need only the agent could judge from their
+    text are named, unconfirmed."""
     found = evidence.get("found")
+    label = LABELS["zh" if chinese else "en"]
+    if found and found.get("decisive"):
+        names = [FACET_LABELS[facet][0 if chinese else 1] for facet in found["decisive"]]
+        facets = label["and"].join(names if chinese else [n.lower() for n in names])
+        return {"text": label["ask"].format(facets=facets), "action": "replied", "products": []}
     if found and found["products"] and not found["reads_text"]:
         return recommended_reply(found, first_fitting(found), chinese)
-    label = LABELS["zh" if chinese else "en"]
     if not found or not found["products"]:
         text = label["none"] + label["gap"] + label["more"]
         return {"text": text, "action": "unverified", "products": []}

@@ -13,7 +13,7 @@ models (paid calls). Judge metrics come in V8.
 | `datasets/route-v1.yaml` | Messages and every acceptable path: 24 dev / 12 held out |
 | `datasets/knowledge-v1.yaml` | Questions for the knowledge path, with the items that answer them and what the reply must hold: 18 / 4 |
 | `datasets/lists-v1.yaml` | Requests for lists, with the calls accepted and the items shown: 17 / 4 |
-| `datasets/recommendation-v2.yaml` | Needs, with the products that fit, those never to show and the facet query that finds them: 15 / 3 |
+| `datasets/recommendation-v2.yaml` | Needs, with the products that fit, those never to show and the facet query that finds them: 18 / 3 |
 | `datasets/turns-v1.yaml` | Conversations whose last turn is scored: 8 / 2 |
 | `gold/` | Labels a person wrote from the sources; see `gold/README.md` |
 | `comparisons/` | Write-ups that compare versions, such as [v1 against v2](comparisons/agent-v1-v2.md) |

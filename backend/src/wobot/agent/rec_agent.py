@@ -27,7 +27,7 @@ from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 8
+PROMPT_VERSION = 11
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -49,9 +49,10 @@ two short questions.
 - You know what it must do: call find_products with every need the user has stated in \
 this conversation, leaving out any they dropped or changed. Code judges each product \
 from its catalog and shows those that fit.
-- find_products answers with decisive: the fitting products differ in something the user \
-has not said. Ask about the first one in one short question, naming its values in plain \
-words, such as at home or in a care home.
+- find_products answers with decisive: the fitting products differ in what the user has \
+not said. Ask about every facet it names, in one or two short questions, naming the values \
+in plain words, such as at home or in a care home. That question is your reply: never \
+answer it yourself with another find_products, and never pick a product yourself.
 - It answers that nothing fits: say plainly which need no product meets, from gaps, and \
 what the user could change, such as a need without which some products fit.
 - It answers with products and their text, because you gave other needs: call \
@@ -81,9 +82,16 @@ camera.
 - other: a need none of these can say, in the user's words; never one a function or \
 condition above already says.
 - count: the number the user asked for, left out when they named none; all when they ask \
-for every product that fits, or answer that any of the choices will do (都可以).
-When the user asks for more, such as 還有其他的嗎, call find_products with the same needs: \
-code leaves out what it showed before.
+for every product that fits.
+- no_preference: only when the user answers your question by saying any of its choices \
+will do. all when they leave the choice to you, such as 你推薦就好 or 你決定, even when \
+the question asked about one thing; otherwise 都可以 names the facets that question asked \
+about and no other. Leave it out when the user did not answer a question: a request such \
+as 推薦三個 leaves nothing open. A question answered with a value goes in must or \
+must_not instead, and leaves every other facet out of no_preference.
+When the user asks for more, such as 還有其他的嗎, call find_products with the same needs \
+and the count the user gave, if any: asking for more names no number, and code leaves out \
+what it showed before.
 
 Functions, with how a user may say them and the nearby ones they are not:
 {vocabulary()}
@@ -171,6 +179,8 @@ def found_evidence(found: Found, args: FindProducts) -> dict[str, Any]:
     return {
         "needs": needs_of(args),
         "count": args.count,
+        "matched": len(found.fitting),
+        "decisive": [split.facet for split in found.decisive],
         "reads_text": reads_text(args),
         "products": [
             {

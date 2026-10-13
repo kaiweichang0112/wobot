@@ -4,9 +4,9 @@ The agent turns what the user said into a query in the facet vocabulary; code do
 rest. A product fits when its catalog states every function and contradicts no
 condition, judged by `knowledge.facets.judge`, the rules `wobot-eval facets` measures.
 Those that fit are ranked: 世大智科's first, then those whose catalog states more of the
-conditions, then the closest in meaning. When the user has named only what the product
-must do, and more than one fits, code names the facets that split them, for the agent to
-ask about; when none fits, how many each need leaves.
+conditions, then the closest in meaning. While more fit than the user asked for, code
+names the facets the user has not settled that split them, for the agent to ask about
+(DEC-075); when none fits, how many each need leaves.
 
 A version never changes, so its products and facets are read once and kept.
 """
@@ -169,6 +169,11 @@ class FindProducts(BaseModel):
         default=None,
         description="how many products the user asked for; left out when they named none",
     )
+    no_preference: list[Literal[DECISIVE_FACETS]] | Literal["all"] = Field(  # type: ignore[valid-type]
+        default_factory=list,
+        description="facets the user said any value will do for; all when they leave the "
+        "whole choice to you",
+    )
 
     @model_validator(mode="after")
     def _names_a_need_once(self) -> "FindProducts":
@@ -251,13 +256,15 @@ def find(
     count: int | Literal["all"] | None,
     similarity: Mapping[str, float],
     shown: Collection[str] = (),
+    no_preference: Collection[str] | Literal["all"] = (),
 ) -> Found:
     """The products that fit the query, ranked. No database: pytest runs it on the gold
     facets. `similarity` is by handle; `shown` names products recommended earlier.
 
-    Decisive facets are named only when the user has said neither a condition nor how
-    many they want: then the products may differ in what the user cares about. Once the
-    user has said either, a question would only delay what they asked for."""
+    While more products fit than the user asked for, code names the facets that split
+    them, whatever condition or number the user gave (DEC-075): an answer may leave out
+    what the user would not want. It asks nothing once the user asked for all, left the
+    whole choice to us, or settled every facet that splits them."""
     shown_keys = {key_text(name) for name in shown}
     fresh: list[CatalogProduct] = []
     before = 0
@@ -274,19 +281,33 @@ def find(
         ),
         key=Ranked.order,
     )
-    open_need = count is None and not query.must and not query.must_not
     return Found(
         fitting,
-        decisive(fitting, query) if open_need and len(fitting) > 1 else [],
+        decisive(fitting, query, no_preference) if asks(fitting, count, no_preference) else [],
         [] if fitting else gaps(fresh, query),
         before,
     )
 
 
-def decisive(fitting: Sequence[Ranked], query: FacetQuery) -> list[Split]:
-    """The facets the user has not settled where some fitting products state a value that
-    others, stating the facet, do not: an answer would leave some out. Evenest first."""
-    asked = set(query.must) | set(query.must_not)
+def asks(
+    fitting: Sequence[Ranked],
+    count: int | Literal["all"] | None,
+    no_preference: Collection[str] | Literal["all"],
+) -> bool:
+    """Whether more products fit than the user asked for, with the choice not left to us:
+    only then could an answer leave some out."""
+    if count == "all" or no_preference == "all":
+        return False
+    return len(fitting) > (1 if count is None else count)
+
+
+def decisive(
+    fitting: Sequence[Ranked], query: FacetQuery, no_preference: Collection[str] = ()
+) -> list[Split]:
+    """The facets the user has neither settled nor left open where some fitting products
+    state a value that others, stating the facet, do not: an answer would leave some out.
+    Evenest first."""
+    asked = set(query.must) | set(query.must_not) | set(no_preference)
     ranked: list[tuple[int, Split]] = []
     for facet in DECISIVE_FACETS:
         if facet in asked:
@@ -390,4 +411,4 @@ async def find_products(
 ) -> Found:
     catalog = await catalogs.get(version_id)
     similarity = await similarities(db, embedder, version_id, args.text, len(catalog))
-    return find(catalog, args.query, args.count, similarity, shown)
+    return find(catalog, args.query, args.count, similarity, shown, args.no_preference)
