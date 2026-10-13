@@ -13,7 +13,8 @@
 #
 # Questions were drafted with AI, partly from seed-v1, fixtures-v1 and route-v1; the
 # gold files are a person's, from those datasets. The expected calls were proposed by AI
-# and confirmed by a person on 2026-10-07.
+# and confirmed by a person on 2026-10-07. LS-018 to LS-021 were drafted with AI and
+# confirmed by a person on 2026-10-13.
 dataset: lists-v1
 query_time: "2026-10-07T10:00:00+08:00"
 timezone: Asia/Taipei
@@ -199,6 +200,48 @@ cases:
       calls:
         - - {tool: list_publications, category: Journal papers, year_from: 2012, year_to: 2012}
           - {tool: list_publications, category: Conference papers, year_from: 2012, year_to: 2012}
+
+  # --- English, and a category's own words (V9-2)
+  # Added on 2026-10-13 after the held-out split showed write_list writing Chinese words
+  # before lists asked for in English, and list_agent narrowing a category by words its
+  # label already holds. Each mirrors a dev case above, so its list is known not to be
+  # empty.
+  - case_id: LS-018
+    scenario: english  # LS-007
+    split: dev
+    user_input: List GRC's research projects of 2024 with their funders.
+    expected_behavior: List every 2024 project, in English.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_projects, year_from: 2024, year_to: 2024}]
+  - case_id: LS-019
+    scenario: english  # LS-001
+    split: dev
+    user_input: List Yeh-Liang Hsu's talks of 2024.
+    expected_behavior: List every talk of 2024, in English.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_lectures, year_from: 2024, year_to: 2024}]
+  - case_id: LS-020
+    scenario: category_words  # LS-006
+    split: dev
+    user_input: 目錄裡有哪些離床預警的產品？
+    expected_behavior: List every product of category 1-3.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_products, category: "1-3"}]
+  - case_id: LS-021
+    scenario: category_words
+    split: dev
+    user_input: 目錄裡有哪些緊急求助的產品？
+    expected_behavior: List every product of category 1-2.
+    check:
+      kind: list_path
+      calls:
+        - [{tool: list_products, category: "1-2"}]
 
   # --- Held out
   - case_id: LS-101

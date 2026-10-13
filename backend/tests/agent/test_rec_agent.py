@@ -32,7 +32,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([rec_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (rec_agent.PROMPT_VERSION, fingerprint) == (11, "1e18e453a858")
+    assert (rec_agent.PROMPT_VERSION, fingerprint) == (12, "1725c3138007")
 
 
 def test_the_agent_finds_and_shows():
@@ -55,8 +55,11 @@ def test_the_agent_reads_its_name_and_the_last_messages():
     messages = [HumanMessage(f"第 {n} 句") for n in range(RECENT_MESSAGES + 2)]
 
     system, *shown = rec_agent_prompt(messages, "小沃")
+    english, *_ = rec_agent_prompt([*messages, HumanMessage("Any for falls?")], "小沃")
 
-    assert isinstance(system, SystemMessage) and system.text.endswith('chatbot_name: "小沃"')
+    assert isinstance(system, SystemMessage)
+    assert system.text.endswith('chatbot_name: "小沃"\nlanguage: Traditional Chinese')
+    assert english.text.endswith("language: English")  # code tells the language
     assert shown == messages[-RECENT_MESSAGES:]
 
 

@@ -33,7 +33,7 @@ def test_the_cases_are_turns_v1s_with_their_earlier_messages():
     cases = turn_cases([load_dataset("turns-v1")], ["dev"])
     by_id = {c.case.case_id: c for c in cases}
 
-    assert len(cases) == 8 and "TN-101" not in by_id
+    assert len(cases) == 9 and "TN-101" not in by_id
     assert by_id["TN-003"].case.turns == ["請列出 2013 年的碩士畢業生", "張凱維的論文題目是什麼"]
     assert by_id["TN-003"].routes == ("knowledge", "list")
     assert by_id["TN-002"].question_mentions == ("Agicare",) and by_id["TN-002"].accepted is None

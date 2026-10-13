@@ -13,6 +13,7 @@
 # session; the first and second items named are those the list path shows first in
 # index version 788. The checks were proposed by AI and confirmed by a person on
 # 2026-10-07.
+# TN-009 was drafted with AI and confirmed by a person on 2026-10-13.
 dataset: turns-v1
 query_time: "2026-10-07T10:00:00+08:00"
 timezone: Asia/Taipei
@@ -109,6 +110,21 @@ cases:
       kind: turns
       route: [knowledge]
       mentions: ["455-5726"]
+
+  # Added on 2026-10-13 (V9-2): an English follow-up on a list, after the held-out TN-101
+  # was answered in Chinese.
+  - case_id: TN-009
+    scenario: list_then_year_english
+    split: dev
+    turns:
+      - List GRC's master graduates of 2021.
+    user_input: And 2022?
+    expected_behavior: List the 2022 master graduates, in English.
+    check:
+      kind: turns
+      route: [list]
+      calls:
+        - [{tool: list_students, degree: master, year_from: 2022, year_to: 2022}]
 
   # --- Held out
   - case_id: TN-101
