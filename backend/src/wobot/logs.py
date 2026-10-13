@@ -20,12 +20,23 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(entry, ensure_ascii=False, default=str)
 
 
+class TextFormatter(logging.Formatter):
+    """A terminal line: level and message, then the extra fields as key=value."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = f"{record.levelname} {record.getMessage()}"
+        extra = {key: value for key, value in vars(record).items() if key not in _STANDARD}
+        if extra:
+            line += " " + " ".join(f"{key}={value}" for key, value in extra.items())
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
+
+
 def configure_logging() -> None:
     on_cloud_run = "CLOUD_RUN_JOB" in os.environ or "K_SERVICE" in os.environ
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        JsonFormatter() if on_cloud_run else logging.Formatter("%(levelname)s %(message)s")
-    )
+    handler.setFormatter(JsonFormatter() if on_cloud_run else TextFormatter())
     # Libraries stay at WARNING: at INFO the HTTP client logs every request.
     logging.basicConfig(level=logging.WARNING, handlers=[handler], force=True)
     logging.getLogger("wobot").setLevel(logging.INFO)

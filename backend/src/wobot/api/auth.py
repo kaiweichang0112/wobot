@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Annotated, Any
 
@@ -8,6 +9,8 @@ from starlette.concurrency import run_in_threadpool
 
 from wobot.api.errors import ApiError
 from wobot.models import AllowedEmail
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,9 @@ async def get_token_claims(
         # Blocking: may fetch Google's public signing keys.
         return await run_in_threadpool(firebase_auth.verify_id_token, token)
     except (ValueError, firebase_auth.InvalidIdTokenError) as exc:
+        # Why, never the token: an expired, malformed or foreign token reads the same to
+        # the client.
+        logger.info("token rejected", extra={"reason": type(exc).__name__})
         raise ApiError(401, "UNAUTHENTICATED", "Sign in again to continue.") from exc
     except firebase_auth.CertificateFetchError as exc:
         raise ApiError(503, "PROVIDER_UNAVAILABLE", "Sign-in is unavailable. Try again.") from exc
