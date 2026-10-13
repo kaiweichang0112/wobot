@@ -1,14 +1,13 @@
 # Judge labels: a person's verdicts on the words the recommendation agent wrote itself: a
 # question, why no product fits, or the sentence before the products it chose. Read the
-# conversation, the message, what the case expects, the words (reply) and the products
-# shown as cards (products_shown); for supported, also each tool the agent called and what
-# it returned (tools). Code chooses the products and writes their cards, and
-# recommendation-v2 scores them. Write pass or fail. A blank is not a label, and the
-# judge's own verdicts are not shown.
+# conversation, the message, what the case expects, the words (reply), the products shown
+# as cards (products_shown) and each tool the agent called with what it returned (tools).
+# Code chooses the products and writes their cards, and recommendation-v2 scores them.
+# Write pass or fail. A blank is not a label, and the judge's own verdicts are not shown.
 #
-#   expected   the words, with the products shown, do what expected says: judge the
-#              meaning, not the wording or the order; the cards count, so the words need
-#              not name the products
+#   expected   the words, with the tools called and the products shown, do what expected
+#              says: judge the meaning, not the wording or the order; the cards count, so
+#              the words need not name the products
 #   supported  every fact the words state about the products or the catalog, such as what
 #              was found, how many, or which need none meets, is in what the tools returned
 #              or in the conversation; a question, the choices it offers, advice and a
