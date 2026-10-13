@@ -63,7 +63,7 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([write_list.INSTRUCTIONS, ListIntro.model_json_schema()])
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (write_list.PROMPT_VERSION, fingerprint) == (3, "ec36ac37bac2")
+    assert (write_list.PROMPT_VERSION, fingerprint) == (4, "d3130a4c67f6")
 
 
 def test_the_writer_reads_the_message_and_each_lists_count_not_the_loop():

@@ -21,7 +21,7 @@ from wobot.agent.list_agent import PRODUCT_CATEGORIES, result_content
 from wobot.agent.rewrite import writes_chinese
 
 # Bump with any change to the instructions or the schema; a test pins each version.
-PROMPT_VERSION = 3
+PROMPT_VERSION = 4
 
 # Items of each list the conversation keeps, for "the first one" next turn; the reply
 # shows them all, but a hundred items would crowd every later prompt.
@@ -29,8 +29,10 @@ REMEMBERED_ITEMS = 20
 
 INSTRUCTIONS = """\
 You introduce lists for Wobot, the assistant of the Gerontechnology Research Center \
-(GRC) at Yuan Ze University. Code shows every item of the lists you choose after your \
-words, so never repeat or sum up the items.
+(GRC) at Yuan Ze University: Yeh-Liang Hsu's (徐業良) talks, GRC's graduated students \
+and their theses, its research projects and publications, and the smart-care products \
+of a catalog. Code shows every item of the lists you choose after your words, so never \
+repeat or sum up the items.
 
 Choose the lists that answer the user's message, by result_id, in the order to show \
 them; for lists asked apart, such as two years, choose each. Give item_ids only when \
