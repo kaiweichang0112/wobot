@@ -517,7 +517,7 @@ SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname IN ('ap
 | Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit |
 | Secret as variable | `OPENAI_API_KEY` from `openai-api-key`, version `1` | A pinned version changes only with a deploy, for every instance at once |
 | Service account | `wobot-api` | |
-| Cloud SQL connections | None until the API keeps conversations (Phase C), then `wobot-pg` | The checkpointer's socket; the rest goes through the Python Connector |
+| Cloud SQL connections | `wobot-pg` | The checkpointer's socket ("Conversations on Cloud SQL" below); the rest goes through the Python Connector |
 
 "Allow public access" disables the invoker IAM check
 (`run.googleapis.com/invoker-iam-disabled`) instead of granting
@@ -530,7 +530,8 @@ gcloud run deploy wobot-api --image "$IMAGE" --region $REGION \
   --no-invoker-iam-check --ingress all --cpu-throttling --cpu-boost --min 0 --max 3 \
   --service-account wobot-api@$PROJECT_ID.iam.gserviceaccount.com \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam" \
-  --set-secrets OPENAI_API_KEY=openai-api-key:1
+  --set-secrets OPENAI_API_KEY=openai-api-key:1 \
+  --set-cloudsql-instances $INSTANCE_CONNECTION_NAME
 ```
 
 `--cpu-throttling` is request-based billing. `--min` and `--max` apply to the
@@ -549,6 +550,8 @@ curl -s "$URL/health"    # version is the deployed commit
 curl -si "$URL/v1/me"    # 401
 gcloud run services describe wobot-api --region $REGION
 # Scaling: Auto (Min: 0, Max: 3); the secret appears only as openai-api-key:1
+gcloud run services describe wobot-api --region $REGION \
+  --format="value(spec.template.metadata.annotations['run.googleapis.com/cloudsql-instances'])"   # the instance
 gcloud run services get-iam-policy wobot-api --region $REGION   # no bindings
 ```
 
@@ -830,7 +833,7 @@ firebase apps:list --project $PROJECT_ID   # Wobot iOS, IOS
 ```
 
 The client config is generated into gitignored files, as described in
-[`app/README.md`](../app/README.md). Android is registered before phase C, with
+[`app/README.md`](../app/README.md). Android is registered before the pilot, with
 the SHA-1 of its signing key.
 
 ### Access and keys
