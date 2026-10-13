@@ -10,7 +10,14 @@ from langgraph.checkpoint.postgres import base
 from tests.agent.fakes import calls, fake_models
 from tests.agent.test_graph import turn
 from tests.database import API_USER, MIGRATOR_USER, connect, rolled_back
-from wobot.agent.checkpoints import LIBRARY_MIGRATIONS, open_checkpointer
+from wobot.agent.checkpoint_cli import check
+from wobot.agent.checkpoints import (
+    CONNECTION,
+    LIBRARY_MIGRATIONS,
+    IamPassword,
+    connection_args,
+    open_checkpointer,
+)
 from wobot.agent.graph import build_graph
 from wobot.config import get_settings
 
@@ -161,9 +168,49 @@ async def test_a_stored_turn_reads_back_as_safe_types_alone(knowledge, caplog):
     assert [r for r in caplog.records if r.name.startswith("langgraph")] == []
 
 
-async def test_conversations_wait_for_cloud_sql_support():
-    settings = get_settings().model_copy(update={"db_mode": "cloudsql"})
+def test_locally_the_pool_logs_in_with_the_compose_password():
+    settings = get_settings()
 
-    with pytest.raises(RuntimeError, match="db_mode=local"):
-        async with open_checkpointer(settings):
-            pass
+    conninfo, kwargs = connection_args(settings)
+
+    assert f"host={settings.db_host}" in conninfo and "password=" in conninfo
+    assert kwargs == CONNECTION
+
+
+async def test_on_cloud_run_each_new_connection_logs_in_with_a_fresh_iam_token():
+    settings = get_settings().model_copy(
+        update={"db_mode": "cloudsql", "instance_connection_name": "p:r:i"}
+    )
+    tokens = iter(["token-1", "token-2"])
+
+    async def password() -> str:
+        return next(tokens)
+
+    conninfo, kwargs = connection_args(settings, password)
+
+    assert "host=/cloudsql/p:r:i" in conninfo and "password" not in conninfo
+    assert await kwargs() == CONNECTION | {"password": "token-1"}
+    assert (await kwargs())["password"] == "token-2"  # asked again for each connection
+
+
+class FakeCredentials:
+    def __init__(self, valid: bool) -> None:
+        self.valid, self.token, self.refreshed = valid, "old", 0
+
+    def refresh(self, request) -> None:
+        self.valid, self.token, self.refreshed = True, "new", self.refreshed + 1
+
+
+@pytest.mark.parametrize(("valid", "token", "refreshed"), [(False, "new", 1), (True, "old", 0)])
+async def test_the_iam_token_is_refreshed_only_once_it_has_expired(valid, token, refreshed):
+    credentials = FakeCredentials(valid)
+
+    assert await IamPassword(credentials)() == token
+    assert credentials.refreshed == refreshed
+
+
+async def test_the_check_writes_reads_back_and_deletes_a_thread(capsys):
+    assert await check(get_settings()) == 0
+
+    printed = capsys.readouterr().out
+    assert printed.startswith("local as ") and printed.rstrip().endswith(": ok")
