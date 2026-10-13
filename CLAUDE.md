@@ -116,6 +116,12 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   `--set-cloudsql-instances`, and its pool counts in the budget.
 - **Every API request is checked**: Firebase ID token, verified email,
   allowlist. Errors use the `{"error": {"code", "message"}}` envelope.
+- **A turn runs inside its request, and a stop is a request of its own.** Cloud Run's
+  front end does not pass a client's disconnect on to the instance, so closing the stream
+  stops nothing there: the app sends `cancel`, and the running turn reads it back from
+  the database every second (`api/turns.py`). Every end of a turn is a compare-and-swap
+  on its ID, attempt and status, and one running turn per conversation is a partial
+  unique index, never a lock in Python: instances share nothing else.
 - **Cloud resources are created in the console first**, then recorded in
   `infra/README.md` with the equivalent `gcloud` command and a read-only check.
   There is no Terraform.

@@ -75,7 +75,7 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 | `GET /v1/conversations/{id}/turns` | The latest turns, oldest first, with stopped and failed ones; `cursor` reads earlier ones |
 | `DELETE /v1/conversations/{id}` | Deletes the graph's checkpoints, then the rows; safe to send again after a failure |
 | `POST /v1/conversations/{id}/turns` | Sends a message (`turn_id` made by the app, `text`); the reply streams back as server-sent events |
-| `POST /v1/turns/{id}/cancel` | Stops the `attempt` given; answers how the turn stands, and changes nothing sent again or too late |
+| `POST /v1/turns/{id}/cancel` | Stops the `attempt` given, keeping the `shown_text` the app had shown; answers how the turn stands, and changes nothing sent again or too late |
 | `POST /v1/turns/{id}/retry` | Writes a stopped or failed reply again, given the `expected_attempt`; streams as a turn does |
 
 Another account's conversation is answered `404`, as one that does not exist. A
@@ -104,10 +104,13 @@ first word; no message text.
 How a turn can end besides completing, each saved by a compare-and-swap on the turn's
 ID, attempt and status, so the first end written stands:
 
-- **Stopped.** The app closes its stream and sends `cancel`; the two may reach different
-  instances. The turn keeps the words already sent, and a reply that completes after
-  the stop is neither saved nor sent. A stream that ends without `completed` or `error`
-  was ended elsewhere: read the turn.
+- **Stopped.** The app sends `cancel` with the words it had shown, and closes its
+  stream. On Cloud Run the closing never reaches the instance, so the stop is the
+  `cancel`: the running turn reads it from the database every second, stops the graph
+  and ends its stream without a reply. A reply that completes after the stop is neither
+  saved nor sent. A stream that ends without `completed` or `error` was ended
+  elsewhere: read the turn. Run locally, a closed stream stops the turn at once too,
+  and it keeps the words it sent.
 - **Timed out.** A turn still running after 90 s fails with `TURN_TIMEOUT`.
 - **Lost.** A turn still running after 3 min lost its request, such as to an instance
   that stopped; it is failed with `STREAM_INTERRUPTED` when its conversation is next
