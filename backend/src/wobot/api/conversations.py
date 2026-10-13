@@ -8,12 +8,12 @@ another account's conversation is answered as one that does not exist.
 import base64
 import binascii
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import delete, select, tuple_
+from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from wobot.api.accounts import register
@@ -25,6 +25,9 @@ router = APIRouter(prefix="/v1/conversations")
 
 Owner = Annotated[Principal, Depends(current_principal)]
 PageSize = Annotated[int, Query(ge=1, le=100)]
+
+# A turn runs at most 90 s (DEC-079); one still running at 3 min lost its request.
+STALE_AFTER = timedelta(minutes=3)
 
 
 def thread_of(conversation_id: uuid.UUID) -> str:
@@ -95,6 +98,21 @@ async def owned(
     return conversation
 
 
+async def end_stale(session: AsyncSession, conversation_id: uuid.UUID) -> None:
+    """Fails a turn still running long after its time limit: its request is gone, such as
+    with an instance that stopped, and nothing else would ever end it. Done whenever the
+    conversation is read or written, so it never stays locked (spec 06)."""
+    await session.execute(
+        update(Turn)
+        .where(
+            Turn.conversation_id == conversation_id,
+            Turn.status == "running",
+            Turn.started_at < func.now() - STALE_AFTER,
+        )
+        .values(status="failed", error_code="STREAM_INTERRUPTED", finished_at=func.now())
+    )
+
+
 # A cursor is opaque to clients: the last conversation's activity time and ID, so a page
 # never repeats or skips one when two share a time.
 def _encode(updated_at: datetime, conversation_id: uuid.UUID) -> str:
@@ -159,8 +177,9 @@ async def list_turns(
         if not cursor.isdigit():
             raise invalid_cursor()
         query = query.where(Turn.seq < int(cursor))
-    async with request.app.state.sessionmaker() as session:
+    async with request.app.state.sessionmaker() as session, session.begin():
         await owned(session, principal, conversation_id)
+        await end_stale(session, conversation_id)
         rows = list(await session.scalars(query.order_by(Turn.seq.desc()).limit(limit + 1)))
     page, more = rows[:limit][::-1], len(rows) > limit
     return TurnPage(
@@ -178,11 +197,14 @@ async def delete_conversation(
     The two stores share no transaction, so the order makes any failure safe to retry:
     the checkpoints go first, while the row still says they exist. Were the row deleted
     first and the checkpoints then failed, nothing would point at them any more.
+
+    The row is held throughout, as a turn holds it to end: a turn still running ends
+    either before, and its checkpoint is deleted here, or after, and finds the
+    conversation gone and deletes its checkpoint itself.
     """
-    async with request.app.state.sessionmaker() as session:
-        await owned(session, principal, conversation_id)
-    await request.app.state.checkpointer.adelete_thread(thread_of(conversation_id))
     async with request.app.state.sessionmaker() as session, session.begin():
+        await owned(session, principal, conversation_id, lock=True)
+        await request.app.state.checkpointer.adelete_thread(thread_of(conversation_id))
         await session.execute(
             delete(Conversation).where(
                 Conversation.conversation_id == conversation_id,
