@@ -147,6 +147,11 @@ A version that fails says why in `error_code`: `VOICE_REJECTED` (ElevenLabs refu
 sample), `PROVIDER_UNAVAILABLE`, `SAMPLE_MISSING`, `WORKER_LOST` or `INTERNAL_ERROR`.
 The sample is deleted once cloned; the bucket's lifecycle removes any other within a day.
 
+Measured on the first cloud run (2026-10-14, a 61 s sample): the job's execution started
+4 s after `POST`, and the version was `ready` 25 s after it, nearly all of it the job's
+cold start; removing the voice took 11 s from `DELETE`. ElevenLabs cloned it at no credit
+cost; a preview costs its characters.
+
 Without `ASSETS_JOB`, as locally, the API does the work in its own process, as its own
 role, and media go to `.data/media/`. The job's command can also be run by hand:
 
