@@ -9,7 +9,7 @@ import uuid
 import pytest
 
 from tests.agent.fakes import fake_models
-from tests.api import failing_chat, send, sse_events, start, turn_row
+from tests.api import AUTH, failing_chat, send, sse_events, start, turn_row
 from tests.database import run_as_migrator
 from wobot.agent.graph import Models, build_graph
 from wobot.api.main import app
@@ -44,6 +44,8 @@ def test_a_chat_reply_streams_word_by_word_then_completes(client, as_member, cha
         "chat",
     )
     assert row["head_checkpoint_id"] is not None
+    turns = client.get(f"/v1/conversations/{conversation}/turns", headers=AUTH).json()
+    assert turns["turns"][0]["route"] == "chat"
 
 
 def test_the_next_turn_remembers_only_completed_turns(client, as_member, chat_graph):

@@ -64,6 +64,7 @@ class TurnResponse(BaseModel):
     attempt: int
     reply_text: str | None
     reply: dict[str, Any] | None
+    route: str | None  # the path classify chose: chat, knowledge, list or recommend
     error_code: str | None
     created_at: datetime
     finished_at: datetime | None
