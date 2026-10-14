@@ -177,7 +177,7 @@ automatic replication, no rotation or expiry.
 
 | Secret | Accessor |
 | --- | --- |
-| `openai-api-key` | `wobot-api`, `wobot-ingest` |
+| `openai-api-key` | `wobot-api`, `wobot-ingest`, `wobot-assets` (avatar frames) |
 | `typesafe-api-key` | `wobot-api` (Jev, the router's model) |
 | `langsmith-api-key` | `wobot-api` (traces without content, a key of its own) |
 | `elevenlabs-api-key` | `wobot-api` (voice previews), `wobot-assets` (cloning) |
@@ -224,7 +224,7 @@ Verify:
 
 ```sh
 gcloud secrets list
-gcloud secrets get-iam-policy openai-api-key   # only wobot-api and wobot-ingest, secretAccessor
+gcloud secrets get-iam-policy openai-api-key   # only wobot-api, wobot-ingest and wobot-assets, secretAccessor
 gcloud secrets get-iam-policy typesafe-api-key   # only wobot-api
 gcloud secrets get-iam-policy langsmith-api-key  # only wobot-api
 # Prints a verdict per secret, never the key:
@@ -926,7 +926,8 @@ IAM → Grant access → `wobot-assets` → Cloud SQL Client; then the
 | Retries per failed task | 0 | A version that failed is recorded as failed and the app offers a retry; a task retry would only repeat it |
 | Task timeout | 30 minutes | A voice takes seconds; 21 avatar frames (D3) take minutes |
 | Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-assets@$PROJECT_ID.iam`, `DB_POOL_SIZE=1`, `DB_MAX_OVERFLOW=0`, `MEDIA_BUCKET=$PROJECT_ID-media` | One connection per execution (connection budget) |
-| Secret as variable | `ELEVENLABS_API_KEY` from `elevenlabs-api-key`, version `1` | `OPENAI_API_KEY` joins it in D3, for the frames |
+| Secrets as variables | `ELEVENLABS_API_KEY` from `elevenlabs-api-key` and `OPENAI_API_KEY` from `openai-api-key`, each at the version in use | The voices, and the avatar frames |
+| Memory | 1 GiB | Up to 14 frames painted at once, each a 1,024-pixel image held while it is checked and stored |
 | Service account | `wobot-assets` | |
 | Cloud SQL connections | None | The Python Connector |
 
@@ -956,7 +957,9 @@ gcloud run jobs deploy wobot-assets --image "$IMAGE" --region $REGION \
   --command wobot-assets --tasks 1 --max-retries 0 --task-timeout 30m \
   --service-account $SA \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-assets@$PROJECT_ID.iam,DB_POOL_SIZE=1,DB_MAX_OVERFLOW=0,MEDIA_BUCKET=$PROJECT_ID-media" \
-  --set-secrets ELEVENLABS_API_KEY=elevenlabs-api-key:1
+  --set-secrets ELEVENLABS_API_KEY=elevenlabs-api-key:2,OPENAI_API_KEY=openai-api-key:1 --memory 1Gi
+gcloud secrets add-iam-policy-binding openai-api-key \
+  --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor"
 gcloud run jobs add-iam-policy-binding wobot-assets --region $REGION \
   --member="serviceAccount:wobot-api@$PROJECT_ID.iam.gserviceaccount.com" \
   --role=roles/run.jobsExecutorWithOverrides

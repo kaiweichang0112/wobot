@@ -2,11 +2,12 @@
 
 Keys follow from version IDs (`incoming/voices/{voice_id}`), so no table records an
 upload. An object is created once and never replaced: a request sent again finds what the
-first one stored.
+first one stored, and a frame made again gets a key of its own, from its hash.
 """
 
 import asyncio
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Protocol
@@ -26,6 +27,19 @@ def voice_sample_key(voice_id: uuid.UUID) -> str:
     return f"{INCOMING}/voices/{voice_id}"
 
 
+def avatar_photo_key(avatar_id: uuid.UUID) -> str:
+    return f"{INCOMING}/avatars/{avatar_id}.png"
+
+
+def avatar_prefix(avatar_id: uuid.UUID) -> str:
+    """Where an avatar's frames are kept; removed whole once the avatar is unused."""
+    return f"avatars/{avatar_id}/"
+
+
+def frame_key_of(avatar_id: uuid.UUID, frame_key: str, sha256: str) -> str:
+    return f"{avatar_prefix(avatar_id)}{frame_key}-{sha256[:16]}.png"
+
+
 class MediaStore(Protocol):
     async def put(self, key: str, content: bytes, content_type: str) -> None:
         """Store the bytes under the key unless something is already there."""
@@ -37,6 +51,10 @@ class MediaStore(Protocol):
 
     async def delete(self, key: str) -> None:
         """Remove the key; removing what is not there is no error."""
+        ...
+
+    async def delete_prefix(self, prefix: str) -> None:
+        """Remove every key under the prefix."""
         ...
 
 
@@ -55,6 +73,9 @@ class LocalMediaStore:
 
     async def delete(self, key: str) -> None:
         await asyncio.to_thread((self._root / key).unlink, missing_ok=True)
+
+    async def delete_prefix(self, prefix: str) -> None:
+        await asyncio.to_thread(shutil.rmtree, self._root / prefix, ignore_errors=True)
 
     @staticmethod
     def _write_once(path: Path, content: bytes) -> None:
@@ -87,6 +108,10 @@ class GcsMediaStore:
             await asyncio.to_thread(self._bucket.blob(key).delete)
         except NotFound:
             pass
+
+    async def delete_prefix(self, prefix: str) -> None:
+        for blob in await asyncio.to_thread(lambda: list(self._bucket.list_blobs(prefix=prefix))):
+            await self.delete(blob.name)
 
     def _upload_once(self, key: str, content: bytes, content_type: str) -> None:
         try:

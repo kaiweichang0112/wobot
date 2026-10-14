@@ -32,7 +32,8 @@ WOBOT_API_URL=<API URL> WOBOT_ID_TOKEN=<token> uv run wobot-eval api [--cold N |
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge <answer run>.json [--candidate <model:effort>]
 uv run --env-file .env wobot-eval judge <write-list, recommend or turns run>.json [--candidate <model:effort>]
 uv run wobot-eval judge-sample|judge-agreement <judge run>.json
-DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make|clean voice <voice_id>
+DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make|clean voice|avatar <id>
+uv run --env-file .env wobot-assets paint --photo <path> [--frames <key> ... [--only]] [--quality high]
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -129,6 +130,10 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   a clone is named after its version (`wobot-<id>`) so a retry finds it. One active and
   one in-progress version per account are partial unique indexes; activation retires
   the old version before it activates the new one, in one transaction.
+- **Photos, recordings and frames never enter git.** The repository is public: they live
+  in the media bucket, or locally under `backend/.data/` (gitignored), and `paint` writes
+  there. Avatar prompts are versioned like the graph's: `avatar_prompts.PROMPT_VERSION`
+  is pinned with the prompts' hash.
 - **Every API request is checked**: Firebase ID token, verified email,
   allowlist. Errors use the `{"error": {"code", "message"}}` envelope.
 - **A turn runs inside its request, and a stop is a request of its own.** Cloud Run's
