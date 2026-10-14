@@ -12,7 +12,7 @@ from.
 | `lib/sse.dart` | Server-sent events read from a streamed response |
 | `lib/chat.dart` | `ChatController` and `HistoryController` (`ChangeNotifier`): sending, stopping, retrying, and the chats list |
 | `lib/assets.dart` | What voices and avatars share: their status in a word, failures, and reading one being made every 2.5 s |
-| `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with |
+| `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with; `QuestionListener`, which turns a spoken question into text on the phone; Voice lab's script and CER |
 | `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device |
 | `lib/pages/` | Sign-in, chat, the chats drawer, settings, and the Voice and Avatar pages |
 | `lib/widgets/` | The thinking mark shown while a reply is awaited, replies with tappable links, and the setup pages' notes |
@@ -42,6 +42,12 @@ How the app keeps to the API's rules:
 - **Frames are kept by their SHA-256**, under the account and the avatar in the app's
   support directory: a frame drawn again has a new hash, so no kept frame is ever
   stale. They go when the avatar is replaced or deleted, and at sign-out.
+- **A spoken question becomes text on the phone** (DEC-092): Apple's recognizer,
+  on the device, so the audio never leaves it. A question ends when no new words come
+  for 1.2 s, on a tap, after 60 s, or after 10 s with no words; all four go through one
+  finalize, so it is sent once, and nothing is sent when nothing was heard. Voice lab
+  (Settings, debug builds) shows when and why a question ended, and measures CER against
+  a script read aloud.
 - **Avatar mode** has its place (the top-right button) and says it comes in a later
   version.
 
