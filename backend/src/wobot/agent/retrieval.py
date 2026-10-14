@@ -15,6 +15,7 @@ from typing import Any, get_args
 import openai
 from sqlalchemy.exc import DBAPIError
 
+from wobot.agent.models import UnreadableAnswer
 from wobot.knowledge.embeddings import Embedder
 from wobot.knowledge.lists import Listed, ListKind, QueryError, RecordQuery, find_records
 from wobot.knowledge.repository import Database
@@ -33,7 +34,7 @@ FUSION_DEPTH = 10
 NAMED_RECORDS = 10
 # The database or the provider failed, not the code: worth trying again later. Anything
 # else is a bug and is raised, never dressed up as an outage.
-UNAVAILABLE = (DBAPIError, openai.APIError, TimeoutError)
+UNAVAILABLE = (DBAPIError, openai.APIError, TimeoutError, UnreadableAnswer)
 
 # What the answer reads of a named record; a product shows its catalog in full.
 SHOWN_FIELDS: dict[str, tuple[str, ...]] = {

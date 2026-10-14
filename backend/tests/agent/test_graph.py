@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableLambda
 
-from tests.agent.fakes import calls, fake_models
+from tests.agent.fakes import FakeStructuredModel, calls, fake_models
 from tests.agent.test_list_agent import Unreachable
 from wobot.agent.graph import (
     FAILURE_TEXT,
@@ -296,6 +296,36 @@ async def test_a_failed_list_model_is_reported_as_retryable(broken):
     state = await app.ainvoke(turn("List every product."))
 
     assert state["reply"] == {"text": FAILURE_TEXT["en"], "retryable": True}
+
+
+def split_reply(final: str) -> AIMessage:
+    """A reply as gpt-6-luna wrote it once on the deployed API (C8): a commentary, then
+    the JSON, each a text part, which langchain_openai's parser reads no answer from."""
+    return AIMessage(
+        [
+            {"type": "text", "text": "清單共 4 篇。", "phase": "commentary"},
+            {"type": "text", "text": final, "phase": "final_answer"},
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("final", "reply"),
+    [
+        ('{"intro": "清單共 4 篇。", "lists": []}', {"text": "清單共 4 篇。"}),
+        ("not JSON", {"text": FAILURE_TEXT["en"], "retryable": True}),
+    ],
+    ids=["read from its last part", "unreadable"],
+)
+async def test_a_list_intro_written_in_parts_is_read_from_its_last(final, reply):
+    split = {"raw": split_reply(final), "parsed": None, "parsing_error": ValueError("no parsed")}
+    models = replace(fake_models("list"), write_list=FakeStructuredModel(split))
+    app = build_graph(models, db=None, embedder=None)
+
+    state = await app.ainvoke(turn("List every product."))
+
+    assert state["reply"]["text"].startswith(reply["text"])
+    assert state["reply"].get("retryable") == reply.get("retryable")
 
 
 # --- The recommendation path ------------------------------------------------------------

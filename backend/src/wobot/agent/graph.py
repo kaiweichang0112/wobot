@@ -34,7 +34,7 @@ from wobot.agent.list_agent import (
     run_list_call,
     turn_date,
 )
-from wobot.agent.models import openai_model
+from wobot.agent.models import openai_model, read_structured, structured_reader
 from wobot.agent.rec_agent import (
     REC_TOOLS,
     ShowProducts,
@@ -221,12 +221,12 @@ def build_graph(
     """The graph, its nodes holding the models, database and embedder given. With a
     checkpointer, each thread's state is kept between turns; without, every call starts
     from the input alone."""
-    planner = models.rewrite.with_structured_output(SearchPlan, method="json_schema")
+    planner = structured_reader(models.rewrite, SearchPlan)
     # The first round must call a tool: a list question is always looked up (DV3). Later
     # rounds may stop once the lists found will do.
     list_first = models.list_agent.bind_tools(LIST_TOOLS, tool_choice="required")
     list_next = models.list_agent.bind_tools(LIST_TOOLS)
-    list_writer = models.write_list.with_structured_output(ListIntro, method="json_schema")
+    list_writer = structured_reader(models.write_list, ListIntro)
     # Not made to call a tool: the agent may ask what the user needs first (DEC-066).
     rec_model = models.rec_agent.bind_tools(REC_TOOLS)
     # Each version's products and facets, read on the first find and kept (DEC-069).
@@ -265,7 +265,9 @@ def build_graph(
         """The question as it stands alone, and the queries to search for it."""
         latest = latest_user_text(state["messages"])
         try:
-            plan = await planner.ainvoke(rewrite_prompt(state["messages"]))
+            plan = read_structured(
+                await planner.ainvoke(rewrite_prompt(state["messages"])), SearchPlan
+            )
         except UNAVAILABLE:
             # Searching the user's own words still finds something: phase A's baseline.
             logger.exception("rewriting the question failed; searching the message as it is")
@@ -342,7 +344,9 @@ def build_graph(
         latest = latest_user_text(state["messages"])
         results = lists_that_count(state["list_results"])
         try:
-            intro = await list_writer.ainvoke(write_list_prompt(latest, results))
+            intro = read_structured(
+                await list_writer.ainvoke(write_list_prompt(latest, results)), ListIntro
+            )
         except UNAVAILABLE:
             logger.exception("writing the list failed")
             return failure_reply(state["messages"])

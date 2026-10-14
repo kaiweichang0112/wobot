@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableLambda
+from pydantic import BaseModel
 
 from wobot.agent.graph import Models
 from wobot.agent.rewrite import SearchPlan
@@ -101,6 +102,10 @@ class FakeStructuredModel:
     def with_structured_output(self, schema: Any, **kwargs: Any) -> RunnableLambda:
         def answer(messages: list[BaseMessage]) -> Any:
             self.prompts.append(messages)
+            # A test may give the raw form itself; otherwise it is made from the answer.
+            if kwargs.get("include_raw") and isinstance(self.output, BaseModel):
+                raw = AIMessage(self.output.model_dump_json())
+                return {"raw": raw, "parsed": self.output, "parsing_error": None}
             return self.output
 
         return RunnableLambda(answer)
