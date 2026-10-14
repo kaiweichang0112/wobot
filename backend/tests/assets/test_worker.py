@@ -39,7 +39,9 @@ class FakeElevenLabs:
         self.calls.append(call)
         assert request.headers["xi-api-key"] == "test-key"
         if self.fail_with is not None:
-            return httpx2.Response(self.fail_with)
+            status_code, error_type = self.fail_with
+            detail = {"type": error_type, "code": "c", "message": "m"} if error_type else None
+            return httpx2.Response(status_code, json={"detail": detail})
         if call == "GET /v2/voices":
             # Matches parts of names, as ElevenLabs' search does.
             search = request.url.params["search"]
@@ -176,14 +178,20 @@ async def test_a_voice_an_earlier_attempt_cloned_is_found_not_cloned_again(
 
 
 @pytest.mark.parametrize(
-    ("status_code", "error_code"),
-    [(422, "VOICE_REJECTED"), (500, "PROVIDER_UNAVAILABLE"), (429, "PROVIDER_UNAVAILABLE")],
+    ("failure", "error_code"),
+    [
+        ((422, "validation_error"), "VOICE_REJECTED"),
+        ((500, None), "PROVIDER_UNAVAILABLE"),
+        ((429, None), "PROVIDER_UNAVAILABLE"),
+        # A wrong key is ours to fix, not the sample: ElevenLabs answers it with 400.
+        ((400, "authentication_error"), "PROVIDER_UNAVAILABLE"),
+    ],
 )
 async def test_a_clone_elevenlabs_refuses_fails_the_version(
-    sessionmaker, owner, eleven, media, status_code, error_code
+    sessionmaker, owner, eleven, media, failure, error_code
 ):
     voice_id = await queued_voice(media, owner)
-    eleven.fail_with = status_code
+    eleven.fail_with = failure
 
     outcome = await worker(sessionmaker, media, eleven).make_voice(voice_id)
 
