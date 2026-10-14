@@ -19,7 +19,9 @@ Future<bool> signInWithGoogle() async {
   return true;
 }
 
-Future<void> signOut() async {
+/// Signs out of Firebase and Google. Whatever the account had on screen goes with
+/// it: its widgets are keyed by the account.
+Future<void> signOutAll() async {
   await FirebaseAuth.instance.signOut();
   await GoogleSignIn.instance.signOut();
 }
