@@ -13,18 +13,27 @@ PREVIEW_FORMAT = "mp3_44100_128"
 class ElevenLabsError(Exception):
     """ElevenLabs refused the request, or could not be reached."""
 
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        error_type: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.error_type = error_type  # ElevenLabs' `detail.type`, when it sends one
 
     @property
     def rejected(self) -> bool:
         """The request itself was refused, such as a sample it cannot clone: sending it
-        again would fail the same way. Otherwise ElevenLabs was unavailable."""
+        again would fail the same way. A refused key is not the request's fault, though
+        ElevenLabs answers some with 400: like a timeout or a limit, ElevenLabs is then
+        unavailable to us."""
         return (
             self.status_code is not None
             and 400 <= self.status_code < 500
-            and (self.status_code not in (401, 403, 408, 429))
+            and self.status_code not in (401, 403, 408, 429)
+            and self.error_type != "authentication_error"
         )
 
 
@@ -87,8 +96,23 @@ class ElevenLabs:
         except httpx2.HTTPError as exc:
             raise ElevenLabsError(f"{method} {path}: {type(exc).__name__}") from exc
         if response.is_error:
-            # The body may repeat what was sent; only the status is logged.
+            # The message may repeat what was sent, so only the error's type and code are
+            # kept, which say what went wrong without it.
+            error_type, code = _error_of(response)
             raise ElevenLabsError(
-                f"{method} {path}: HTTP {response.status_code}", response.status_code
+                f"{method} {path}: HTTP {response.status_code} {error_type} {code}",
+                response.status_code,
+                error_type,
             )
         return response
+
+
+def _error_of(response: httpx2.Response) -> tuple[str | None, str | None]:
+    """`detail.type` and `detail.code` of an error body, when it has them."""
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        return None, None
+    if not isinstance(detail, dict):
+        return None, None
+    return detail.get("type"), detail.get("code")
