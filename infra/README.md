@@ -385,7 +385,7 @@ SQL Studio, database `wobot`, user `postgres`, built-in authentication.
    ```
 
 2. Run [`sql/bootstrap.sql`](sql/bootstrap.sql): pgvector, the group roles
-   `wobot_migrator` / `wobot_api` / `wobot_ingest`, the `app` / `knowledge` /
+   `wobot_migrator` / `wobot_api` / `wobot_ingest` / `wobot_assets`, the `app` / `knowledge` /
    `ops` schemas owned by `wobot_migrator`, and CONNECT limited to the groups.
 
 3. Put the IAM users into their groups. This part is environment-specific, so
@@ -399,6 +399,38 @@ SQL Studio, database `wobot`, user `postgres`, built-in authentication.
    ```
 
    Quoted names are case-sensitive; copy them from `gcloud sql users list`.
+
+A group role added after the bootstrap ran is created by hand, before the
+migration that grants to it deploys. `wobot_assets` (Phase D) came that way;
+migration `0008` gives it SELECT and UPDATE on the three asset tables, and
+nothing else:
+
+```sql
+CREATE ROLE wobot_assets NOLOGIN;
+GRANT CONNECT ON DATABASE wobot TO wobot_assets;
+```
+
+Locally, an existing volume needs the same, plus its login user (or
+`docker compose down -v`, which also empties the knowledge tables):
+
+```sh
+docker compose exec -T db psql -U wobot_admin -d wobot \
+  -c "CREATE ROLE wobot_assets NOLOGIN" \
+  -c "GRANT CONNECT ON DATABASE wobot TO wobot_assets" \
+  -c "CREATE ROLE wobot_assets_user LOGIN PASSWORD 'wobot' IN ROLE wobot_assets"
+```
+
+After the migration, the asset tables' grants: `wobot_api` has DELETE, INSERT,
+SELECT, UPDATE and `wobot_assets` only SELECT, UPDATE.
+
+```sql
+SELECT c.relname, a.grantee::regrole,
+       string_agg(a.privilege_type, ',' ORDER BY a.privilege_type)
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace, aclexplode(c.relacl) a
+WHERE n.nspname = 'app' AND c.relname IN ('voice_versions', 'avatar_versions', 'avatar_frames')
+  AND a.grantee <> c.relowner
+GROUP BY 1, 2 ORDER BY 1, 2;
+```
 
 Cloud SQL's `postgres` holds `cloudsqlsuperuser`, not superuser. On PG16+ a
 non-superuser admin gets only ADMIN OPTION on the roles it creates, so the

@@ -57,6 +57,9 @@ def test_me_registers_an_allowlisted_account(client, sign_in, allowlisted):
         "account_id": "uid-member",
         "email": allowlisted,
         "settings": {"chatbot_name": "Wobot", "version": 0},  # never renamed
+        "voice": {"active": None, "candidate": None},
+        "avatar": {"active": None, "candidate": None},
+        "avatar_mode": False,
     }
     # The response alone would not reveal a write that was never committed.
     rows = asyncio.run(

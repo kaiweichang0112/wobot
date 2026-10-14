@@ -9,6 +9,7 @@ from wobot.config import get_settings
 API_USER = "wobot_api_user"
 MIGRATOR_USER = "wobot_migrator_user"
 INGEST_USER = "wobot_ingest_user"
+ASSETS_USER = "wobot_assets_user"
 
 
 async def connect(user: str) -> asyncpg.Connection:

@@ -1,4 +1,5 @@
-"""The signed-in account: who it is, and what it calls the assistant (spec 12)."""
+"""The signed-in account: who it is, what it calls the assistant (spec 12), and whether
+its voice and avatar are ready for Avatar mode (spec 23)."""
 
 import unicodedata
 from typing import Annotated
@@ -9,9 +10,10 @@ from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from wobot.api.assets import AssetResponse, asset_of
 from wobot.api.auth import Principal, current_principal
 from wobot.api.errors import ApiError
-from wobot.models import Account, AccountSettings
+from wobot.models import Account, AccountSettings, AvatarVersion, VoiceVersion
 
 router = APIRouter(prefix="/v1/me")
 
@@ -30,6 +32,9 @@ class MeResponse(BaseModel):
     account_id: str
     email: str
     settings: SettingsResponse
+    voice: AssetResponse
+    avatar: AssetResponse
+    avatar_mode: bool  # both active: only the account's own voice and face (MODE-004)
 
 
 class SettingsUpdate(BaseModel):
@@ -80,7 +85,16 @@ async def me(
     async with request.app.state.sessionmaker() as session, session.begin():
         await register(session, principal)
         settings = await settings_of(session, principal.account_id)
-    return MeResponse(account_id=principal.account_id, email=principal.email, settings=settings)
+        voice = await asset_of(session, VoiceVersion, principal.account_id)
+        avatar = await asset_of(session, AvatarVersion, principal.account_id)
+    return MeResponse(
+        account_id=principal.account_id,
+        email=principal.email,
+        settings=settings,
+        voice=voice,
+        avatar=avatar,
+        avatar_mode=voice.active is not None and avatar.active is not None,
+    )
 
 
 @router.patch("/settings")

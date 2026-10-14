@@ -61,8 +61,9 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   new API revision serves, so expand first and contract in a later release.
   Never downgrade Cloud SQL; fix forward.
 - **The API's database role is limited on purpose.** `wobot_api` has no DDL,
-  only reads `knowledge`, and cannot write `app.allowed_emails`. Do not widen it
-  to make something work.
+  only reads `knowledge`, and cannot write `app.allowed_emails`. `wobot_assets`, the
+  asset worker's, only reads and updates the three asset tables: the API adds and
+  removes their rows. Do not widen either to make something work.
 - **Ingestion publishes by itself only what loses nothing.** A version that empties a
   source or drops more than `PUBLISH_MAX_DROP` of its records is held for
   `wobot-ingest accept`. The schedule lives in two places: Cloud Scheduler starts
