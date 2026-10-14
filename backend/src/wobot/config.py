@@ -110,6 +110,18 @@ class Settings(BaseSettings):
     elevenlabs_timeout_seconds: float = 60
     # Speaks the voice preview; a placeholder until the TTS comparison chooses (D7).
     tts_model: str = "eleven_flash_v2_5"
+    # Paints the avatar's frames (DEC-049), pinned to a snapshot: the prompts were written
+    # for it. The quality follows P8's comparison of the base frame.
+    avatar_image_model: str = "gpt-image-2.5-sunburst-2026-09-08"
+    avatar_quality: Literal["low", "medium", "high"] = "medium"
+    # Frames painted at once. The limit is 150 images a minute and the widest level has
+    # 14 frames, so the tree's three levels bound the time, not the rate (D0).
+    avatar_concurrency: int = 14
+    # An image can take a minute or more; retried with backoff on 429 and 5xx.
+    avatar_timeout_seconds: float = 300
+    # Frames have no background of their own (P24); `paint` shows them on the app's, the
+    # colour of WobotColors.background in app/lib/theme.dart.
+    avatar_backdrop: str = "#1F1E1C"
 
 
 @lru_cache

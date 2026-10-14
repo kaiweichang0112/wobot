@@ -4,21 +4,15 @@ attempt that died is found again rather than made twice (DEC-086)."""
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator, Iterator
 
 import httpx2
 import pytest
-from sqlalchemy import URL
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
-from tests.database import ASSETS_USER, run_as_migrator
+from tests.database import run_as_migrator
 from wobot.assets.eleven import ElevenLabs, voice_name
 from wobot.assets.media import LocalMediaStore, voice_sample_key
 from wobot.assets.worker import Worker
-from wobot.config import get_settings
 
-OWNER = "uid-asset-worker-tests"
 ADD_VOICE = (
     "INSERT INTO app.voice_versions (voice_id, owner_id, status, sample_seconds) "
     "VALUES ($1, $2, 'queued', 90)"
@@ -73,43 +67,8 @@ def _form_field(content: bytes, field: str) -> str:
 
 
 @pytest.fixture
-async def sessionmaker() -> AsyncIterator[async_sessionmaker]:
-    """Connections as the worker's role, which cannot add or remove rows."""
-    settings = get_settings()
-    url = URL.create(
-        "postgresql+asyncpg",
-        username=ASSETS_USER,
-        password=settings.db_password,
-        host=settings.db_host,
-        port=settings.db_port,
-        database=settings.db_name,
-    )
-    engine = create_async_engine(url, poolclass=NullPool)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
-
-
-@pytest.fixture
-def owner() -> Iterator[str]:
-    asyncio.run(
-        run_as_migrator(
-            "INSERT INTO app.accounts (account_id, email) VALUES ($1, 'w@example.com') "
-            "ON CONFLICT DO NOTHING",
-            OWNER,
-        )
-    )
-    yield OWNER
-    asyncio.run(run_as_migrator("DELETE FROM app.accounts WHERE account_id = $1", OWNER))
-
-
-@pytest.fixture
 def eleven() -> FakeElevenLabs:
     return FakeElevenLabs()
-
-
-@pytest.fixture
-def media(tmp_path) -> LocalMediaStore:
-    return LocalMediaStore(tmp_path)
 
 
 async def queued_voice(media: LocalMediaStore, owner: str) -> uuid.UUID:
