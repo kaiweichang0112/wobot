@@ -13,7 +13,7 @@ replies; `wobot-chat` runs the same graph from a terminal. Google Cloud setup is
 | `src/wobot/db.py` | Async engine: password login locally, Cloud SQL connector with IAM auth in the cloud |
 | `src/wobot/models.py` | SQLAlchemy models; the migrations define the schema |
 | `src/wobot/api/` | FastAPI app: Firebase ID token verification, the account and its settings, conversations, error envelope |
-| `src/wobot/assets/` | The account's own voice and avatar; `frames.py` holds the 21 frame keys the API, the worker and the app share |
+| `src/wobot/assets/` | The account's own voice and avatar, and the `wobot-assets` job that makes them; `frames.py` holds the 21 frame keys and their tree, which the API, the worker and the app share |
 | `src/wobot/knowledge/` | Knowledge ingestion: sources → records → chunks → embeddings → versions, and search |
 | `src/wobot/agent/` | The chat graph: the router, its four paths, each model node's prompt, the tools the loops call, and the conversation checkpoints |
 | `src/wobot/eval/` | `wobot-eval`: labelled datasets scored against an index version, and model comparisons for each model node |
@@ -156,9 +156,59 @@ Without `ASSETS_JOB`, as locally, the API does the work in its own process, as i
 role, and media go to `.data/media/`. The job's command can also be run by hand:
 
 ```bash
-DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make voice <voice_id>
-DB_USER=wobot_assets_user uv run --env-file .env wobot-assets clean voice <voice_id>
+DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make voice|avatar <id>
+DB_USER=wobot_assets_user uv run --env-file .env wobot-assets clean voice|avatar <id>
 ```
+
+## Avatars
+
+A photo becomes 21 frames: seven expressions, each with a closed, half-open and wide-open
+mouth (spec 21). The image model (`avatar_image_model`, at `avatar_quality`) paints each
+frame from the one it depends on: the base (`neutral_closed`) from the photo, each
+expression's closed frame from the base, and its two open mouths from that closed frame,
+so their eyes and brows match it. Frames have a transparent background (P24): the app
+draws its own dark backdrop behind them, so no frame brings a colour that could shift
+from one to the next, and a frame without transparency fails as `INVALID_IMAGE`. A frame
+starts as soon as its own parent is done, up to
+`avatar_concurrency` at once; the three levels, not the image rate limit, bound the time.
+The client retries 429 and 5xx three times, as `Retry-After` asks.
+
+The prompts are versioned in `assets/avatar_prompts.py`: changing one means bumping
+`PROMPT_VERSION`, which a test pins with their hash, and each avatar records both. A
+frame is stored as `avatars/{avatar_id}/{key}-{hash}.png`, so one made again never
+overwrites another; its row keeps its SHA-256 and the tokens it cost. The photo is
+stored upright, at most 1,024 pixels a side, and without its metadata, and deleted once
+the base is made: the base is then never made again, and a new photo makes a new avatar.
+
+| Route | What it does |
+| --- | --- |
+| `POST /v1/avatars` | Multipart `avatar_id` and `photo` (any image Pillow reads, at most 10 MB); queues the version with its 21 frames and starts the job: `202`. Sent again, it returns the same avatar |
+| `GET /v1/avatars/{id}` | The version, `ready_frames` of 21, and each frame's `status`, `sha256` and `error_code`, in the canonical order. Restarts a lost start and gives up a lost worker, as for voices |
+| `GET /v1/avatars/{id}/frames/{key}` | The frame as PNG, with its SHA-256 as `ETag`: `If-None-Match` answers `304` |
+| `POST /v1/avatars/{id}/retry` | A failed avatar only: its failed frames, and those they would have made, are made again; ready ones stay |
+| `POST /v1/avatars/{id}/frames/{key}/redo` | Before the avatar is in use: the frame and every frame made from it are made again (P9); not the base |
+| `POST /v1/avatars/{id}/activate` | Only with all 21 frames made under the current expression schema (`409 AVATAR_NOT_READY`), as for voices |
+| `DELETE /v1/avatars/{id}` | As for voices; the job removes the frames |
+
+A frame that fails says why: `IMAGE_REJECTED` (the model refused the photo; take another),
+`PROVIDER_UNAVAILABLE`, `INVALID_IMAGE` (not a 1,024-pixel PNG with a transparent background) or `INTERNAL_ERROR`; the
+avatar fails with the first of these, or `PHOTO_MISSING` once the photo is gone. A
+retry or a redo is refused with `409 ASSET_NOT_EDITABLE` when the avatar is not in a
+state for it.
+
+`wobot-assets paint` tries prompts on this machine, with no database or bucket: it writes
+the frames, `sheet.png` (all of them on the app's backdrop, `avatar_backdrop`, a row per
+expression) and a report of each one's seconds, tokens and cost to `.data/avatar/<run>/`,
+never committed. Every frame is billed. Pillow reads no HEIC: convert an iPhone photo
+first, with `sips -s format jpeg <photo.HEIC> --out <photo.jpg>`.
+
+```bash
+uv run --env-file .env wobot-assets paint --photo <photo> --frames neutral_closed --only --quality high
+uv run --env-file .env wobot-assets paint --photo <photo>                    # all 21
+uv run --env-file .env wobot-assets paint --photo <photo> --frames fear_closed --from .data/avatar/<run>
+```
+
+The last makes `fear_closed` and its two mouths again from an earlier run's base.
 
 ## Knowledge ingestion
 
