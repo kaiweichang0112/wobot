@@ -127,6 +127,7 @@ void main() {
   testWidgets('settings hold the name, the voice and the avatar', (
     tester,
   ) async {
+    server.reply('GET /v1/me', 200, meJson());
     await show(tester);
 
     await tester.tap(find.byTooltip('Avatar mode'));
@@ -138,12 +139,9 @@ void main() {
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Voice'), findsOneWidget);
     expect(find.text('Avatar'), findsOneWidget);
+    expect(find.text('Not set up'), findsNWidgets(2));
     await tester.scrollUntilVisible(find.text('Sign out'), 200);
     expect(find.text('Sign out'), findsOneWidget);
-
-    await tester.tap(find.text('Voice'));
-    await tester.pumpAndSettle();
-    expect(find.text('Record my voice'), findsOneWidget);
   });
 
   testWidgets('the drawer lists the chats', (tester) async {

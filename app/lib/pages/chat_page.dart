@@ -79,6 +79,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => SettingsPage(
           api: widget.api,
+          accountId: widget.me.accountId,
           email: widget.me.email,
           idToken: widget.idToken,
           settings: _settings,

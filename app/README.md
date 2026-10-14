@@ -2,15 +2,20 @@
 
 The Flutter client, iOS first; Android follows before the pilot. Signed in with
 Google, an allowlisted account chats with the API: replies stream in, a reply can be
-stopped, copied or tried again, and past chats are kept, titled and deleted.
+stopped, copied or tried again, and past chats are kept, titled and deleted. In
+Settings it records the voice and takes the photo the cloud makes its voice and avatar
+from.
 
 | File | What it holds |
 | --- | --- |
 | `lib/api.dart` | The API client: the Firebase ID token on every request, refreshed once when refused, and the `{"error"}` envelope as `ApiException` |
 | `lib/sse.dart` | Server-sent events read from a streamed response |
 | `lib/chat.dart` | `ChatController` and `HistoryController` (`ChangeNotifier`): sending, stopping, retrying, and the chats list |
-| `lib/pages/` | Sign-in, chat, the chats drawer, settings |
-| `lib/widgets/` | The thinking mark shown while a reply is awaited, and replies with tappable links |
+| `lib/assets.dart` | What voices and avatars share: their status in a word, failures, and reading one being made every 2.5 s |
+| `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with |
+| `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device |
+| `lib/pages/` | Sign-in, chat, the chats drawer, settings, and the Voice and Avatar pages |
+| `lib/widgets/` | The thinking mark shown while a reply is awaited, replies with tappable links, and the setup pages' notes |
 | `lib/theme.dart` | The dark theme and its orange accent |
 
 How the app keeps to the API's rules:
@@ -27,8 +32,18 @@ How the app keeps to the API's rules:
 - **Replies are plain text.** They are written to be read aloud. A web address shows
   as the label before it (`PDF`, `產品網頁`, `Product page`), or as its site, and opens
   in the browser; Copy keeps the whole address.
-- **Avatar mode, voice and avatar** have their places (the top-right button, Settings)
-  and say they come in a later version.
+- **A voice or an avatar is made in the cloud** (DEC-086). The app sends the sample or
+  the photo under an ID it names, so one sent again makes nothing twice, then reads its
+  progress while the page is open and the app in sight; leaving stops the reading, not
+  the making. The one in use stays until the new one is activated.
+- **A sample is 60 to 180 seconds of AAC**, recorded in the app and deleted from it once
+  the server has it, or when the page or the app is left. A photo comes from the front
+  camera as a JPEG, so a HEIC photo never reaches the API.
+- **Frames are kept by their SHA-256**, under the account and the avatar in the app's
+  support directory: a frame drawn again has a new hash, so no kept frame is ever
+  stale. They go when the avatar is replaced or deleted, and at sign-out.
+- **Avatar mode** has its place (the top-right button) and says it comes in a later
+  version.
 
 ## Setup
 
