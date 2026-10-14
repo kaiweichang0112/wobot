@@ -205,6 +205,18 @@ gcloud secrets add-iam-policy-binding typesafe-api-key \
 `read -s` keeps the key off the screen and out of shell history; `printf %s`
 avoids the trailing newline that `echo` would add.
 
+ElevenLabs lists each key with a separate key ID; the secret holds the key itself,
+which starts with `sk_` and is shown once, when the key is created. Given the ID,
+ElevenLabs answers every call with `400 authentication_error`. To replace a value,
+add a version and move what reads it to that version, then disable the old one:
+
+```sh
+read -s KEY && printf %s "$KEY" | gcloud secrets versions add elevenlabs-api-key --data-file=- && unset KEY
+gcloud run services update wobot-api --region $REGION --update-secrets ELEVENLABS_API_KEY=elevenlabs-api-key:2
+gcloud run jobs update wobot-assets --region $REGION --update-secrets ELEVENLABS_API_KEY=elevenlabs-api-key:2
+gcloud secrets versions disable 1 --secret elevenlabs-api-key
+```
+
 Verify:
 
 ```sh
@@ -213,10 +225,14 @@ gcloud secrets get-iam-policy openai-api-key   # only wobot-api and wobot-ingest
 gcloud secrets get-iam-policy typesafe-api-key   # only wobot-api
 gcloud secrets get-iam-policy langsmith-api-key  # only wobot-api
 # Prints a verdict per secret, never the key:
-for s in openai-api-key typesafe-api-key langsmith-api-key; do
+for s in openai-api-key typesafe-api-key langsmith-api-key elevenlabs-api-key; do
   [[ "$(gcloud secrets versions access latest --secret=$s | tail -c 1 | xxd -p)" == "0a" ]] \
     && echo "$s: ends with newline" || echo "$s: OK"
 done
+```
+```sh
+# The ElevenLabs key, not its ID: prints sk_ and nothing more of it.
+gcloud secrets versions access latest --secret=elevenlabs-api-key | head -c 3; echo
 ```
 
 ## 6. Cloud Storage
