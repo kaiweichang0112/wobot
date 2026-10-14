@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import firebase_admin
+import httpx2
 import psycopg
 import psycopg_pool
 import sqlalchemy.exc
@@ -17,13 +19,17 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from wobot.agent.checkpoints import open_checkpointer
 from wobot.agent.graph import build_graph, models_for
 from wobot.agent.models import openai_model
-from wobot.api import accounts, conversations, turns
+from wobot.api import accounts, conversations, turns, voices
 from wobot.api.errors import (
     ApiError,
     handle_api_error,
     handle_database_unavailable,
     handle_invalid_request,
 )
+from wobot.assets.dispatch import CloudRunJob, Dispatcher, GoogleToken, InProcess
+from wobot.assets.eleven import ElevenLabs
+from wobot.assets.media import media_store
+from wobot.assets.worker import Worker, perform
 from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.knowledge.embeddings import Embedder, OpenAIEmbedder
@@ -77,6 +83,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 settings, settings.title_model, settings.title_effort, timeout=10, max_retries=1
             )
             await warm_up(embedder)
+        # Voices and avatars: their media, ElevenLabs, and the job that makes them.
+        app.state.media = media_store(settings)
+        app.state.eleven = None
+        if settings.elevenlabs_api_key is not None:
+            client = await stack.enter_async_context(
+                httpx2.AsyncClient(timeout=settings.elevenlabs_timeout_seconds)
+            )
+            app.state.eleven = ElevenLabs(client, settings.elevenlabs_api_key.get_secret_value())
+        run_client = await stack.enter_async_context(httpx2.AsyncClient(timeout=30))
+        app.state.dispatcher = asset_dispatcher(settings, app, run_client)
         yield
 
 
@@ -88,6 +104,25 @@ def chat_graph(settings: Settings, engine, embedder: Embedder, checkpointer):
     except ValueError:
         logger.exception("the chat graph could not be built")
         return None
+
+
+def asset_dispatcher(settings: Settings, app: FastAPI, client: httpx2.AsyncClient) -> Dispatcher:
+    """The `wobot-assets` job in the cloud. Without one, as in development, the API does
+    the work itself, as its own role: a job's work does not survive the process."""
+    if settings.assets_job is None:
+        worker = Worker(app.state.sessionmaker, app.state.media, app.state.eleven, "in-process")
+
+        async def work(command: str, kind: str, version_id: str) -> str:
+            return await perform(worker, command, kind, uuid.UUID(version_id))
+
+        return InProcess(work)
+    return CloudRunJob(
+        client,
+        settings.google_cloud_project,
+        settings.assets_job_region,
+        settings.assets_job,
+        GoogleToken(),
+    )
 
 
 async def warm_up(embedder: Embedder) -> None:
@@ -115,6 +150,7 @@ app.include_router(accounts.router)
 app.include_router(conversations.router)
 app.include_router(turns.router)
 app.include_router(turns.control)
+app.include_router(voices.router)
 
 
 class HealthResponse(BaseModel):
