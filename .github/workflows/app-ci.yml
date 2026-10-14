@@ -1,0 +1,63 @@
+name: App CI
+
+on:
+  pull_request:
+    paths:
+      - app/**
+      - .github/workflows/app-ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.44.6" # the version the app is developed with
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # Before the stand-in below, which is not formatted.
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      # The Firebase config is generated per developer and never committed; the
+      # analyzer needs the file to exist, not real values.
+      - name: Stand in for the Firebase config
+        run: |
+          cat > lib/firebase_options.dart <<'EOF'
+          import 'package:firebase_core/firebase_core.dart';
+
+          class DefaultFirebaseOptions {
+            static FirebaseOptions get currentPlatform => const FirebaseOptions(
+              apiKey: 'ci',
+              appId: 'ci',
+              messagingSenderId: 'ci',
+              projectId: 'ci',
+              iosClientId: 'ci',
+            );
+          }
+          EOF
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
