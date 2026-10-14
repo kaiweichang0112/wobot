@@ -28,6 +28,7 @@ uv run wobot-eval facets --stored [--index-version <version>]
 DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>]
 uv run --env-file .env wobot-eval route|chat|rewrite|answer|list-agent|write-list|recommend --model <model:effort> [--model ...]
 uv run --env-file .env wobot-eval turns
+WOBOT_API_URL=<API URL> WOBOT_ID_TOKEN=<token> uv run wobot-eval api [--cold N | --logs <file> --to <run>.json]
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge <answer run>.json [--candidate <model:effort>]
 uv run --env-file .env wobot-eval judge <write-list, recommend or turns run>.json [--candidate <model:effort>]
 uv run wobot-eval judge-sample|judge-agreement <judge run>.json

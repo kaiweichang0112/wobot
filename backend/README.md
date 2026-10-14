@@ -270,7 +270,8 @@ DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge <answer run>.json
 the dev products' facets; both make paid calls, except for answers already cached. See
 `eval/gold/README.md`. `route`, `chat`, `rewrite`, `answer`, `list-agent`, `write-list`
 and `recommend` compare models for one model node each, `turns` plays conversations
-through the configured graph; all make paid calls. `judge` grades the replies an
+through the configured graph, and `api` times the deployed API as a client; all make
+paid calls. `judge` grades the replies an
 `answer` run kept, by a rubric and by faithfulness, also paid. See `eval/README.md`.
 
 ## Migrations
