@@ -126,6 +126,35 @@ REVISION_CONFLICT`. It runs again from the same checkpoint as the attempt before
 the question is in the conversation's memory once, and the turn keeps only its latest
 reply.
 
+## Voices
+
+Each account clones its own voice from a recorded sample (DEC-086). A version row is
+also the job that makes it: `wobot-assets`, a Cloud Run job (`infra/README.md`, "Asset
+job"), claims a queued version by moving it to running, which only one execution can
+do, and ends it with a compare-and-swap naming its execution. The voice is named
+`wobot-<voice_id>` at ElevenLabs, so an execution started again finds the clone an
+earlier one made instead of making a second.
+
+| Route | What it does |
+| --- | --- |
+| `POST /v1/voices` | Multipart `voice_id` (made by the app) and `sample`, an M4A of 60–180 s and at most 10 MB; stores it under `incoming/`, queues the version and starts the job: `202`. Sent again, it returns the same version; another account's ID is `409 ASSET_EXISTS`, and a second while one is being made `409 ASSET_IN_PROGRESS` |
+| `GET /v1/voices/{id}` | The version's `status` (`queued`, `running`, `ready`, `failed`, `active`, `retired`, `deleted`) and `error_code`. A version queued for over 60 s is started again; one whose worker stopped beating 5 min ago fails as `WORKER_LOST` |
+| `POST /v1/voices/{id}/preview` | A Chinese and an English sentence in the voice, as MP3 (`tts_model`); `409 VOICE_NOT_READY` until it is ready |
+| `POST /v1/voices/{id}/activate` | Puts a ready voice to use, given the `expected_active` the app last saw (`409 REVISION_CONFLICT` otherwise). The one in use is retired first, in the same transaction, and removed at ElevenLabs by the job |
+| `DELETE /v1/voices/{id}` | Takes the voice out of use at once, which ends Avatar mode, and has the job remove it at ElevenLabs; safe to send again |
+
+A version that fails says why in `error_code`: `VOICE_REJECTED` (ElevenLabs refused the
+sample), `PROVIDER_UNAVAILABLE`, `SAMPLE_MISSING`, `WORKER_LOST` or `INTERNAL_ERROR`.
+The sample is deleted once cloned; the bucket's lifecycle removes any other within a day.
+
+Without `ASSETS_JOB`, as locally, the API does the work in its own process, as its own
+role, and media go to `.data/media/`. The job's command can also be run by hand:
+
+```bash
+DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make voice <voice_id>
+DB_USER=wobot_assets_user uv run --env-file .env wobot-assets clean voice <voice_id>
+```
+
 ## Knowledge ingestion
 
 `wobot-ingest` reads the knowledge sources, stores them as records, chunks and

@@ -143,6 +143,7 @@ resources each account needs.
 | `wobot-ingest` | The `wobot-ingest` Cloud Run job (knowledge ingestion) |
 | `wobot-deployer` | GitHub Actions, through Workload Identity Federation |
 | `wobot-scheduler` | Cloud Scheduler, starting the `wobot-ingest` job on its schedule |
+| `wobot-assets` | The `wobot-assets` Cloud Run job (voices and avatars) |
 
 One account per workload keeps a compromise contained: the API cannot change
 the schema and cannot deploy, and ingestion cannot read private data. Every Cloud Run service and job names its account
@@ -179,7 +180,7 @@ automatic replication, no rotation or expiry.
 | `openai-api-key` | `wobot-api`, `wobot-ingest` |
 | `typesafe-api-key` | `wobot-api` (Jev, the router's model) |
 | `langsmith-api-key` | `wobot-api` (traces without content, a key of its own) |
-| `elevenlabs-api-key` | none yet (voice features, phase D) |
+| `elevenlabs-api-key` | `wobot-api` (voice previews), `wobot-assets` (cloning) |
 
 Grant on the secret itself (secret → Permissions → Grant access → Secret
 Manager Secret Accessor), never at project level: a project-level accessor can
@@ -235,8 +236,20 @@ shows the same settings as a `gcloud` command.
 
 Raw photos and recordings must be purged soon after use; a 7-day soft delete
 would keep them recoverable for a week. The cost: an accidental delete cannot
-be undone. No access is granted yet; each service gets object roles when it
-first needs the bucket.
+be undone.
+
+**Access (Phase D):** the bucket → Permissions → Grant access.
+
+| Principal | Role | Why |
+| --- | --- | --- |
+| `wobot-api` | Storage Object Creator, Storage Object Viewer | Store an uploaded sample or photo, create-only (`ifGenerationMatch=0`) |
+| `wobot-assets` | Storage Object User | Read a sample, write frames, delete what a version no longer needs |
+
+**Lifecycle:** the bucket → Lifecycle → Add a rule → Delete object, age 1 day,
+object name prefix `incoming/`. The job deletes a sample once its voice is
+cloned; the rule removes any a failed or abandoned version left (spec 04: raw
+recordings and photos within 24 hours). Lifecycle runs about once a day, so an
+object can outlive its day by up to another.
 
 Equivalent:
 
@@ -248,10 +261,30 @@ gcloud storage buckets create gs://$PROJECT_ID-media --location=$REGION \
 
 Verify:
 
+Equivalent of the access and the lifecycle:
+
+```sh
+for role in roles/storage.objectCreator roles/storage.objectViewer; do
+  gcloud storage buckets add-iam-policy-binding gs://$PROJECT_ID-media \
+    --member="serviceAccount:wobot-api@$PROJECT_ID.iam.gserviceaccount.com" --role=$role
+done
+gcloud storage buckets add-iam-policy-binding gs://$PROJECT_ID-media \
+  --member="serviceAccount:wobot-assets@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role=roles/storage.objectUser
+printf '%s' '{"rule":[{"action":{"type":"Delete"},"condition":{"age":1,"matchesPrefix":["incoming/"]}}]}' \
+  > /tmp/media-lifecycle.json
+gcloud storage buckets update gs://$PROJECT_ID-media --lifecycle-file=/tmp/media-lifecycle.json
+```
+
 ```sh
 gcloud storage buckets describe gs://$PROJECT_ID-media
 # public_access_prevention: enforced, uniform_bucket_level_access: true,
 # soft_delete_policy.retentionDurationSeconds: '0'
+gcloud storage buckets describe gs://$PROJECT_ID-media --format="json(lifecycle_config)"
+# one rule: Delete, age 1, matchesPrefix incoming/
+gcloud storage buckets get-iam-policy gs://$PROJECT_ID-media --flatten="bindings[].members" \
+  --format="table(bindings.role,bindings.members)" | grep serviceAccount:wobot-
+# 3 rows: wobot-api objectCreator and objectViewer, wobot-assets objectUser
 ```
 
 ### Knowledge bucket
@@ -290,8 +323,9 @@ Verify:
 
 ```sh
 gcloud storage buckets describe gs://$KNOWLEDGE_BUCKET
+# get-iam-policy takes no --filter, so grep picks the service accounts' rows
 gcloud storage buckets get-iam-policy gs://$KNOWLEDGE_BUCKET --flatten="bindings[].members" \
-  --filter="bindings.members~wobot-" --format="table(bindings.role,bindings.members)"
+  --format="table(bindings.role,bindings.members)" | grep serviceAccount:wobot-
 # 2 rows, both wobot-ingest: objectCreator and objectViewer
 ```
 
@@ -395,6 +429,7 @@ SQL Studio, database `wobot`, user `postgres`, built-in authentication.
    GRANT wobot_migrator TO "wobot-migrator@<PROJECT_ID>.iam";
    GRANT wobot_api TO "wobot-api@<PROJECT_ID>.iam";
    GRANT wobot_ingest TO "wobot-ingest@<PROJECT_ID>.iam";
+   GRANT wobot_assets TO "wobot-assets@<PROJECT_ID>.iam";
    GRANT wobot_migrator TO "<developer@gmail.com>";
    ```
 
@@ -559,8 +594,8 @@ Container tab), then Redeploy: a new revision with the same image.
 | Startup CPU boost | On (the default) | Extra CPU while an instance starts shortens cold starts |
 | Ingress | All | Phones reach it over the internet |
 | Port / command | 8080 / image default | |
-| Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit |
-| Secrets as variables | `OPENAI_API_KEY`, `TYPESAFE_API_KEY` and `LANGSMITH_API_KEY` from the secret of the same name in lower case, each version `1` | A pinned version changes only with a deploy, for every instance at once |
+| Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-api@$PROJECT_ID.iam`, `MEDIA_BUCKET=$PROJECT_ID-media`, `ASSETS_JOB=wobot-assets` | `APP_VERSION` is the only link from a digest-pinned revision back to its commit; without `ASSETS_JOB` the API would make voices in its own process |
+| Secrets as variables | `OPENAI_API_KEY`, `TYPESAFE_API_KEY`, `LANGSMITH_API_KEY` and `ELEVENLABS_API_KEY` from the secret of the same name in lower case, each version `1` | A pinned version changes only with a deploy, for every instance at once |
 | Tracing | `LANGSMITH_TRACING=true`, `LANGSMITH_HIDE_INPUTS=true`, `LANGSMITH_HIDE_OUTPUTS=true`, `LANGSMITH_PROJECT=wobot-api` | Traces carry structure, timings and tokens, never what was said; a project apart from local runs |
 | Service account | `wobot-api` | |
 | Cloud SQL connections | `wobot-pg` | The checkpointer's socket ("Conversations on Cloud SQL" below); the rest goes through the Python Connector |
@@ -575,8 +610,8 @@ Equivalent:
 gcloud run deploy wobot-api --image "$IMAGE" --region $REGION \
   --no-invoker-iam-check --ingress all --cpu-throttling --cpu-boost --min 0 --max 3 \
   --service-account wobot-api@$PROJECT_ID.iam.gserviceaccount.com \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam,LANGSMITH_TRACING=true,LANGSMITH_HIDE_INPUTS=true,LANGSMITH_HIDE_OUTPUTS=true,LANGSMITH_PROJECT=wobot-api" \
-  --set-secrets OPENAI_API_KEY=openai-api-key:1,TYPESAFE_API_KEY=typesafe-api-key:1,LANGSMITH_API_KEY=langsmith-api-key:1 \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-api@$PROJECT_ID.iam,MEDIA_BUCKET=$PROJECT_ID-media,ASSETS_JOB=wobot-assets,LANGSMITH_TRACING=true,LANGSMITH_HIDE_INPUTS=true,LANGSMITH_HIDE_OUTPUTS=true,LANGSMITH_PROJECT=wobot-api" \
+  --set-secrets OPENAI_API_KEY=openai-api-key:1,TYPESAFE_API_KEY=typesafe-api-key:1,LANGSMITH_API_KEY=langsmith-api-key:1,ELEVENLABS_API_KEY=elevenlabs-api-key:1 \
   --set-cloudsql-instances $INSTANCE_CONNECTION_NAME
 ```
 
@@ -845,6 +880,92 @@ version stays as it was, though the API is down anyway while the instance is.
 Other Sundays never connect, so they still succeed. Run the job by hand once the
 instance is back.
 
+### Asset job
+
+Makes and removes each account's voice (and, from D3, avatar) versions
+(`backend/README.md`, "Voices"). The API starts one execution per piece of work
+through the Run Admin API's `jobs.run`, naming the work in the arguments
+(`make voice <id>`, `clean voice <id>`); a version row is the job's state, so an
+execution needs nothing else. It relies on what sections 4–8 set up for
+`wobot-assets`: the account, the Cloud SQL IAM user and its group role
+(`wobot_assets`: SELECT and UPDATE on the three asset tables only), the
+ElevenLabs secret and the media bucket.
+
+**Database user:** as in section 7: SQL → `wobot-pg` → Users → Add user account
+→ Google Cloud IAM → `wobot-assets@…` (this also grants Cloud SQL Instance User);
+IAM → Grant access → `wobot-assets` → Cloud SQL Client; then the
+`GRANT wobot_assets` line of section 8 in Cloud SQL Studio, as `postgres`.
+
+**Console:** Cloud Run → Jobs → Deploy container.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Image | `api` at the commit's tag | Same image as the API; CI swaps it on each deploy |
+| Name / region | `wobot-assets`, `asia-east1` | |
+| Tasks | 1 | One version per execution |
+| Command / arguments | `wobot-assets` / none | Each execution's arguments come from the API's start |
+| Retries per failed task | 0 | A version that failed is recorded as failed and the app offers a retry; a task retry would only repeat it |
+| Task timeout | 30 minutes | A voice takes seconds; 21 avatar frames (D3) take minutes |
+| Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-assets@$PROJECT_ID.iam`, `DB_POOL_SIZE=1`, `DB_MAX_OVERFLOW=0`, `MEDIA_BUCKET=$PROJECT_ID-media` | One connection per execution (connection budget) |
+| Secret as variable | `ELEVENLABS_API_KEY` from `elevenlabs-api-key`, version `1` | `OPENAI_API_KEY` joins it in D3, for the frames |
+| Service account | `wobot-assets` | |
+| Cloud SQL connections | None | The Python Connector |
+
+**Who may start it:** the job → Permissions → Grant access → `wobot-api@…` →
+**Cloud Run Jobs Executor With Overrides**, on this job only, as for the
+scheduler and `wobot-ingest`. Starting an execution needs nothing on the job's
+service account: the job runs as `wobot-assets` whoever starts it. The deployer
+needs Service Account User on `wobot-assets` to update the job's image
+("Deployer permissions").
+
+Equivalent:
+
+```sh
+gcloud iam service-accounts create wobot-assets \
+  --description="Runtime identity of the wobot-assets Cloud Run job"
+SA=wobot-assets@$PROJECT_ID.iam.gserviceaccount.com
+gcloud sql users create wobot-assets@$PROJECT_ID.iam --instance=wobot-pg --type=cloud_iam_service_account
+for role in roles/cloudsql.client roles/cloudsql.instanceUser; do
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA" --role=$role
+done
+gcloud secrets add-iam-policy-binding elevenlabs-api-key \
+  --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor"
+gcloud secrets add-iam-policy-binding elevenlabs-api-key \
+  --member="serviceAccount:wobot-api@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+gcloud run jobs deploy wobot-assets --image "$IMAGE" --region $REGION \
+  --command wobot-assets --tasks 1 --max-retries 0 --task-timeout 30m \
+  --service-account $SA \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-assets@$PROJECT_ID.iam,DB_POOL_SIZE=1,DB_MAX_OVERFLOW=0,MEDIA_BUCKET=$PROJECT_ID-media" \
+  --set-secrets ELEVENLABS_API_KEY=elevenlabs-api-key:1
+gcloud run jobs add-iam-policy-binding wobot-assets --region $REGION \
+  --member="serviceAccount:wobot-api@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role=roles/run.jobsExecutorWithOverrides
+gcloud iam service-accounts add-iam-policy-binding $SA --role=roles/iam.serviceAccountUser \
+  --member="serviceAccount:wobot-deployer@$PROJECT_ID.iam.gserviceaccount.com"
+```
+
+A job whose secret was granted moments before can still fail to deploy with
+"Permission denied on secret": IAM takes up to a minute to apply. Deploy it again.
+
+Create the job and its permissions before merging the code that starts it, and
+give `wobot-api` its new variables and secret (API service, above) in the same
+step: the running revision ignores them, and the next one finds the job in place.
+
+Verify:
+
+```sh
+gcloud run jobs describe wobot-assets --region $REGION
+gcloud run jobs get-iam-policy wobot-assets --region $REGION   # wobot-api: jobsExecutorWithOverrides only
+gcloud secrets get-iam-policy elevenlabs-api-key   # wobot-api and wobot-assets
+gcloud iam service-accounts get-iam-policy wobot-assets@$PROJECT_ID.iam.gserviceaccount.com   # wobot-deployer
+gcloud run jobs executions list --job wobot-assets --region $REGION --limit 3
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-assets" AND jsonPayload.message="asset work done"' \
+  --limit 3 --format="table(timestamp, jsonPayload.command, jsonPayload.outcome)"
+```
+
+Measured on the first executions: see `backend/README.md`, "Voices".
+
 ## 10. Firebase Authentication
 
 Firebase runs on the same project. The app signs in with Google through
@@ -1012,7 +1133,7 @@ gcloud iam workload-identity-pools providers describe wobot --location=global \
 - IAM → Grant access → `wobot-deployer` → Cloud Run Developer.
 - Artifact Registry → select `wobot` → Permissions → Add principal →
   Artifact Registry Writer.
-- Service Accounts → `wobot-api`, `wobot-migrator`, then `wobot-ingest` →
+- Service Accounts → `wobot-api`, `wobot-migrator`, `wobot-ingest`, then `wobot-assets` →
   Principals with access → Grant access → `wobot-deployer` → Service Account
   User.
 
@@ -1021,7 +1142,7 @@ gcloud iam workload-identity-pools providers describe wobot --location=global \
 | Workload Identity User | `wobot-deployer`, for this repository ID | Workflows impersonate the deployer |
 | Cloud Run Developer | Project | Update and run the job, deploy the service; no IAM changes |
 | Artifact Registry Writer | `wobot` repository | Push images, but not delete them |
-| Service Account User | `wobot-api`, `wobot-migrator`, `wobot-ingest` | Deploy code that runs as these three, and no other service account |
+| Service Account User | `wobot-api`, `wobot-migrator`, `wobot-ingest`, `wobot-assets` | Deploy code that runs as these four, and no other service account |
 
 Impersonation rather than granting roles to the federated identity directly:
 every API accepts a service account's token, while not every resource accepts
@@ -1149,7 +1270,8 @@ Wobot's roles.
 | Migration job | 1 |
 | Developer (Cloud SQL Studio or proxy) | 2 |
 | Ingestion job (pool 2 + overflow 1, one holding the run lock) | 3 |
-| **Total** | **18 of 22** |
+| Asset job: up to 2 executions at once × pool 1 | 2 |
+| **Total** | **20 of 22** |
 
 Cap the API at the [service level](https://docs.cloud.google.com/run/docs/configuring/max-instances)
 (`gcloud run services update wobot-api --max 3`), not only per revision:
