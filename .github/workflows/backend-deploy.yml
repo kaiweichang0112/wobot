@@ -57,6 +57,12 @@ jobs:
           gcloud run jobs update wobot-migrate --image "$IMAGE" --region "$REGION"
           gcloud run jobs execute wobot-migrate --region "$REGION" --wait
 
+      # Before the API, which starts it: a new API never starts an execution of old code.
+      - name: Update the asset job
+        run: |
+          gcloud run jobs update wobot-assets --image "$IMAGE" --region "$REGION" \
+            --update-env-vars "APP_VERSION=$GITHUB_SHA"
+
       # Only the image and APP_VERSION change; access settings stay as configured.
       - name: Deploy the API
         run: |
