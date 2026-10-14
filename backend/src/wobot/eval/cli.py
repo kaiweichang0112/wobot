@@ -15,6 +15,8 @@ compares models for the answer on what the knowledge path finds. `list-agent` an
 records as the path does. `turns` plays turns-v1's conversations through the configured
 graph and scores each last turn. `recommend` compares models for rec_agent on
 recommendation-v2, finding products by their facets as the recommendation path does.
+`api` times the deployed API as a client does, over the network, with a person's ID
+token; it reads no database and keeps nothing it sends.
 `judge` grades the replies an `answer`, `write-list` or `recommend` run kept, and the
 last turns of a `turns` run, by a rubric and, on the knowledge path, by faithfulness,
 with a model none of those comparisons tried; it reads an answer run's version only to
@@ -24,6 +26,7 @@ match the labels to records.
 import argparse
 import asyncio
 import json
+import os
 import subprocess
 from collections.abc import Sequence
 from datetime import datetime
@@ -31,6 +34,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+import httpx2
 from langgraph.checkpoint.memory import MemorySaver
 from openai import AsyncOpenAI
 
@@ -50,6 +54,8 @@ from wobot.eval import gold
 from wobot.eval.answer import DATASET as ANSWER_DATASET
 from wobot.eval.answer import answer_cases, knowledge_lookup, scored_cases
 from wobot.eval.answer import compare as compare_answer
+from wobot.eval.api import Cold, Timed, api_cases, health, nodes_of
+from wobot.eval.api import play_all as play_api
 from wobot.eval.candidates import Candidate, parse_candidate
 from wobot.eval.chat import chat_cases
 from wobot.eval.chat import compare as compare_chat
@@ -100,6 +106,7 @@ from wobot.eval.recommend import rec_cases
 from wobot.eval.report import (
     summary,
     write_answer_report,
+    write_api_report,
     write_chat_report,
     write_facets_report,
     write_judge_report,
@@ -399,6 +406,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     recommend.add_argument("--index-version", type=int, help="a version other than the active one")
     recommend.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
     recommend.set_defaults(handler=_recommend)
+
+    api = commands.add_parser(
+        "api",
+        help="time the deployed API as a client (paid calls); WOBOT_API_URL and "
+        "WOBOT_ID_TOKEN come from the environment",
+    )
+    api.add_argument("--dataset", default="route-v1", help="whose first messages are sent")
+    api.add_argument("--runs", type=int, default=3, help="times each message is sent")
+    api.add_argument("--split", choices=["all", "dev", "heldout"], default="all")
+    api.add_argument(
+        "--cold", type=int, metavar="N", help="instead, time /health after N idle spells"
+    )
+    api.add_argument("--idle-minutes", type=float, default=25, help="each idle spell")
+    api.add_argument(
+        "--logs",
+        type=Path,
+        help="instead, join Cloud Logging's turn lines (gcloud logging read --format json) "
+        "to the run given with --to",
+    )
+    api.add_argument("--to", type=Path, help="the api run (.json) that --logs joins")
+    api.add_argument("--out", type=Path, default=RUNS_DIR, help="where reports are written")
+    api.set_defaults(handler=_api)
 
     args = parser.parse_args(argv)
     return asyncio.run(args.handler(args, get_settings()))
@@ -1092,6 +1121,69 @@ async def _turns(args: argparse.Namespace, settings: Settings) -> int:
         f"{result.latency(0.5):.2f}s p95 {result.latency(0.95):.2f}s, {result.errors} errors"
     )
     print(f"report: {path}")
+    return 0
+
+
+async def _api(args: argparse.Namespace, settings: Settings) -> int:
+    if args.logs is not None:
+        return _join_api_logs(args)
+    base = os.environ.get("WOBOT_API_URL", "").rstrip("/")
+    if not base:
+        print("WOBOT_API_URL is not set: the deployed API's address")
+        return 1
+    started = datetime.now().astimezone()
+    meta: dict[str, Any] = {
+        "started_at": started.isoformat(timespec="seconds"),
+        "code_version": _code_version(),
+    }
+    if args.cold:
+        colds = []
+        async with httpx2.AsyncClient(base_url=base) as client:
+            for n in range(1, args.cold + 1):
+                print(f"idle {args.idle_minutes:g} min ({n}/{args.cold}): send nothing meanwhile")
+                await asyncio.sleep(args.idle_minutes * 60)
+                seconds, version = await health(client)
+                colds.append(Cold(args.idle_minutes, seconds, version))
+                print(f"  /health answered in {seconds:.2f}s")
+        meta["deployed"] = colds[-1].version
+        path = write_api_report([], colds, meta, args.out, f"{started:%Y%m%d-%H%M%S}-api-cold")
+        print(f"report: {path}")
+        return 0
+    # The token is a person's, valid for an hour: from the environment, never an argument
+    # that shell history and process lists keep.
+    token = os.environ.get("WOBOT_ID_TOKEN", "").strip()
+    if not token:
+        print("WOBOT_ID_TOKEN is not set: copy one from the app's debug build")
+        return 1
+    dataset = load_dataset(args.dataset)
+    splits = ("dev", "heldout") if args.split == "all" else (args.split,)
+    cases = api_cases([dataset], splits)
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx2.AsyncClient(base_url=base, headers=headers, timeout=60) as client:
+        _, version = await health(client)  # also wakes the service: these are warm turns
+        played = await play_api(client, cases, args.runs, progress=print)
+    meta |= {
+        "deployed": version,
+        "dataset": f"{dataset.name} {dataset.sha256[:12]}",
+        "splits": list(splits),
+        "cases": len(cases),
+        "runs": args.runs,
+    }
+    path = write_api_report(played, [], meta, args.out, f"{started:%Y%m%d-%H%M%S}-api")
+    print(f"report: {path}")
+    return 0
+
+
+def _join_api_logs(args: argparse.Namespace) -> int:
+    if args.to is None:
+        print("--logs joins an api run: name it with --to")
+        return 1
+    run = json.loads(args.to.read_text(encoding="utf-8"))
+    played = [Timed(**t) for t in run["turns"]]
+    colds = [Cold(**c) for c in run["cold"]]
+    joined = nodes_of(played, json.loads(args.logs.read_text(encoding="utf-8")))
+    path = write_api_report(played, colds, run["meta"], args.to.parent, args.to.stem)
+    print(f"joined {joined} of {len(played)} turns; report: {path}")
     return 0
 
 

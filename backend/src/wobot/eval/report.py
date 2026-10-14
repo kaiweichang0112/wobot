@@ -10,6 +10,8 @@ from typing import Any
 from wobot.eval.answer import AnswerCase, AnswerResult
 from wobot.eval.answer import Reply as AnswerReply
 from wobot.eval.answer import rule_pick as answer_rule_pick
+from wobot.eval.api import TARGETS as API_TARGETS
+from wobot.eval.api import Cold, Timed, by_route, node_spread, spread
 from wobot.eval.chat import ChatResult
 from wobot.eval.chat import rule_pick as chat_rule_pick
 from wobot.eval.dataset import Case
@@ -1794,4 +1796,92 @@ def write_judge_report(
     )
     markdown = directory / f"{stem}.md"
     markdown.write_text(judge_markdown(results, meta, against), encoding="utf-8")
+    return markdown
+
+
+# --- The deployed API's latency -----------------------------------------------------------
+
+
+def _pair(values: tuple[float, float] | None) -> str:
+    return "–" if values is None else f"{values[0]:.2f}s / {values[1]:.2f}s"
+
+
+def _target(name: str, route: str) -> str:
+    target = API_TARGETS[name]
+    if isinstance(target, dict):
+        target = target.get(route)
+    return "–" if target is None else f"≤ {target:.2f}s"
+
+
+def api_markdown(played: Sequence[Timed], colds: Sequence[Cold], meta: Mapping[str, Any]) -> str:
+    lines = ["# API latency", ""]
+    lines += [f"- {key}: {value}" for key, value in meta.items()]
+    if played:
+        lines += [
+            "",
+            "## Warm turns, by the path classify chose",
+            "",
+            "Seconds from sending the message, p50 / p95, as the client saw them. Targets",
+            "are D10's, for p50.",
+            "",
+            "| Path | Turns | Accepted | First status | First word | Whole turn |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        groups = by_route(played)
+        for route, turns in groups.items():
+            lines.append(
+                f"| {route} | {len(turns)} "
+                + "".join(
+                    f"| {_pair(spread([getattr(t, name) for t in turns]))} "
+                    f"({_target(name, route)}) "
+                    for name in ("accepted", "first_status", "first_token", "total")
+                )
+                + "|"
+            )
+        lines += ["", "Each node, p50 / p95, from Cloud Logging:", ""]
+        if any(t.nodes for t in played):
+            for route, turns in groups.items():
+                nodes = node_spread(turns)
+                listed = ", ".join(f"{node} {_pair(s)}" for node, s in nodes.items())
+                lines.append(f"- **{route}**: {listed or 'not joined'}")
+        else:
+            lines.append("- not joined yet: pass `--logs` with the run")
+        unfinished = [t for t in played if t.status != "completed"]
+        lines += ["", f"## Not completed: {len(unfinished)}", ""]
+        lines += [f"- {t.case_id} run {t.run}: {t.status}" for t in unfinished]
+    if colds:
+        lines += [
+            "",
+            "## Cold starts",
+            "",
+            "`/health` after the service sat idle: what a first message waits before",
+            "`accepted`, less the request's own fraction of a second.",
+            "",
+            "| Idle | Seconds | Version |",
+            "| --- | --- | --- |",
+        ]
+        lines += [f"| {c.idle_minutes:g} min | {c.seconds:.2f}s | {c.version} |" for c in colds]
+        seconds = spread([c.seconds for c in colds])
+        lines += ["", f"p50 / p95: {_pair(seconds)}"]
+    return "\n".join(lines) + "\n"
+
+
+def write_api_report(
+    played: Sequence[Timed],
+    colds: Sequence[Cold],
+    meta: Mapping[str, Any],
+    directory: Path,
+    stem: str,
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": dict(meta),
+        "turns": [asdict(t) for t in played],
+        "cold": [asdict(c) for c in colds],
+    }
+    (directory / f"{stem}.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    markdown = directory / f"{stem}.md"
+    markdown.write_text(api_markdown(played, colds, meta), encoding="utf-8")
     return markdown
