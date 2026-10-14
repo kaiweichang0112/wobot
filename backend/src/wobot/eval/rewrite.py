@@ -18,6 +18,7 @@ from pathlib import Path
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 
+from wobot.agent.models import read_structured, structured_reader
 from wobot.agent.retrieval import evidence_keys, records_named, search_knowledge
 from wobot.agent.rewrite import SearchPlan, read_plan, rewrite_prompt
 from wobot.eval import candidates, gold
@@ -94,17 +95,14 @@ class ModelRewriter:
     """The rewrite_query node's prompt and schema on a candidate model, with its usage."""
 
     def __init__(self, model: BaseChatModel):
-        self.model = model.with_structured_output(
-            SearchPlan, method="json_schema", include_raw=True
-        )
+        self.model = structured_reader(model, SearchPlan)
 
     async def __call__(self, messages: Sequence[BaseMessage]) -> Planned:
         result = await self.model.ainvoke(rewrite_prompt(messages))
-        if result["parsed"] is None:
-            raise ValueError(f"the plan did not parse: {result['parsing_error']}")
+        plan = read_structured(result, SearchPlan)  # as the node reads it
         usage = result["raw"].usage_metadata or {}
         return Planned(
-            **read_plan(result["parsed"], messages[-1].text),
+            **read_plan(plan, messages[-1].text),
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
         )

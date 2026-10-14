@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from wobot.agent.graph import Models, build_graph
+from wobot.agent.models import read_structured, structured_reader
 from wobot.agent.rewrite import writes_chinese
 from wobot.agent.route import Routed
 from wobot.agent.write_list import ListIntro, list_reply, lists_that_count, write_list_prompt
@@ -418,14 +419,13 @@ class ModelWriter:
     """The write_list node's prompt and schema on a candidate model, with its usage."""
 
     def __init__(self, model: BaseChatModel):
-        self.model = model.with_structured_output(ListIntro, method="json_schema", include_raw=True)
+        self.model = structured_reader(model, ListIntro)
 
     async def __call__(self, item: WriteCase) -> tuple[dict[str, Any], int, int]:
         result = await self.model.ainvoke(write_list_prompt(item.message, item.results))
-        if result["parsed"] is None:
-            raise ValueError(f"the intro did not parse: {result['parsing_error']}")
+        intro = read_structured(result, ListIntro)  # as the node reads it
         usage = result["raw"].usage_metadata or {}
-        reply, _ = list_reply(result["parsed"], item.results, writes_chinese(item.message))
+        reply, _ = list_reply(intro, item.results, writes_chinese(item.message))
         return reply, usage.get("input_tokens", 0), usage.get("output_tokens", 0)
 
 
