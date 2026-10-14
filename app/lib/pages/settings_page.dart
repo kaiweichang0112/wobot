@@ -1,29 +1,43 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../api.dart';
+import '../assets.dart';
 import '../auth.dart';
+import '../avatar/avatar_setup.dart';
+import '../avatar/frame_cache.dart';
 import '../chat.dart';
 import '../theme.dart';
+import '../voice/audio.dart';
+import '../voice/voice_setup.dart';
+import 'avatar_setup_page.dart';
+import 'voice_setup_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.api,
+    required this.accountId,
     required this.email,
     required this.idToken,
     required this.settings,
     required this.onSettings,
     required this.beforeSignOut,
+    this.frames,
   });
 
   final WobotApi api;
+  final String accountId;
   final String email;
   final Future<String?> Function() idToken;
   final AssistantSettings settings;
   final ValueChanged<AssistantSettings> onSettings;
   final Future<void> Function() beforeSignOut;
+
+  /// Where the avatar's frames are kept; the account's own directory by default.
+  final FrameCache? frames;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -31,6 +45,11 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late AssistantSettings _settings = widget.settings;
+  late final FrameCache _frames =
+      widget.frames ?? FileFrameCache(widget.accountId);
+
+  /// How the voice and the avatar stand, read on opening and after each page.
+  late Future<Me> _me = widget.api.me();
 
   void _show(String message) => ScaffoldMessenger.of(
     context,
@@ -71,6 +90,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final navigator = Navigator.of(context);
     await widget.beforeSignOut();
     navigator.popUntil((route) => route.isFirst);
+    try {
+      await _frames.clear();
+    } on Exception {
+      // Signing out goes on; the frames are the account's own, under its ID.
+    }
     await signOutAll();
   }
 
@@ -81,8 +105,54 @@ class _SettingsPageState extends State<SettingsPage> {
     _show('ID token copied. It expires in an hour.');
   }
 
-  void _open(Widget page) =>
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+  Future<void> _open(Widget Function() page) async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => page()));
+    if (mounted) setState(() => _me = widget.api.me());
+  }
+
+  VoiceSetupPage _voicePage() => VoiceSetupPage(
+    controller: VoiceSetupController(
+      widget.api,
+      recorder: MicrophoneRecorder(),
+      player: SpeakerPlayer(),
+      temporary: getTemporaryDirectory,
+    ),
+  );
+
+  AvatarSetupPage _avatarPage() =>
+      AvatarSetupPage(controller: AvatarSetupController(widget.api, _frames));
+
+  Widget _assetTile({
+    required IconData icon,
+    required String title,
+    required AssetSummary Function(Me me) of,
+    required Widget Function() page,
+  }) {
+    return FutureBuilder<Me>(
+      future: _me,
+      builder: (context, snapshot) {
+        final asset = snapshot.hasData ? of(snapshot.requireData) : null;
+        final status = asset != null
+            ? assetStatus(asset)
+            : snapshot.hasError
+            ? 'Could not be read'
+            : '…';
+        final failed = asset?.candidate?.status == 'failed';
+        return ListTile(
+          leading: Icon(icon),
+          title: Text(title),
+          subtitle: Text(
+            status,
+            style: failed ? const TextStyle(color: WobotColors.danger) : null,
+          ),
+          trailing: const Icon(Icons.chevron_right, color: WobotColors.faint),
+          onTap: () => _open(page),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,19 +194,17 @@ class _SettingsPageState extends State<SettingsPage> {
           const _Header('Avatar & voice'),
           _Section(
             children: [
-              ListTile(
-                leading: const Icon(Icons.record_voice_over_outlined),
-                title: const Text('Voice'),
-                subtitle: const Text('Not set up'),
-                trailing: const _Soon(),
-                onTap: () => _open(const _ComingSoon(kind: _Kind.voice)),
+              _assetTile(
+                icon: Icons.record_voice_over_outlined,
+                title: 'Voice',
+                of: (me) => me.voice,
+                page: _voicePage,
               ),
-              ListTile(
-                leading: const Icon(Icons.face_retouching_natural),
-                title: const Text('Avatar'),
-                subtitle: const Text('Not set up'),
-                trailing: const _Soon(),
-                onTap: () => _open(const _ComingSoon(kind: _Kind.avatar)),
+              _assetTile(
+                icon: Icons.face_retouching_natural,
+                title: 'Avatar',
+                of: (me) => me.avatar,
+                page: _avatarPage,
               ),
             ],
           ),
@@ -226,25 +294,6 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _Soon extends StatelessWidget {
-  const _Soon();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: WobotColors.accent.withValues(alpha: 0.6)),
-      ),
-      child: const Text(
-        'Soon',
-        style: TextStyle(color: WobotColors.accent, fontSize: 12),
-      ),
-    );
-  }
-}
-
 class _NameDialog extends StatefulWidget {
   const _NameDialog({required this.current});
 
@@ -298,89 +347,6 @@ class _NameDialogState extends State<_NameDialog> {
           ),
         ),
       ],
-    );
-  }
-}
-
-enum _Kind { voice, avatar }
-
-/// Where making a voice and an avatar will live (spec 21, 22): described now, built in
-/// a later phase.
-class _ComingSoon extends StatelessWidget {
-  const _ComingSoon({required this.kind});
-
-  final _Kind kind;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final (title, icon, lead, steps, action) = switch (kind) {
-      _Kind.voice => (
-        'Voice',
-        Icons.record_voice_over_outlined,
-        'Record your voice in the app, and Wobot reads its replies aloud in it.',
-        [
-          'Find a quiet room.',
-          'Read the sentences shown, in your usual voice.',
-          'Wobot makes your voice in the cloud; you can leave the app meanwhile.',
-        ],
-        'Record my voice',
-      ),
-      _Kind.avatar => (
-        'Avatar',
-        Icons.face_retouching_natural,
-        'Take a photo of yourself, and Wobot draws an avatar that speaks with '
-            'seven expressions.',
-        [
-          'Face the camera in good light.',
-          'Wobot draws your avatar in the cloud; you can leave the app meanwhile.',
-          'Replace or delete it at any time; the old one stays until a new one is ready.',
-        ],
-        'Take a photo',
-      ),
-    };
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: ListView(
-        padding: const EdgeInsets.all(28),
-        children: [
-          Icon(icon, size: 48, color: WobotColors.accent),
-          const SizedBox(height: 20),
-          Text(lead, style: text.titleMedium),
-          const SizedBox(height: 20),
-          for (final (i, step) in steps.indexed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${i + 1}',
-                    style: const TextStyle(
-                      color: WobotColors.accent,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      step,
-                      style: text.bodyLarge?.copyWith(color: WobotColors.muted),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-          FilledButton(onPressed: null, child: Text(action)),
-          const SizedBox(height: 12),
-          const Text(
-            'Coming in a later version.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: WobotColors.faint),
-          ),
-        ],
-      ),
     );
   }
 }
