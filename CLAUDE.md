@@ -97,6 +97,11 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   comparison (cases right, then p95, then cost) and recorded in a decision; change one
   only with new numbers. Every prompt's `PROMPT_VERSION` is pinned by a test, so a
   changed prompt fails until the version moves.
+- **Structured answers go through `read_structured`** (`agent/models.py`). gpt-6-luna
+  may write a commentary part before its JSON, and langchain_openai's parser then reads
+  no answer at all, so a node asks with `structured_reader` and falls back on the
+  reply's last text part; an answer neither reads is `UnreadableAnswer`, which nodes take
+  as an outage. Calling `with_structured_output` alone fails such turns as bugs.
 - **Code judges recommendations.** `rec_agent` only turns a need into a facet query;
   `agent/find.py` decides which products fit, from the facets ingestion read, and while
   more fit than were asked for, names the differences to ask about first (DEC-075). Code
