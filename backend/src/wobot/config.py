@@ -97,6 +97,20 @@ class Settings(BaseSettings):
     # The catalog's Drive file ID. Set on the job only: it never enters the repository.
     product_catalog_file_id: str | None = None
 
+    # Voices and avatars (DEC-086). Photos, recordings and frames go to this bucket, or to
+    # the local directory when it is unset.
+    media_bucket: str | None = None
+    media_local_dir: Path = Path(".data/media")
+    # The Cloud Run job that makes and removes them; unset, the API makes them in its own
+    # process, for development only.
+    assets_job: str | None = None
+    assets_job_region: str = "asia-east1"
+    # In the cloud it comes from Secret Manager.
+    elevenlabs_api_key: SecretStr | None = None
+    elevenlabs_timeout_seconds: float = 60
+    # Speaks the voice preview; a placeholder until the TTS comparison chooses (D7).
+    tts_model: str = "eleven_flash_v2_5"
+
 
 @lru_cache
 def get_settings() -> Settings:

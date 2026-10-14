@@ -27,7 +27,7 @@ from wobot.config import Settings  # noqa: E402
 # which CI, without one, never could. The app then starts without a chat graph, and a
 # test that needs one builds it from fake models.
 Settings.model_config["env_file"] = None
-for key in ("OPENAI_API_KEY", "TYPESAFE_API_KEY"):  # nor from the shell
+for key in ("OPENAI_API_KEY", "TYPESAFE_API_KEY", "ELEVENLABS_API_KEY"):  # nor the shell
     os.environ.pop(key, None)
 
 from wobot.agent.graph import Models, build_graph  # noqa: E402

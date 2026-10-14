@@ -32,6 +32,7 @@ WOBOT_API_URL=<API URL> WOBOT_ID_TOKEN=<token> uv run wobot-eval api [--cold N |
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge <answer run>.json [--candidate <model:effort>]
 uv run --env-file .env wobot-eval judge <write-list, recommend or turns run>.json [--candidate <model:effort>]
 uv run wobot-eval judge-sample|judge-agreement <judge run>.json
+DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make|clean voice <voice_id>
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -121,6 +122,13 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   the service or job, with an IAM token per connection (`agent/checkpoints.py`), since
   the connector has no async psycopg. Whatever keeps conversations needs
   `--set-cloudsql-instances`, and its pool counts in the budget.
+- **A voice or avatar version is its own job** (DEC-086). The API queues the row and
+  starts one `wobot-assets` execution through the Run Admin API; starts are at least
+  once, so the worker claims a version by moving it from queued to running and ends it
+  with a compare-and-swap that names its execution. Provider calls have no transaction:
+  a clone is named after its version (`wobot-<id>`) so a retry finds it. One active and
+  one in-progress version per account are partial unique indexes; activation retires
+  the old version before it activates the new one, in one transaction.
 - **Every API request is checked**: Firebase ID token, verified email,
   allowlist. Errors use the `{"error": {"code", "message"}}` envelope.
 - **A turn runs inside its request, and a stop is a request of its own.** Cloud Run's
