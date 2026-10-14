@@ -13,6 +13,7 @@ replies; `wobot-chat` runs the same graph from a terminal. Google Cloud setup is
 | `src/wobot/db.py` | Async engine: password login locally, Cloud SQL connector with IAM auth in the cloud |
 | `src/wobot/models.py` | SQLAlchemy models; the migrations define the schema |
 | `src/wobot/api/` | FastAPI app: Firebase ID token verification, the account and its settings, conversations, error envelope |
+| `src/wobot/assets/` | The account's own voice and avatar; `frames.py` holds the 21 frame keys the API, the worker and the app share |
 | `src/wobot/knowledge/` | Knowledge ingestion: sources → records → chunks → embeddings → versions, and search |
 | `src/wobot/agent/` | The chat graph: the router, its four paths, each model node's prompt, the tools the loops call, and the conversation checkpoints |
 | `src/wobot/eval/` | `wobot-eval`: labelled datasets scored against an index version, and model comparisons for each model node |

@@ -9,6 +9,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE ROLE wobot_migrator NOLOGIN;  -- owns the schemas; runs migrations
 CREATE ROLE wobot_api NOLOGIN;       -- the Cloud Run API
 CREATE ROLE wobot_ingest NOLOGIN;    -- knowledge ingestion jobs
+CREATE ROLE wobot_assets NOLOGIN;    -- the job that makes voices and avatars
 
 -- PG16+: creating a role leaves a non-superuser admin with ADMIN OPTION only,
 -- but naming another role as a schema owner requires being able to SET ROLE to it.
@@ -19,4 +20,4 @@ CREATE SCHEMA knowledge AUTHORIZATION wobot_migrator;  -- shared corpus
 CREATE SCHEMA ops AUTHORIZATION wobot_migrator;        -- jobs, runs, deletion state
 
 REVOKE ALL ON DATABASE wobot FROM PUBLIC;
-GRANT CONNECT ON DATABASE wobot TO wobot_migrator, wobot_api, wobot_ingest;
+GRANT CONNECT ON DATABASE wobot TO wobot_migrator, wobot_api, wobot_ingest, wobot_assets;

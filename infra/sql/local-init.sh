@@ -19,4 +19,5 @@ psql -v ON_ERROR_STOP=1 --username wobot_admin --dbname "$POSTGRES_DB" <<'SQL'
 CREATE ROLE wobot_migrator_user LOGIN PASSWORD 'wobot' IN ROLE wobot_migrator;
 CREATE ROLE wobot_api_user LOGIN PASSWORD 'wobot' IN ROLE wobot_api;
 CREATE ROLE wobot_ingest_user LOGIN PASSWORD 'wobot' IN ROLE wobot_ingest;
+CREATE ROLE wobot_assets_user LOGIN PASSWORD 'wobot' IN ROLE wobot_assets;
 SQL
