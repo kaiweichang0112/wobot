@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../voice/audio.dart';
 import '../voice/voice_setup.dart';
 import 'avatar_setup_page.dart';
+import 'voice_lab_page.dart';
 import 'voice_setup_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -225,6 +226,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('Copy ID token'),
                   subtitle: const Text('Valid for an hour'),
                   onTap: _copyIdToken,
+                ),
+                // Debug builds only: tries the phone's speech recognition.
+                ListTile(
+                  leading: const Icon(Icons.mic_none),
+                  title: const Text('Voice lab'),
+                  subtitle: const Text('Speech recognition on this phone'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const VoiceLabPage(),
+                    ),
+                  ),
                 ),
               ],
             ),

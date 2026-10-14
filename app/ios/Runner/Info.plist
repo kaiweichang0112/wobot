@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Wobot takes a photo of your face to draw your avatar.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Wobot turns your spoken questions into text on this phone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Wobot records your voice to speak its replies in it, and to hear your questions.</string>
 	<key>UIApplicationSceneManifest</key>
