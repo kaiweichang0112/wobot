@@ -1,7 +1,34 @@
 # Wobot app
 
-The Flutter client, iOS first; Android follows before the chat phase. It currently
-proves the path end to end: Google Sign-In → Firebase ID token → `GET /v1/me`.
+The Flutter client, iOS first; Android follows before the pilot. Signed in with
+Google, an allowlisted account chats with the API: replies stream in, a reply can be
+stopped, copied or tried again, and past chats are kept, titled and deleted.
+
+| File | What it holds |
+| --- | --- |
+| `lib/api.dart` | The API client: the Firebase ID token on every request, refreshed once when refused, and the `{"error"}` envelope as `ApiException` |
+| `lib/sse.dart` | Server-sent events read from a streamed response |
+| `lib/chat.dart` | `ChatController` and `HistoryController` (`ChangeNotifier`): sending, stopping, retrying, and the chats list |
+| `lib/pages/` | Sign-in, chat, the chats drawer, settings |
+| `lib/widgets/` | The thinking mark shown while a reply is awaited, and replies with tappable links |
+| `lib/theme.dart` | The dark theme and its orange accent |
+
+How the app keeps to the API's rules:
+
+- **A stop is a request.** Stop closes the stream and sends `cancel` with the words
+  shown: on Cloud Run the closed stream alone never reaches the instance.
+- **A turn ends at `completed` or `error`**, not when the connection closes: the server
+  sends its traces before closing.
+- **Out of sight, a reply stops** (CHAT-011); back in the foreground, the app warms the
+  service with `GET /health` and reads each turn as it stands. A system dialog only
+  makes the app inactive, which is not leaving it.
+- **The app names each turn** (a random UUID), so a message sent again is never answered
+  twice. A stream lost mid-reply is followed by reading the turn until the server ends it.
+- **Replies are plain text.** They are written to be read aloud. A web address shows
+  as the label before it (`PDF`, `產品網頁`, `Product page`), or as its site, and opens
+  in the browser; Copy keeps the whole address.
+- **Avatar mode, voice and avatar** have their places (the top-right button, Settings)
+  and say they come in a later version.
 
 ## Setup
 
@@ -55,7 +82,9 @@ flutter analyze
 flutter test
 ```
 
-`flutter analyze` needs the generated `lib/firebase_options.dart`.
+`flutter analyze` needs the generated `lib/firebase_options.dart`. CI (`app-ci.yml`)
+writes a stand-in with placeholder values after checking formatting, then analyzes and
+tests; nothing in it reaches Firebase.
 
 ## Running on an iPhone
 
