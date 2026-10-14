@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -16,6 +17,9 @@ const _coldStart = Duration(seconds: 40);
 
 /// The server sends a keepalive every 15 s: a stream silent this long is lost.
 const _silence = Duration(seconds: 45);
+
+/// A voice sample or a photo, up to 10 MB, may go out slowly over a phone network.
+const _uploading = Duration(seconds: 120);
 
 /// An error from the API, read from its `{"error": {"code", "message"}}` envelope.
 class ApiException implements Exception {
@@ -51,11 +55,145 @@ class Me {
     required this.accountId,
     required this.email,
     required this.settings,
+    this.voice = const AssetSummary(),
+    this.avatar = const AssetSummary(),
+    this.avatarMode = false,
   });
 
   final String accountId;
   final String email;
   final AssistantSettings settings;
+  final AssetSummary voice;
+  final AssetSummary avatar;
+
+  /// Both the voice and the avatar in use: Avatar mode is open (MODE-004).
+  final bool avatarMode;
+}
+
+/// One version of a voice or an avatar, as `/v1/me` names it.
+class AssetRef {
+  const AssetRef({required this.id, required this.status, this.errorCode});
+
+  factory AssetRef.fromJson(Map<String, dynamic> json) => AssetRef(
+    id: json['id'] as String,
+    status: json['status'] as String,
+    errorCode: json['error_code'] as String?,
+  );
+
+  final String id;
+
+  /// queued, running, ready, failed or active.
+  final String status;
+  final String? errorCode;
+}
+
+/// The version in use and the newest one that is not: being made, waiting to be
+/// activated, or failed. The one in use stays in use meanwhile (AVA-009, VOI-013).
+class AssetSummary {
+  const AssetSummary({this.active, this.candidate});
+
+  factory AssetSummary.fromJson(Map<String, dynamic> json) => AssetSummary(
+    active: _ref(json['active']),
+    candidate: _ref(json['candidate']),
+  );
+
+  final AssetRef? active;
+  final AssetRef? candidate;
+
+  static AssetRef? _ref(Object? json) =>
+      json is Map<String, dynamic> ? AssetRef.fromJson(json) : null;
+}
+
+/// A cloned voice: made in the cloud from a recorded sample.
+class Voice {
+  const Voice({
+    required this.id,
+    required this.status,
+    this.errorCode,
+    required this.sampleSeconds,
+  });
+
+  factory Voice.fromJson(Map<String, dynamic> json) => Voice(
+    id: json['voice_id'] as String,
+    status: json['status'] as String,
+    errorCode: json['error_code'] as String?,
+    sampleSeconds: (json['sample_seconds'] as num).toDouble(),
+  );
+
+  final String id;
+  final String status;
+  final String? errorCode;
+  final double sampleSeconds;
+}
+
+/// One of an avatar's 21 frames.
+class AvatarFrame {
+  const AvatarFrame({
+    required this.key,
+    required this.status,
+    this.sha256,
+    this.errorCode,
+  });
+
+  factory AvatarFrame.fromJson(Map<String, dynamic> json) => AvatarFrame(
+    key: json['key'] as String,
+    status: json['status'] as String,
+    sha256: json['sha256'] as String?,
+    errorCode: json['error_code'] as String?,
+  );
+
+  final String key;
+
+  /// pending, running, ready or failed.
+  final String status;
+
+  /// Set when ready; it changes when the frame is made again.
+  final String? sha256;
+  final String? errorCode;
+}
+
+/// An avatar: a photo drawn as 21 frames in the cloud.
+class Avatar {
+  const Avatar({
+    required this.id,
+    required this.status,
+    this.errorCode,
+    required this.frames,
+  });
+
+  factory Avatar.fromJson(Map<String, dynamic> json) => Avatar(
+    id: json['avatar_id'] as String,
+    status: json['status'] as String,
+    errorCode: json['error_code'] as String?,
+    frames: [
+      for (final f in json['frames'] as List)
+        AvatarFrame.fromJson(f as Map<String, dynamic>),
+    ],
+  );
+
+  final String id;
+  final String status;
+  final String? errorCode;
+  final List<AvatarFrame> frames;
+
+  int get readyFrames => frames.where((f) => f.status == 'ready').length;
+
+  AvatarFrame? frame(String key) {
+    for (final f in frames) {
+      if (f.key == key) return f;
+    }
+    return null;
+  }
+}
+
+/// A file sent with a request, as multipart form data.
+class _Upload {
+  const _Upload(this.fields, this.field, this.filename, this.bytes);
+
+  final Map<String, String> fields;
+  final String field;
+  final String filename;
+  final List<int> bytes;
 }
 
 class Conversation {
@@ -145,6 +283,9 @@ class WobotApi {
       settings: AssistantSettings.fromJson(
         body['settings'] as Map<String, dynamic>,
       ),
+      voice: AssetSummary.fromJson(body['voice'] as Map<String, dynamic>),
+      avatar: AssetSummary.fromJson(body['avatar'] as Map<String, dynamic>),
+      avatarMode: body['avatar_mode'] as bool,
     );
   }
 
@@ -229,27 +370,132 @@ class WobotApi {
     return body['status'] as String;
   }
 
+  /// Sends a recorded sample, an M4A file of 60 to 180 seconds, to be cloned. Sent
+  /// again with the same ID, it returns the voice the first request made.
+  Future<Voice> createVoice(String voiceId, List<int> sample) async =>
+      Voice.fromJson(
+        await _json(
+          'POST',
+          '/v1/voices',
+          upload: _Upload(
+            {'voice_id': voiceId},
+            'sample',
+            'sample.m4a',
+            sample,
+          ),
+        ),
+      );
+
+  /// The voice's progress; reading it also restarts a start the cloud lost.
+  Future<Voice> voice(String voiceId) async =>
+      Voice.fromJson(await _json('GET', '/v1/voices/$voiceId'));
+
+  /// A sentence in Chinese and one in English, spoken in the voice, as MP3.
+  Future<Uint8List> previewVoice(String voiceId) async =>
+      (await _bytes('POST', '/v1/voices/$voiceId/preview')).body;
+
+  /// Puts a ready voice to use in place of `expectedActive`, the one last seen in use.
+  Future<Voice> activateVoice(String voiceId, {String? expectedActive}) async =>
+      Voice.fromJson(
+        await _json(
+          'POST',
+          '/v1/voices/$voiceId/activate',
+          body: {'expected_active': expectedActive},
+        ),
+      );
+
+  Future<void> deleteVoice(String voiceId) =>
+      _json('DELETE', '/v1/voices/$voiceId');
+
+  /// Sends a photo to be drawn as 21 frames. Sent again with the same ID, it returns
+  /// the avatar the first request made.
+  Future<Avatar> createAvatar(String avatarId, List<int> photo) async =>
+      Avatar.fromJson(
+        await _json(
+          'POST',
+          '/v1/avatars',
+          upload: _Upload({'avatar_id': avatarId}, 'photo', 'photo.jpg', photo),
+        ),
+      );
+
+  /// The avatar's progress, frame by frame.
+  Future<Avatar> avatar(String avatarId) async =>
+      Avatar.fromJson(await _json('GET', '/v1/avatars/$avatarId'));
+
+  /// One frame as PNG, with the SHA-256 the server knows it by.
+  Future<({Uint8List png, String? sha256})> frame(
+    String avatarId,
+    String key,
+  ) async {
+    final response = await _bytes('GET', '/v1/avatars/$avatarId/frames/$key');
+    final etag = response.headers['etag'];
+    return (png: response.body, sha256: etag?.replaceAll('"', ''));
+  }
+
+  /// Draws the frames that failed again; the ready ones stay.
+  Future<Avatar> retryAvatar(String avatarId) async =>
+      Avatar.fromJson(await _json('POST', '/v1/avatars/$avatarId/retry'));
+
+  /// Draws one frame again, with the frames drawn from it.
+  Future<Avatar> redoFrame(String avatarId, String key) async =>
+      Avatar.fromJson(
+        await _json('POST', '/v1/avatars/$avatarId/frames/$key/redo'),
+      );
+
+  /// Puts an avatar with all 21 frames to use in place of `expectedActive`.
+  Future<Avatar> activateAvatar(
+    String avatarId, {
+    String? expectedActive,
+  }) async => Avatar.fromJson(
+    await _json(
+      'POST',
+      '/v1/avatars/$avatarId/activate',
+      body: {'expected_active': expectedActive},
+    ),
+  );
+
+  Future<void> deleteAvatar(String avatarId) =>
+      _json('DELETE', '/v1/avatars/$avatarId');
+
   /// A request with the ID token; a refused token is refreshed once and sent again.
   Future<http.StreamedResponse> _send(
     String method,
     String path, {
     Map<String, String>? query,
     Object? body,
+    _Upload? upload,
     Future<void>? abort,
   }) async {
     for (final refresh in [false, true]) {
-      final request = http.AbortableRequest(
-        method,
-        _uri(path, query),
-        abortTrigger: abort,
-      );
+      // Built anew for each attempt: a request is sent only once.
+      final http.BaseRequest request;
+      if (upload != null) {
+        request = http.MultipartRequest(method, _uri(path, query))
+          ..fields.addAll(upload.fields)
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              upload.field,
+              upload.bytes,
+              filename: upload.filename,
+            ),
+          );
+      } else {
+        final plain = http.AbortableRequest(
+          method,
+          _uri(path, query),
+          abortTrigger: abort,
+        );
+        if (body != null) {
+          plain.headers['Content-Type'] = 'application/json';
+          plain.body = jsonEncode(body);
+        }
+        request = plain;
+      }
       request.headers['Authorization'] =
           'Bearer ${await token(refresh: refresh)}';
-      if (body != null) {
-        request.headers['Content-Type'] = 'application/json';
-        request.body = jsonEncode(body);
-      }
-      final response = await _client.send(request).timeout(_coldStart);
+      final response = await _client
+          .send(request)
+          .timeout(upload == null ? _coldStart : _uploading);
       if (response.statusCode != 401 || refresh) return response;
       await response.stream.drain<void>();
     }
@@ -261,9 +507,10 @@ class WobotApi {
     String path, {
     Map<String, String>? query,
     Object? body,
+    _Upload? upload,
   }) async {
     final response = await http.Response.fromStream(
-      await _send(method, path, query: query, body: body),
+      await _send(method, path, query: query, body: body, upload: upload),
     );
     // JSON is UTF-8 (RFC 8259); `body` would read a reply without a charset as Latin-1.
     final decoded = _decode(
@@ -273,6 +520,21 @@ class WobotApi {
       return decoded ?? const {};
     }
     throw _error(response.statusCode, decoded);
+  }
+
+  /// A reply that is not JSON, such as audio or an image; an error still is.
+  Future<({Uint8List body, Map<String, String> headers})> _bytes(
+    String method,
+    String path,
+  ) async {
+    final response = await http.Response.fromStream(await _send(method, path));
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return (body: response.bodyBytes, headers: response.headers);
+    }
+    throw _error(
+      response.statusCode,
+      _decode(utf8.decode(response.bodyBytes, allowMalformed: true)),
+    );
   }
 
   Stream<SseEvent> _stream(

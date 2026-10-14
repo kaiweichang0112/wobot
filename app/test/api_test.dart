@@ -9,6 +9,19 @@ const _me = {
   'account_id': 'uid-1',
   'email': 'member@example.com',
   'settings': {'chatbot_name': 'Wobot', 'version': 0},
+  'voice': {
+    'active': {'id': 'v1', 'status': 'active', 'error_code': null},
+    'candidate': null,
+  },
+  'avatar': {
+    'active': null,
+    'candidate': {
+      'id': 'a1',
+      'status': 'failed',
+      'error_code': 'IMAGE_REJECTED',
+    },
+  },
+  'avatar_mode': false,
 };
 
 void main() {
@@ -187,5 +200,120 @@ void main() {
 
     expect(sent.single.url.path, '/health');
     expect(sent.single.headers.containsKey('Authorization'), isFalse);
+  });
+
+  test('reads how the voice and the avatar stand', () async {
+    final api = apiWith((_) async => http.Response(jsonEncode(_me), 200));
+
+    final me = await api.me();
+
+    expect(me.voice.active?.id, 'v1');
+    expect(me.voice.candidate, isNull);
+    expect(me.avatar.active, isNull);
+    expect(me.avatar.candidate?.status, 'failed');
+    expect(me.avatar.candidate?.errorCode, 'IMAGE_REJECTED');
+    expect(me.avatarMode, isFalse);
+  });
+
+  test('a sample goes as multipart form data with its ID', () async {
+    final api = apiWith(
+      (_) async => http.Response(
+        jsonEncode({
+          'voice_id': 'v2',
+          'status': 'queued',
+          'error_code': null,
+          'sample_seconds': 75.5,
+        }),
+        202,
+      ),
+    );
+
+    final voice = await api.createVoice('v2', [1, 2, 3]);
+
+    final request = sent.single;
+    expect(request.url.path, '/v1/voices');
+    expect(request.headers['content-type'], startsWith('multipart/form-data'));
+    final body = latin1.decode(request.bodyBytes);
+    expect(body, contains('name="voice_id"\r\n\r\nv2'));
+    expect(body, contains('name="sample"; filename="sample.m4a"'));
+    expect(voice.status, 'queued');
+    expect(voice.sampleSeconds, 75.5);
+  });
+
+  test('an upload refused for its token is built and sent again', () async {
+    final api = apiWith(
+      (request) async => request.headers['Authorization'] == 'Bearer token-2'
+          ? http.Response(
+              jsonEncode({
+                'avatar_id': 'a2',
+                'status': 'queued',
+                'error_code': null,
+                'frames': [],
+              }),
+              202,
+            )
+          : http.Response('{}', 401),
+    );
+
+    await api.createAvatar('a2', [9, 9]);
+
+    expect(sent, hasLength(2));
+    expect(
+      latin1.decode(sent.last.bodyBytes),
+      contains('name="photo"; filename="photo.jpg"'),
+    );
+  });
+
+  test('a frame comes back as PNG with the hash it is known by', () async {
+    final api = apiWith(
+      (_) async =>
+          http.Response.bytes([137, 80], 200, headers: {'etag': '"abc123"'}),
+    );
+
+    final frame = await api.frame('a1', 'joy_half');
+
+    expect(sent.single.url.path, '/v1/avatars/a1/frames/joy_half');
+    expect(frame.png, [137, 80]);
+    expect(frame.sha256, 'abc123');
+  });
+
+  test('a binary request that fails reads the error envelope', () async {
+    final api = apiWith(
+      (_) async => http.Response(
+        jsonEncode({
+          'error': {
+            'code': 'VOICE_NOT_READY',
+            'message': 'This voice is not ready yet.',
+          },
+        }),
+        409,
+      ),
+    );
+
+    expect(
+      api.previewVoice('v1'),
+      throwsA(
+        isA<ApiException>().having((e) => e.code, 'code', 'VOICE_NOT_READY'),
+      ),
+    );
+  });
+
+  test('activation names the version last seen in use', () async {
+    final api = apiWith(
+      (_) async => http.Response(
+        jsonEncode({
+          'voice_id': 'v2',
+          'status': 'active',
+          'error_code': null,
+          'sample_seconds': 75.5,
+        }),
+        200,
+      ),
+    );
+
+    await api.activateVoice('v2', expectedActive: 'v1');
+
+    expect(sent.single.url.path, '/v1/voices/v2/activate');
+    expect(jsonDecode(sent.single.body), {'expected_active': 'v1'});
   });
 }
