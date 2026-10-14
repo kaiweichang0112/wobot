@@ -69,7 +69,7 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 
 | Route | What it does |
 | --- | --- |
-| `GET /v1/me` | Registers the account; returns it and its settings |
+| `GET /v1/me` | Registers the account; returns it, its settings, its voice and avatar (the `active` version and the newer `candidate`, if any), and `avatar_mode`: true only while both are active |
 | `PATCH /v1/me/settings` | Renames the assistant (1–40 characters, one line) given the `expected_version` last read; another device's change meanwhile is `409 REVISION_CONFLICT` |
 | `POST /v1/conversations` | Starts an empty conversation |
 | `GET /v1/conversations` | The account's conversations, most recently active first, a `cursor` page at a time |
