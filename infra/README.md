@@ -207,7 +207,10 @@ avoids the trailing newline that `echo` would add.
 
 ElevenLabs lists each key with a separate key ID; the secret holds the key itself,
 which starts with `sk_` and is shown once, when the key is created. Given the ID,
-ElevenLabs answers every call with `400 authentication_error`. To replace a value,
+ElevenLabs answers every call with `400 authentication_error`. Create the key with
+access to Text to Speech and Voices (write) only, and a credit quota above 0: a quota
+of 0 still lets voices be cloned, which costs no credits, but refuses every preview
+with `401 quota_exceeded`. To replace a value,
 add a version and move what reads it to that version, then disable the old one:
 
 ```sh
