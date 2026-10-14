@@ -48,6 +48,9 @@ uv run --env-file .env wobot-eval list-agent --model gpt-6-luna:none
 uv run --env-file .env wobot-eval write-list --model gpt-6-luna:none
 uv run --env-file .env wobot-eval recommend --model gpt-6-luna:low
 uv run --env-file .env wobot-eval turns
+WOBOT_API_URL=<API URL> WOBOT_ID_TOKEN=<token> uv run wobot-eval api
+WOBOT_API_URL=<API URL> uv run wobot-eval api --cold 3
+uv run wobot-eval api --logs <gcloud logging JSON> --to eval/runs/<stamp>-api.json
 DB_USER=wobot_ingest_user uv run --env-file .env wobot-eval facets --model gpt-6-luna
 uv run wobot-eval facets --stored [--index-version <version>]
 DB_USER=wobot_api_user uv run --env-file .env wobot-eval judge eval/runs/<stamp>-answer.json --candidate gpt-6-luna:none
@@ -93,6 +96,17 @@ uv run wobot-eval judge-agreement eval/runs/<stamp>-judge.json
   code wrote is not judged; the run scores it. Each play keeps every tool call with what
   the agent read back, which the rubric reads, so a run made before V8d cannot be judged.
   Its labels are `gold/judge-labels-recommend.yaml`.
+- `api` times the deployed API as a client does: route-v1's first messages, each as a
+  new conversation deleted afterwards, three times, one at a time. It notes when
+  `accepted`, the first status, the first word and the turn's last event arrive, and
+  groups turns by the path classify chose, against D10's targets. The ID token is a
+  person's, from the app's debug build, and stays in the environment. `--cold` instead
+  times `/health` after idle spells, the wait a first message has before `accepted`;
+  `--logs` joins each turn's `turn finished` line from Cloud Logging, for each node's
+  seconds:
+  `gcloud logging read 'resource.type="cloud_run_revision" AND
+  resource.labels.service_name="wobot-api" AND jsonPayload.message="turn finished"'
+  --freshness 2h --limit 500 --format json > <file>`.
 - `judge` grades a `turns` run's last turns by their route's rubric, with the
   conversation the graph kept: knowledge replies whole, list replies on their words; chat
   is not judged. Each play keeps what its last turn's model read. A knowledge reply is
