@@ -125,7 +125,9 @@ class Heard {
 class QuestionListener extends ChangeNotifier {
   QuestionListener(
     this._engine, {
-    this.pause = const Duration(milliseconds: 1200),
+    // Past a pause within a sentence: a word comes 0.3 to 0.5 s after it is said, so a
+    // 1 s pause measured longer than 1.2 s (DEC-092).
+    this.pause = const Duration(milliseconds: 1800),
     this.silence = const Duration(seconds: 10),
     this.limit = const Duration(seconds: 60),
     this.finalWait = const Duration(seconds: 1),
