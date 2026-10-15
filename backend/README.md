@@ -111,10 +111,12 @@ first word and first sentence spoken; no message text.
 
 In Avatar mode the reply is also spoken in the account's voice (`wobot/speech/`, DEC-089):
 streamed words are cut into sentences, the first at its first comma so the voice starts
-early, and each sentence is one ElevenLabs request, two at a time, told in order. Each
-sentence's feeling is one Jev question (`speech/emotions.py`, DEC-095): it is the
-`speech` event's `emotion`, for the avatar's face, and an audio tag such as `[excited]`
-for the voice; short of 0.7 confidence, slower than 0.8 s or failed, it is neutral. Code
+early, and each sentence is one ElevenLabs request, two at a time, told in order. On
+the chat path each sentence's feeling is one Jev question (`speech/emotions.py`,
+DEC-095, DEC-097): it is the `speech` event's `emotion`, for the avatar's face, and an
+audio tag such as `[excited]` for the voice; short of 0.7 confidence, slower than 0.8 s
+or failed, it is neutral. The other paths say what the sources say, neutral, and wait
+for no feeling. Code
 says what is spoken of the replies it writes: a list's intro and first three items, a
 recommendation's products and the needs they meet; never a link, phone number or
 address. The speech is a layer over the turn: the text completes it and moves the
@@ -352,12 +354,13 @@ and every path ends with the reply; a test holds the drawing to
   nothing is left to ask. The agent asks when the products split on something the user
   has not said, and explains when none fits.
 - Every prompt has a `PROMPT_VERSION`, which a test pins with the prompt's fingerprint.
-- `chat_reply`, `answer` and `rec_agent` share one persona (`agent/persona.py`, DEC-093):
-  openly emotional, in Text and Avatar mode alike, adding no fact. List intros keep a
-  plain tone: with the persona they began answering what their rules leave to another
-  question. Every node that writes caps its reply's tokens, since a model at reasoning
-  `none` once wrote 128,000. `answer`, which reads no conversation, is given how the last
-  reply began, so it does not open the same way twice.
+- Only `chat_reply` has a persona (`agent/persona.py`, DEC-097): openly emotional, in
+  Text and Avatar mode alike, adding no fact. Answers, lists and recommendations keep a
+  plain tone: with it they grew longer and slower, and list intros began answering what
+  their rules leave to another question. Code tells each writing node the language of
+  the user's latest message, since from Chinese sources or Chinese turns a model
+  answered English in Chinese. Every node that writes caps its reply's tokens, since a
+  model at reasoning `none` once wrote 128,000.
 
 ```bash
 DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>] [--name <name>]

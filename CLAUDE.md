@@ -99,8 +99,10 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **Each model node of the chat graph has its own model**, chosen by its `wobot-eval`
   comparison (cases right, then p95, then cost) and recorded in a decision; change one
   only with new numbers. Every prompt's `PROMPT_VERSION` is pinned by a test, so a
-  changed prompt fails until the version moves. Three writing nodes share
-  `agent/persona.py`: changing it moves three versions, and each needs its regression.
+  changed prompt fails until the version moves. Only `chat_reply` has the emotional
+  persona (`agent/persona.py`, DEC-097); the paths that answer from the sources stay
+  plain, and so do their spoken sentences. The writing nodes are told the language to
+  reply in by code, never left to infer it.
   Each writing node caps its reply (`MAX_OUTPUT_TOKENS`); a cap too low cuts a
   structured reply into JSON that cannot be read.
 - **Structured answers go through `read_structured`** (`agent/models.py`). gpt-6-luna
