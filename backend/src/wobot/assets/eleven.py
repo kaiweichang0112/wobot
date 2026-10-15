@@ -78,12 +78,14 @@ class ElevenLabs:
             if exc.status_code != 404:
                 raise
 
-    async def speak(self, provider_voice_id: str, text: str, model: str) -> bytes:
+    async def speak(
+        self, provider_voice_id: str, text: str, model: str, output_format: str = PREVIEW_FORMAT
+    ) -> bytes:
         """The text spoken in the voice, as MP3."""
         response = await self._send(
             "POST",
             f"/v1/text-to-speech/{provider_voice_id}",
-            params={"output_format": PREVIEW_FORMAT},
+            params={"output_format": output_format},
             json={"text": text, "model_id": model},
         )
         return response.content

@@ -222,7 +222,7 @@ def test_a_ready_voice_is_previewed_in_itself(client, as_member, assets):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/mpeg"
-    assert assets.eleven.spoken == [(f"provider-{voice_id}", "eleven_flash_v2_5")]
+    assert assets.eleven.spoken == [(f"provider-{voice_id}", "eleven_v4_turbo")]
 
 
 def test_a_voice_being_made_has_no_preview(client, as_member, assets):

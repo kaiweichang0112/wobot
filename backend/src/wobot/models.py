@@ -107,6 +107,8 @@ class Turn(Base):
         CheckConstraint(
             "(status = 'running') = (finished_at IS NULL)", name="turns_finished_unless_running"
         ),
+        CheckConstraint("mode IN ('text', 'avatar')", name="turns_mode"),
+        CheckConstraint("heard_upto >= 0", name="turns_heard_upto_positive"),
         Index(
             "turns_one_running",
             "conversation_id",
@@ -133,6 +135,11 @@ class Turn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Avatar mode (migration 0009, DEC-089): the reply is also spoken.
+    mode: Mapped[str] = mapped_column(Text, server_default=text("'text'"))
+    speech: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    heard_upto: Mapped[int | None] = mapped_column(Integer)
+    speech_stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --- Assets (migration 0008, DEC-086) -----------------------------------------------------

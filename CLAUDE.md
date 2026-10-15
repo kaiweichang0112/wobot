@@ -142,7 +142,8 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **A turn runs inside its request, and a stop is a request of its own.** Cloud Run's
   front end does not pass a client's disconnect on to the instance, so closing the stream
   stops nothing there: the app sends `cancel`, and the running turn reads it back from
-  the database every second (`api/turns.py`). Every end of a turn is a compare-and-swap
+  the database every second (`api/turns.py`). In Avatar mode a `playback` stop ends only
+  the speech, read the same way: the text still completes the turn (DEC-089). Every end of a turn is a compare-and-swap
   on its ID, attempt and status, and one running turn per conversation is a partial
   unique index, never a lock in Python: instances share nothing else.
 - **Cloud resources are created in the console first**, then recorded in
