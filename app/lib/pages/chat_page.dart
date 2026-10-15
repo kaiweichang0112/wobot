@@ -1,11 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
+import '../avatar/avatar_look.dart';
+import '../avatar/avatar_session.dart';
+import '../avatar/frame_cache.dart';
 import '../chat.dart';
 import '../theme.dart';
+import '../voice/listener.dart';
+import '../voice/question_language.dart';
+import '../voice/speech_queue.dart';
 import '../widgets/linked_text.dart';
 import '../widgets/thinking.dart';
+import 'avatar_page.dart';
 import 'history_drawer.dart';
 import 'settings_page.dart';
 
@@ -17,10 +26,19 @@ class ChatPage extends StatefulWidget {
     required this.idToken,
     required this.chat,
     required this.history,
+    this.frames,
+    this.avatarSession,
   });
 
   final WobotApi api;
   final Me me;
+
+  /// Where the avatar's frames are kept; the account's own directory by default.
+  final FrameCache? frames;
+
+  /// Avatar mode's session on the phone's recognizer and speaker by default; a test
+  /// gives its own.
+  final AvatarSession Function()? avatarSession;
 
   /// For the debug build's "Copy ID token".
   final Future<String?> Function() idToken;
@@ -34,6 +52,9 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _input = TextEditingController();
   late AssistantSettings _settings = widget.me.settings;
+  late final FrameCache _frames =
+      widget.frames ?? FileFrameCache(widget.me.accountId);
+  bool _opening = false;
 
   ChatController get _chat => widget.chat;
 
@@ -85,10 +106,64 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           settings: _settings,
           onSettings: (settings) => setState(() => _settings = settings),
           beforeSignOut: _chat.stop,
+          frames: _frames,
         ),
       ),
     );
   }
+
+  /// Opens Avatar mode on this conversation, once the server says the account's own
+  /// avatar and voice are both in use (MODE-004); otherwise says what to set up.
+  Future<void> _openAvatar() async {
+    if (_opening) return;
+    _opening = true;
+    unawaited(widget.api.warmUp());
+    try {
+      final Me me;
+      try {
+        me = await widget.api.me();
+      } on Exception catch (e) {
+        if (mounted) _say(describe(e));
+        return;
+      }
+      if (!mounted) return;
+      final avatarId = me.avatar.active?.id;
+      if (!me.avatarMode || avatarId == null) {
+        await showAvatarSetup(
+          context,
+          me,
+          voice: () => _push(voiceSetupPage(widget.api)),
+          avatar: () => _push(avatarSetupPage(widget.api, _frames)),
+        );
+        return;
+      }
+      _dismissKeyboard();
+      await _push(
+        AvatarPage(
+          look: loadLook(widget.api, _frames, avatarId),
+          session: (widget.avatarSession ?? _newSession)(),
+          chat: _chat,
+        ),
+      );
+    } finally {
+      _opening = false;
+    }
+  }
+
+  AvatarSession _newSession() => AvatarSession(
+    api: widget.api,
+    chat: _chat,
+    listener: QuestionListener(DeviceSpeechEngine()),
+    queue: SpeechQueue(DeviceSentencePlayer()),
+    locale: QuestionLanguage.read,
+  );
+
+  Future<void> _push(Widget page) =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+
+  void _say(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +191,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             IconButton(
               tooltip: 'Avatar mode',
               icon: const Icon(Icons.face_retouching_natural),
-              onPressed: () => showAvatarMode(context, _openSettings),
+              onPressed: _openAvatar,
             ),
           ],
         ),
@@ -464,9 +539,17 @@ class _RoundButton extends StatelessWidget {
   }
 }
 
-/// Avatar mode is planned for a later phase: the button is in place, and says so.
-Future<void> showAvatarMode(BuildContext context, VoidCallback openSettings) {
+/// Avatar mode needs the account's own avatar and voice (MODE-005): says which are
+/// missing, and opens where each is made.
+Future<void> showAvatarSetup(
+  BuildContext context,
+  Me me, {
+  required VoidCallback voice,
+  required VoidCallback avatar,
+}) {
   final text = Theme.of(context).textTheme;
+  final needsAvatar = me.avatar.active == null;
+  final needsVoice = me.voice.active == null;
   return showModalBottomSheet<void>(
     context: context,
     builder: (sheet) => SafeArea(
@@ -485,22 +568,29 @@ Future<void> showAvatarMode(BuildContext context, VoidCallback openSettings) {
             const SizedBox(height: 8),
             Text(
               'Talk with Wobot face to face: your avatar speaks its replies in '
-              'your voice. It arrives in a later version. You will make your '
-              'avatar and voice in Settings first.',
+              'your voice. Set up your own avatar and voice first.',
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: WobotColors.muted),
             ),
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.of(sheet).pop();
-                  openSettings();
-                },
-                child: const Text('Open Settings'),
-              ),
-            ),
+            for (final (needed, label, open) in [
+              (needsAvatar, 'Set up Avatar', avatar),
+              (needsVoice, 'Set up Voice', voice),
+            ])
+              if (needed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.of(sheet).pop();
+                        open();
+                      },
+                      child: Text(label),
+                    ),
+                  ),
+                ),
           ],
         ),
       ),

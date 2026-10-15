@@ -46,8 +46,18 @@ class ChatTurn {
   /// Whether the server has the turn: a retry of one it never got sends it again.
   bool saved;
 
+  /// `text`, or `avatar` when the reply is also spoken.
+  String mode = 'text';
+
+  /// Where reading a list reply goes on when the user asks to hear more; null when
+  /// there is no more, or the reply was not spoken (DEC-096).
+  int? next;
+
   bool get running => state == TurnState.running;
 }
+
+/// Hears a spoken reply's events as they come: `speech` and `speech_error`.
+typedef SpeechSink = void Function(ChatTurn turn, SseEvent event);
 
 /// One conversation: its turns, the one being written, and sending, stopping and
 /// retrying. The conversation is started on the first message, so the history never
@@ -67,6 +77,9 @@ class ChatController extends ChangeNotifier {
   ChatTurn? _active;
   Completer<void>? _abort;
   bool _disposed = false;
+
+  /// Set by Avatar mode while it is open: it plays what is spoken.
+  SpeechSink? speech;
 
   /// Whether a reply is being written: one at a time.
   bool get busy => _active != null;
@@ -139,10 +152,12 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  Future<void> send(String text) async {
+  /// Sends a message and streams its reply. The turn is in [turns] before this first
+  /// waits, so a caller can follow it.
+  Future<void> send(String text, {String mode = 'text'}) async {
     final message = text.trim();
     if (message.isEmpty || busy) return;
-    final turn = ChatTurn(id: newTurnId(), question: message);
+    final turn = ChatTurn(id: newTurnId(), question: message)..mode = mode;
     turns.add(turn);
     _active = turn;
     _notify();
@@ -157,6 +172,7 @@ class ChatController extends ChangeNotifier {
         conversation!.id,
         turnId: turn.id,
         text: message,
+        mode: mode,
         abort: abort,
       );
     });
@@ -181,6 +197,7 @@ class ChatController extends ChangeNotifier {
               conversation!.id,
               turnId: turn.id,
               text: turn.question,
+              mode: turn.mode,
               abort: abort,
             ),
     );
@@ -275,10 +292,13 @@ class ChatController extends ChangeNotifier {
         final title = data['title'] as String;
         conversation = conversation?.copyWith(title: title);
         _history.rename(conversation!.id, title);
+      case 'speech' || 'speech_error':
+        speech?.call(turn, event);
       case 'completed':
         turn
           ..state = TurnState.completed
-          ..stage = null;
+          ..stage = null
+          ..next = data['next'] as int?;
         _active = null;
         _history.touch(conversation!);
       case 'error':

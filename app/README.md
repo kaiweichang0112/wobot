@@ -4,7 +4,7 @@ The Flutter client, iOS first; Android follows before the pilot. Signed in with
 Google, an allowlisted account chats with the API: replies stream in, a reply can be
 stopped, copied or tried again, and past chats are kept, titled and deleted. In
 Settings it records the voice and takes the photo the cloud makes its voice and avatar
-from.
+from; in Avatar mode the avatar speaks the replies in that voice.
 
 | File | What it holds |
 | --- | --- |
@@ -12,9 +12,9 @@ from.
 | `lib/sse.dart` | Server-sent events read from a streamed response |
 | `lib/chat.dart` | `ChatController` and `HistoryController` (`ChangeNotifier`): sending, stopping, retrying, and the chats list |
 | `lib/assets.dart` | What voices and avatars share: their status in a word, failures, and reading one being made every 2.5 s |
-| `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with; `QuestionListener`, which turns a spoken question into text on the phone; Voice lab's script and CER |
-| `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device |
-| `lib/pages/` | Sign-in, chat, the chats drawer, settings, and the Voice and Avatar pages |
+| `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with; `QuestionListener`, which turns a spoken question into text on the phone; `SpeechQueue`, which plays a reply's sentences in order; the question language; Voice lab's script and CER |
+| `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device; `AvatarSession`, Avatar mode's state; `AnimatedAvatar`, the face that breathes and speaks |
+| `lib/pages/` | Sign-in, chat, the chats drawer, settings, the Voice and Avatar pages, and Avatar mode |
 | `lib/widgets/` | The thinking mark shown while a reply is awaited, replies with tappable links, and the setup pages' notes |
 | `lib/theme.dart` | The dark theme and its orange accent |
 
@@ -48,8 +48,26 @@ How the app keeps to the API's rules:
   finalize, so it is sent once, and nothing is sent when nothing was heard. Voice lab
   (Settings, debug builds) shows when and why a question ended, and measures CER against
   a script read aloud.
-- **Avatar mode** has its place (the top-right button) and says it comes in a later
-  version.
+- **Avatar mode needs the account's own avatar and voice** (MODE-004): the top-right
+  button reads `/v1/me` each time, and says what to set up when either is missing.
+  It speaks on the chat's own conversation, so back in Text the reply goes on there.
+- **One button, one generation per question** (spec 22). A tap listens; while
+  listening it sends; while the avatar speaks it stops the voice here at once, then
+  listens, and tells the server with `playback` (`stopped`), so no more is spoken; the
+  text is still written (P19). Each question, interruption or reading on starts a new
+  generation, and speech of an earlier one is dropped. A question asked while the reply
+  before is still written waits for it, and stops it, keeping its words, after 15 s.
+- **Each sentence is played as it comes** (`speech` events, MP3 in base64), one after
+  another; its `emotion` becomes the avatar's face when it starts, unless it is too
+  short to see, and the last face stays 1.6 s. The mouth moves, at random, only while a
+  sentence is heard. A list reply says how many items are left: Continue reading speaks
+  the next ones from where `completed` said (DEC-096).
+- **The controls hide.** A first tap only shows them; they hide after 4 s, except while
+  a question is heard, an error shows, the transcript is open or a screen reader is on,
+  and hidden ones are left out of what it reads. Out of sight, nothing is heard or
+  played, and the reply stops; back, nothing starts by itself.
+- **Questions are spoken in the language chosen in Settings** (中文 or English, kept on
+  the phone), never switched on the Avatar screen (VOI-012).
 
 ## Setup
 

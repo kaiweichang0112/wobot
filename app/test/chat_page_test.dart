@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wobot/api.dart';
 import 'package:wobot/chat.dart';
 import 'package:wobot/pages/chat_page.dart';
@@ -25,6 +26,7 @@ void main() {
   late ChatController chat;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     reply = StreamController<List<int>>();
     server = FakeServer()
       ..reply('GET /health', 200, '{"status": "ok"}')
@@ -114,25 +116,42 @@ void main() {
     expect(tester.testTextInput.isVisible, isFalse);
   });
 
-  testWidgets('the avatar button says avatar mode comes later', (tester) async {
+  testWidgets('Avatar mode first asks for what is not set up', (tester) async {
+    server.reply(
+      'GET /v1/me',
+      200,
+      meJson(
+        voice: {
+          'active': {'id': 'v1', 'status': 'active'},
+          'candidate': null,
+        },
+      ),
+    );
     await show(tester);
 
     await tester.tap(find.byTooltip('Avatar mode'));
     await tester.pumpAndSettle();
 
     expect(find.text('Avatar mode'), findsOneWidget);
-    expect(find.text('Open Settings'), findsOneWidget);
+    expect(find.text('Set up Avatar'), findsOneWidget);
+    expect(find.text('Set up Voice'), findsNothing); // the voice is in use
   });
 
   testWidgets('settings hold the name, the voice and the avatar', (
     tester,
   ) async {
-    server.reply('GET /v1/me', 200, meJson());
+    server
+      ..reply('GET /v1/me', 200, meJson())
+      ..reply(
+        'GET /v1/conversations',
+        200,
+        jsonEncode({'conversations': [], 'next_cursor': null}),
+      );
     await show(tester);
 
-    await tester.tap(find.byTooltip('Avatar mode'));
+    await tester.tap(find.byTooltip('Chats'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Open Settings'));
+    await tester.tap(find.text('member@example.com'));
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsOneWidget);
@@ -140,6 +159,8 @@ void main() {
     expect(find.text('Voice'), findsOneWidget);
     expect(find.text('Avatar'), findsOneWidget);
     expect(find.text('Not set up'), findsNWidgets(2));
+    await tester.scrollUntilVisible(find.text('Question language'), 200);
+    expect(find.text('中文'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Sign out'), 200);
     expect(find.text('Sign out'), findsOneWidget);
   });

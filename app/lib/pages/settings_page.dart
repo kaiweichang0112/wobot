@@ -11,10 +11,25 @@ import '../avatar/frame_cache.dart';
 import '../chat.dart';
 import '../theme.dart';
 import '../voice/audio.dart';
+import '../voice/question_language.dart';
 import '../voice/voice_setup.dart';
 import 'avatar_setup_page.dart';
 import 'voice_lab_page.dart';
 import 'voice_setup_page.dart';
+
+/// Recording, cloning, hearing and putting a voice to use.
+VoiceSetupPage voiceSetupPage(WobotApi api) => VoiceSetupPage(
+  controller: VoiceSetupController(
+    api,
+    recorder: MicrophoneRecorder(),
+    player: SpeakerPlayer(),
+    temporary: getTemporaryDirectory,
+  ),
+);
+
+/// Taking a photo, drawing its 21 frames, reviewing and putting them to use.
+AvatarSetupPage avatarSetupPage(WobotApi api, FrameCache frames) =>
+    AvatarSetupPage(controller: AvatarSetupController(api, frames));
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -51,6 +66,25 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// How the voice and the avatar stand, read on opening and after each page.
   late Future<Me> _me = widget.api.me();
+
+  String _language = QuestionLanguage.chinese;
+
+  @override
+  void initState() {
+    super.initState();
+    QuestionLanguage.read().then((locale) {
+      if (mounted) setState(() => _language = locale);
+    });
+  }
+
+  Future<void> _speakIn(String locale) async {
+    setState(() => _language = locale);
+    try {
+      await QuestionLanguage.write(locale);
+    } on Exception {
+      _show('The language could not be saved on this phone.');
+    }
+  }
 
   void _show(String message) => ScaffoldMessenger.of(
     context,
@@ -113,17 +147,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) setState(() => _me = widget.api.me());
   }
 
-  VoiceSetupPage _voicePage() => VoiceSetupPage(
-    controller: VoiceSetupController(
-      widget.api,
-      recorder: MicrophoneRecorder(),
-      player: SpeakerPlayer(),
-      temporary: getTemporaryDirectory,
-    ),
-  );
+  VoiceSetupPage _voicePage() => voiceSetupPage(widget.api);
 
-  AvatarSetupPage _avatarPage() =>
-      AvatarSetupPage(controller: AvatarSetupController(widget.api, _frames));
+  AvatarSetupPage _avatarPage() => avatarSetupPage(widget.api, _frames);
 
   Widget _assetTile({
     required IconData icon,
@@ -215,6 +241,31 @@ class _SettingsPageState extends State<SettingsPage> {
               'Avatar mode starts once both your voice and your avatar are ready.',
               style: TextStyle(color: WobotColors.faint, fontSize: 13),
             ),
+          ),
+          const _Header('Speaking'),
+          _Section(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.translate),
+                title: const Text('Question language'),
+                subtitle: const Text('What you speak in Avatar mode'),
+                trailing: SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                      value: QuestionLanguage.chinese,
+                      label: Text('中文'),
+                    ),
+                    ButtonSegment(
+                      value: QuestionLanguage.english,
+                      label: Text('English'),
+                    ),
+                  ],
+                  selected: {_language},
+                  onSelectionChanged: (chosen) => _speakIn(chosen.single),
+                ),
+              ),
+            ],
           ),
           if (kDebugMode) ...[
             const _Header('Developer'),

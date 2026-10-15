@@ -336,14 +336,17 @@ class WobotApi {
       _json('DELETE', '/v1/conversations/$conversationId');
 
   /// Sends a message; its reply streams back. Completing `abort` closes the stream.
+  /// In Avatar mode the reply is also spoken, as `speech` events (DEC-089).
   Stream<SseEvent> sendTurn(
     String conversationId, {
     required String turnId,
     required String text,
+    String mode = 'text',
     Future<void>? abort,
   }) => _stream('/v1/conversations/$conversationId/turns', {
     'turn_id': turnId,
     'text': text,
+    if (mode != 'text') 'mode': mode,
   }, abort);
 
   /// Writes a stopped or failed reply again, as the turn's next attempt.
@@ -369,6 +372,31 @@ class WobotApi {
     );
     return body['status'] as String;
   }
+
+  /// How far the reply's speech was heard, and whether the user stopped it: a stop
+  /// ends only the speech, and the text is written all the same (DEC-089).
+  Future<void> playback(
+    String turnId, {
+    required int attempt,
+    int? heard,
+    bool stopped = false,
+  }) => _json(
+    'POST',
+    '/v1/turns/$turnId/playback',
+    body: {'attempt': attempt, 'heard': ?heard, 'stopped': stopped},
+  );
+
+  /// The next items of a list reply, spoken: `speech` events, then `completed` with
+  /// where the next page starts, null at the end (DEC-096).
+  Stream<SseEvent> continueReading(
+    String turnId, {
+    required int attempt,
+    required int from,
+    Future<void>? abort,
+  }) => _stream('/v1/turns/$turnId/continue-reading', {
+    'attempt': attempt,
+    'from': from,
+  }, abort);
 
   /// Sends a recorded sample, an M4A file of 60 to 180 seconds, to be cloned. Sent
   /// again with the same ID, it returns the voice the first request made.
