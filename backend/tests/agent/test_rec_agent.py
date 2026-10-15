@@ -32,7 +32,8 @@ def test_the_prompt_version_moves_with_the_prompt():
     prompt = json.dumps([rec_agent.INSTRUCTIONS, tools], ensure_ascii=False)
     fingerprint = hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
-    assert (rec_agent.PROMPT_VERSION, fingerprint) == (15, "663b176219d3")
+    # v16 is v12's text, the same hash: v12's numbers stand (DEC-097).
+    assert (rec_agent.PROMPT_VERSION, fingerprint) == (16, "1725c3138007")
 
 
 def test_the_agent_finds_and_shows():

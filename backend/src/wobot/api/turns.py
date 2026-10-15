@@ -53,6 +53,7 @@ from wobot.api.errors import ApiError
 from wobot.config import get_settings
 from wobot.knowledge.models import ActiveKnowledge
 from wobot.models import AvatarVersion, Conversation, Turn, VoiceVersion
+from wobot.speech.emotions import Feel
 from wobot.speech.segments import Segmenter
 from wobot.speech.spoken import PAGE_ITEMS, continue_from, list_page, speakable, spoken_text
 from wobot.speech.tts import Speaker
@@ -664,11 +665,7 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             started.voice.provider_voice_id,
             get_settings().tts_model,
             emit=lambda name, data: events.put_nowait((name, data)),
-            feel=(
-                state.emotions.for_question(started.text)
-                if getattr(state, "emotions", None) is not None
-                else None
-            ),
+            feel=chat_feelings(state, started, played),
         )
         if started.mode == "avatar" and started.voice is not None
         else None
@@ -880,6 +877,23 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             # while a request is open, so they are sent before this one closes.
             with anyio.CancelScope(shield=True):
                 await anyio.to_thread.run_sync(wait_for_all_tracers)
+
+
+def chat_feelings(state: Any, started: Started, played: Played) -> Feel | None:
+    """Each spoken sentence's feeling, on the chat path alone: the other paths say what
+    the sources say, plainly, and are not kept waiting for a feeling (DEC-097). The path
+    is known before any sentence is spoken."""
+    emotions = getattr(state, "emotions", None)
+    if emotions is None:
+        return None
+    feel = emotions.for_question(started.text)
+
+    async def on_chat(sentence: str, previous: str | None) -> str:
+        if played.route != "chat":
+            return "neutral"
+        return await feel(sentence, previous)
+
+    return on_chat
 
 
 def speak_rest(speaker: Speaker, sentences: Segmenter, played: Played, question: str) -> None:

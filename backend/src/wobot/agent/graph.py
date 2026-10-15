@@ -39,7 +39,6 @@ from wobot.agent.list_agent import (
     turn_date,
 )
 from wobot.agent.models import openai_model, read_structured, structured_reader
-from wobot.agent.persona import last_opening
 from wobot.agent.rec_agent import (
     REC_TOOLS,
     ShowProducts,
@@ -316,7 +315,6 @@ def build_graph(
             state["question"],
             state["evidence"],
             state["chatbot_name"],
-            last_opening(state["messages"]),
         )
         try:
             response = await models.answer.ainvoke(prompt)
