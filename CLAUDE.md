@@ -99,7 +99,10 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **Each model node of the chat graph has its own model**, chosen by its `wobot-eval`
   comparison (cases right, then p95, then cost) and recorded in a decision; change one
   only with new numbers. Every prompt's `PROMPT_VERSION` is pinned by a test, so a
-  changed prompt fails until the version moves.
+  changed prompt fails until the version moves. Three writing nodes share
+  `agent/persona.py`: changing it moves three versions, and each needs its regression.
+  Each writing node caps its reply (`MAX_OUTPUT_TOKENS`); a cap too low cuts a
+  structured reply into JSON that cannot be read.
 - **Structured answers go through `read_structured`** (`agent/models.py`). gpt-6-luna
   may write a commentary part before its JSON, and langchain_openai's parser then reads
   no answer at all, so a node asks with `structured_reader` and falls back on the

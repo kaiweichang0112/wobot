@@ -41,6 +41,7 @@ from openai import AsyncOpenAI
 from wobot.agent import answer as answering
 from wobot.agent import chat as chatting
 from wobot.agent import list_agent as listing
+from wobot.agent import rec_agent as recommending
 from wobot.agent import retrieval
 from wobot.agent import rewrite as rewriting
 from wobot.agent import route as routing
@@ -653,7 +654,10 @@ async def _chat(args: argparse.Namespace, settings: Settings) -> int:
     dataset = load_dataset(args.dataset)
     splits = ("dev", "heldout") if args.split == "all" else (args.split,)
     cases = chat_cases([dataset], splits)
-    models = [(c, openai_model(settings, c.model, c.effort)) for c in args.model]
+    models = [
+        (c, openai_model(settings, c.model, c.effort, max_tokens=chatting.MAX_OUTPUT_TOKENS))
+        for c in args.model
+    ]
     started = datetime.now().astimezone()
     results = await compare_chat(models, cases, args.runs, progress=print)
     meta = {
@@ -740,7 +744,10 @@ async def _answer(args: argparse.Namespace, settings: Settings) -> int:
     splits = ("dev", "heldout") if args.split == "all" else (args.split,)
     rewrite = Candidate(settings.rewrite_model, settings.rewrite_effort)
     rewriter = ModelRewriter(openai_model(settings, rewrite.model, rewrite.effort))
-    models = [(c, openai_model(settings, c.model, c.effort)) for c in args.model]
+    models = [
+        (c, openai_model(settings, c.model, c.effort, max_tokens=answering.MAX_OUTPUT_TOKENS))
+        for c in args.model
+    ]
     engine, connector = await create_engine(settings)
     try:
         async with engine.connect() as conn:
@@ -1005,7 +1012,9 @@ async def _list_agent(args: argparse.Namespace, settings: Settings) -> int:
         started = datetime.now().astimezone()
         results = await compare_agents(
             agents,
-            openai_model(settings, writer.model, writer.effort),
+            openai_model(
+                settings, writer.model, writer.effort, max_tokens=writing.MAX_OUTPUT_TOKENS
+            ),
             cases,
             engine,
             version_id,
@@ -1041,8 +1050,21 @@ async def _write_list(args: argparse.Namespace, settings: Settings) -> int:
     dataset = load_dataset(LIST_DATASET)
     splits = ("dev", "heldout") if args.split == "all" else (args.split,)
     agent = args.agent or Candidate(settings.list_agent_model, settings.list_agent_effort)
-    default_writer = openai_model(settings, settings.write_list_model, settings.write_list_effort)
-    writers = [(c, ModelWriter(openai_model(settings, c.model, c.effort))) for c in args.model]
+    default_writer = openai_model(
+        settings,
+        settings.write_list_model,
+        settings.write_list_effort,
+        max_tokens=writing.MAX_OUTPUT_TOKENS,
+    )
+    writers = [
+        (
+            c,
+            ModelWriter(
+                openai_model(settings, c.model, c.effort, max_tokens=writing.MAX_OUTPUT_TOKENS)
+            ),
+        )
+        for c in args.model
+    ]
     engine, connector = await create_engine(settings)
     try:
         async with engine.connect() as conn:
@@ -1197,7 +1219,10 @@ async def _recommend(args: argparse.Namespace, settings: Settings) -> int:
     dataset = load_dataset(REC_DATASET)
     splits = ("dev", "heldout") if args.split == "all" else (args.split,)
     cases = rec_cases([dataset], splits)
-    agents = [(c, openai_model(settings, c.model, c.effort)) for c in args.model]
+    agents = [
+        (c, openai_model(settings, c.model, c.effort, max_tokens=recommending.MAX_OUTPUT_TOKENS))
+        for c in args.model
+    ]
     engine, connector = await create_engine(settings)
     try:
         async with engine.connect() as conn:
