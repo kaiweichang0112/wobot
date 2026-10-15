@@ -324,6 +324,12 @@ and every path ends with the reply; a test holds the drawing to
   nothing is left to ask. The agent asks when the products split on something the user
   has not said, and explains when none fits.
 - Every prompt has a `PROMPT_VERSION`, which a test pins with the prompt's fingerprint.
+- `chat_reply`, `answer` and `rec_agent` share one persona (`agent/persona.py`, DEC-093):
+  openly emotional, in Text and Avatar mode alike, adding no fact. List intros keep a
+  plain tone: with the persona they began answering what their rules leave to another
+  question. Every node that writes caps its reply's tokens, since a model at reasoning
+  `none` once wrote 128,000. `answer`, which reads no conversation, is given how the last
+  reply began, so it does not open the same way twice.
 
 ```bash
 DB_USER=wobot_api_user uv run --env-file .env wobot-chat [--thread <id>] [--name <name>]
