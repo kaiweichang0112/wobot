@@ -79,6 +79,7 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 | `POST /v1/turns/{id}/cancel` | Stops the `attempt` given, keeping the `shown_text` the app had shown; answers how the turn stands, and changes nothing sent again or too late |
 | `POST /v1/turns/{id}/retry` | Writes a stopped or failed reply again, given the `expected_attempt`; streams as a turn does, in the mode it was asked in |
 | `POST /v1/turns/{id}/playback` | Avatar mode: how many sentences the `attempt` has `heard` (only moves forward), or `stopped` to end its speech; the text is written all the same |
+| `POST /v1/turns/{id}/continue-reading` | Speaks the next items of a completed list reply, `from` where the last `completed` said, for the `attempt` shown; streams `speech` events, then `completed` with the `next` start |
 
 Another account's conversation is answered `404`, as one that does not exist. A
 conversation points at the checkpoint its last completed turn left
@@ -100,7 +101,7 @@ in order:
 | `speech` | Avatar mode only, between the others: `index`, `text`, `emotion` and `audio` (base64 MP3) of the next sentence spoken, in order |
 | `speech_error` | `index` of a sentence that could not be spoken; the text is unaffected |
 | `title` | `title`: the conversation's name, on its first turn only, before the last event. Written by a model alongside the reply, or the question shortened when it cannot be |
-| `completed` | none: the turn is saved and the conversation remembers it; in Avatar mode, after the last `speech`, or once the speech was stopped |
+| `completed` | none: the turn is saved and the conversation remembers it; in Avatar mode, after the last `speech`, or once the speech was stopped, with `next`: where reading a list goes on, or null |
 | `error` | `code` (`PROVIDER_UNAVAILABLE`, `TURN_TIMEOUT` or `INTERNAL_ERROR`), `message`, `retryable`: the turn failed and is not remembered |
 
 The graph runs inside the request, from the checkpoint the conversation points at, and
@@ -119,6 +120,15 @@ recommendation's products and the needs they meet; never a link, phone number or
 address. The speech is a layer over the turn: the text completes it and moves the
 conversation's memory on, and a `playback` stop ends only the speech, read every second
 like a `cancel`. What was spoken is kept in the turn's `speech`.
+
+A list is read on a page of five items at a time (`continue-reading`, DEC-096), from the
+reply the turn kept, which holds every item: no graph runs and nothing is searched, so
+the list heard is the one shown. The app holds the cursor, so the same `from` always
+gives the same page and asking again repeats nothing. It speaks in the voice in use now
+(a replaced voice is gone from ElevenLabs), with no feeling, and is no turn: it does not
+wait on one running, and stopping it only stops playback, the page being short. It is
+refused with `409 NOTHING_TO_READ` for a reply that is no list, another attempt or a
+start past the end.
 
 How a turn can end besides completing, each saved by a compare-and-swap on the turn's
 ID, attempt and status, so the first end written stands:
