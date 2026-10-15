@@ -9,10 +9,11 @@ import asyncio
 import base64
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from wobot.assets.eleven import ElevenLabsError
+from wobot.speech.emotions import TAGS, Feel
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,11 @@ CONCURRENCY = 2
 # stream, a third larger. About 8 KB a second of speech.
 SPEECH_FORMAT = "mp3_44100_64"
 NEUTRAL = "neutral"
+# The models that take audio tags, such as [excited], to speak with a feeling (DEC-091).
+TAGGED_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo", "eleven_v3"})
 
 # Emit(event, data): what the turn sends its client.
 Emit = Callable[[str, dict[str, Any]], None]
-# The feeling of a sentence, from it and the one before (D8).
-Feel = Callable[[str, str | None], Awaitable[str]]
 
 
 class Voice(Protocol):
@@ -89,8 +90,11 @@ class Speaker:
     async def _speak(self, index: int, text: str, previous: str | None) -> dict[str, Any]:
         async with self._limit:
             emotion = await self._feel(text, previous) if self._feel else NEUTRAL
+            spoken = text
+            if emotion in TAGS and self._model in TAGGED_MODELS:
+                spoken = f"{TAGS[emotion]} {text}"
             started = time.perf_counter()
-            audio = await self._voice.speak(self._voice_id, text, self._model, SPEECH_FORMAT)
+            audio = await self._voice.speak(self._voice_id, spoken, self._model, SPEECH_FORMAT)
             self.seconds.append(round(time.perf_counter() - started, 3))
         return {"index": index, "text": text, "emotion": emotion, "audio": audio}
 

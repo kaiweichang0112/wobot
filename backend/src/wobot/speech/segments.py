@@ -7,6 +7,8 @@ the voice starts while the rest is still being written.
 
 HARD = "。！？!?；;\n"
 SOFT = "，,、：:"
+# The first sentence ends early only at a comma: a list's 、 or a colon leaves it mid-thought.
+FIRST_SOFT = "，,"
 FIRST_AT_LEAST = 6  # characters before the first sentence may end at a comma
 SOFT_LIMIT = 48  # a sentence this long ends at its last comma
 HARD_LIMIT = 80  # and one this long without a comma is cut here
@@ -66,7 +68,7 @@ class Segmenter:
 
     def _first_soft_end(self) -> int | None:
         for i in range(FIRST_AT_LEAST - 1, min(SOFT_LIMIT, len(self._buffer))):
-            if self._soft(i):
+            if self._buffer[i] in FIRST_SOFT:
                 return i + 1
         return None
 

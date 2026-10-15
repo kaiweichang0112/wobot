@@ -110,7 +110,10 @@ first word and first sentence spoken; no message text.
 
 In Avatar mode the reply is also spoken in the account's voice (`wobot/speech/`, DEC-089):
 streamed words are cut into sentences, the first at its first comma so the voice starts
-early, and each sentence is one ElevenLabs request, two at a time, told in order. Code
+early, and each sentence is one ElevenLabs request, two at a time, told in order. Each
+sentence's feeling is one Jev question (`speech/emotions.py`, DEC-095): it is the
+`speech` event's `emotion`, for the avatar's face, and an audio tag such as `[excited]`
+for the voice; short of 0.7 confidence, slower than 0.8 s or failed, it is neutral. Code
 says what is spoken of the replies it writes: a list's intro and first three items, a
 recommendation's products and the needs they meet; never a link, phone number or
 address. The speech is a layer over the turn: the text completes it and moves the

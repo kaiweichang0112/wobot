@@ -219,3 +219,44 @@ def test_a_retry_is_spoken_again_in_avatar_mode(client, as_member, chat_graph, s
 
     assert "speech" in [name for name, _ in events]
     assert speech_of(turn_id)["heard_upto"] is None
+
+
+class FakeEmotions:
+    """Joy for a sentence with 好, neutral otherwise; keeps the question each reply asked."""
+
+    def __init__(self):
+        self.questions = []
+
+    def for_question(self, question):
+        self.questions.append(question)
+
+        async def feel(sentence, previous):
+            return "joy" if "好" in sentence else "neutral"
+
+        return feel
+
+
+def test_each_sentence_is_spoken_with_its_feeling(client, as_member, chat_graph, speaking):
+    as_member("uid-a")
+    start(client)
+    ready()
+    before = getattr(app.state, "emotions", None)
+    app.state.emotions = FakeEmotions()
+    try:
+        chat_graph(fake_models(chat=("GRC 在桃園。太好了，找到了！",)))
+        conversation = start(client)
+        turn_id = uuid.uuid4()
+
+        events = sse_events(ask(client, conversation, "GRC 在哪？", turn_id).text)
+    finally:
+        feelings, app.state.emotions = app.state.emotions, before
+
+    speeches = [data for name, data in events if name == "speech"]
+    assert [(s["text"], s["emotion"]) for s in speeches] == [
+        ("GRC 在桃園。", "neutral"),
+        ("太好了，找到了！", "joy"),
+    ]
+    assert feelings.questions == ["GRC 在哪？"]
+    assert speaking.spoken[1][1] == "[excited] 太好了，找到了！"
+    sentences = speech_of(turn_id)["speech"]["sentences"]
+    assert [s["emotion"] for s in sentences] == ["neutral", "joy"]
