@@ -18,9 +18,11 @@ def openai_model(
     effort: str,
     timeout: float | None = None,
     max_retries: int = 3,
+    max_tokens: int | None = None,
 ) -> ChatOpenAI:
     """An OpenAI model at a reasoning effort; "default" sends none. The timeout is the
-    settings' unless a node needs a shorter one."""
+    settings' unless a node needs a shorter one. `max_tokens` caps a reply, so a model
+    that writes on and on stops: one wrote 128,000 tokens in 15 minutes (D6)."""
     return ChatOpenAI(
         model=model,
         reasoning=None if effort == "default" else {"effort": effort},
@@ -30,6 +32,7 @@ def openai_model(
         api_key=settings.openai_api_key,
         timeout=timeout or settings.openai_timeout_seconds,
         max_retries=max_retries,
+        max_tokens=max_tokens,
     )
 
 

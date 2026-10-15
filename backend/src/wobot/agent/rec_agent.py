@@ -22,13 +22,17 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, To
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from wobot.agent.find import CARD_FIELDS, TEXT_FIELDS, FindProducts, Found, stated
+from wobot.agent.persona import PERSONA
 from wobot.agent.rewrite import writes_chinese
 from wobot.knowledge.facets import condition_name, conditions_of, vocabulary
 
 logger = logging.getLogger(__name__)
 
 # Bump with any change to the instructions or the tools; a test pins each version.
-PROMPT_VERSION = 12
+PROMPT_VERSION = 15
+
+# The longest round, in tokens: a question, or a call with the needs it names.
+MAX_OUTPUT_TOKENS = 500
 
 # The conversation's last messages the agent reads: enough for the needs stated over a
 # few turns and the question it last asked.
@@ -99,7 +103,9 @@ Functions, with how a user may say them and the nearby ones they are not:
 
 Reply in the language given below as language, even though the catalog is in Chinese. \
 Write as in a chat: short plain text without Markdown, and no word of tools, searches, IDs \
-or catalog categories. Do not introduce yourself."""
+or catalog categories. Do not introduce yourself.
+
+{PERSONA}"""
 
 
 class ShowProducts(BaseModel):

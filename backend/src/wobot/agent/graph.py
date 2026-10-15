@@ -24,6 +24,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
+from wobot.agent import answer as answer_node
+from wobot.agent import chat as chat_node
+from wobot.agent import rec_agent as rec_node
+from wobot.agent import write_list as list_writer_node
 from wobot.agent.answer import answer_prompt
 from wobot.agent.chat import chat_prompt
 from wobot.agent.find import FindProducts, ProductCatalogs, find_products
@@ -35,6 +39,7 @@ from wobot.agent.list_agent import (
     turn_date,
 )
 from wobot.agent.models import openai_model, read_structured, structured_reader
+from wobot.agent.persona import last_opening
 from wobot.agent.rec_agent import (
     REC_TOOLS,
     ShowProducts,
@@ -203,12 +208,32 @@ class Models:
 def models_for(settings: Settings) -> Models:
     return Models(
         router=chat_router(settings),
-        chat=openai_model(settings, settings.chat_model, settings.chat_effort),
+        chat=openai_model(
+            settings,
+            settings.chat_model,
+            settings.chat_effort,
+            max_tokens=chat_node.MAX_OUTPUT_TOKENS,
+        ),
         rewrite=openai_model(settings, settings.rewrite_model, settings.rewrite_effort),
-        answer=openai_model(settings, settings.answer_model, settings.answer_effort),
+        answer=openai_model(
+            settings,
+            settings.answer_model,
+            settings.answer_effort,
+            max_tokens=answer_node.MAX_OUTPUT_TOKENS,
+        ),
         list_agent=openai_model(settings, settings.list_agent_model, settings.list_agent_effort),
-        write_list=openai_model(settings, settings.write_list_model, settings.write_list_effort),
-        rec_agent=openai_model(settings, settings.rec_agent_model, settings.rec_agent_effort),
+        write_list=openai_model(
+            settings,
+            settings.write_list_model,
+            settings.write_list_effort,
+            max_tokens=list_writer_node.MAX_OUTPUT_TOKENS,
+        ),
+        rec_agent=openai_model(
+            settings,
+            settings.rec_agent_model,
+            settings.rec_agent_effort,
+            max_tokens=rec_node.MAX_OUTPUT_TOKENS,
+        ),
     )
 
 
@@ -291,6 +316,7 @@ def build_graph(
             state["question"],
             state["evidence"],
             state["chatbot_name"],
+            last_opening(state["messages"]),
         )
         try:
             response = await models.answer.ainvoke(prompt)
@@ -345,7 +371,8 @@ def build_graph(
         results = lists_that_count(state["list_results"])
         try:
             intro = read_structured(
-                await list_writer.ainvoke(write_list_prompt(latest, results)), ListIntro
+                await list_writer.ainvoke(write_list_prompt(latest, results)),
+                ListIntro,
             )
         except UNAVAILABLE:
             logger.exception("writing the list failed")

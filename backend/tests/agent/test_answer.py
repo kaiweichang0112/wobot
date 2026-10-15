@@ -28,7 +28,7 @@ EVIDENCE = {
 def test_the_prompt_version_moves_with_the_prompt():
     fingerprint = hashlib.sha256(answer.INSTRUCTIONS.encode()).hexdigest()[:12]
 
-    assert (answer.PROMPT_VERSION, fingerprint) == (1, "b390d4a93f9d")
+    assert (answer.PROMPT_VERSION, fingerprint) == (5, "2fd1a70a1388")
 
 
 def test_the_answer_reads_the_message_the_question_and_the_evidence():
@@ -39,6 +39,14 @@ def test_the_answer_reads_the_message_the_question_and_the_evidence():
     assert shown["question"] == "GRC 是哪一年成立的？"
     assert shown["passages"] == [{"header": "GRC › About", "text": "Since 2003"}]
     assert shown["records"] == [{"type": "student", "name": "王小明", "graduation_year": 2024}]
+
+
+def test_the_answer_reads_how_its_last_reply_began_only_when_there_was_one():
+    _, first = answer_prompt("q", "q", EVIDENCE, "Wobot")
+    _, later = answer_prompt("q", "q", EVIDENCE, "Wobot", "太好了！")
+
+    assert "last_opening" not in json.loads(first.content)
+    assert json.loads(later.content)["last_opening"] == "太好了！"
 
 
 def test_the_answer_sees_no_handles_keys_or_links():

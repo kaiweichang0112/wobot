@@ -21,7 +21,13 @@ from wobot.agent.list_agent import PRODUCT_CATEGORIES, result_content
 from wobot.agent.rewrite import writes_chinese
 
 # Bump with any change to the instructions or the schema; a test pins each version.
-PROMPT_VERSION = 4
+# v11 is v4's instructions with a reply cap: the persona made the intro answer what its
+# rules leave to another question (DEC-093).
+PROMPT_VERSION = 11
+
+# The longest intro with its choice of lists, in tokens: item_ids may name a hundred
+# items, and a reply cut short is JSON that cannot be read.
+MAX_OUTPUT_TOKENS = 2000
 
 # Items of each list the conversation keeps, for "the first one" next turn; the reply
 # shows them all, but a hundred items would crowd every later prompt.
