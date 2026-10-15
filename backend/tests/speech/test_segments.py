@@ -46,3 +46,26 @@ def test_the_first_sentence_never_ends_at_a_list_s_mark():
     sentences = cut("哇，這張床墊把舒適、照護提醒和睡眠資料整合在一起，設計得真周到！")
 
     assert sentences[0] == "哇，這張床墊把舒適、照護提醒和睡眠資料整合在一起，"
+
+
+def test_a_long_sentence_without_a_comma_is_cut_between_words():
+    segmenter = Segmenter()
+    segmenter.add("好。")  # the first sentence ends early at its own rules
+    event = (
+        "Compassionate AI-IoT for Resilient Older Adult Care and Network System "
+        "International Symposium, Korea"
+    )
+
+    sentences = segmenter.add(event) + segmenter.flush()
+
+    assert sentences[0] == "Compassionate AI-IoT for Resilient Older Adult"
+    assert " ".join(sentences) == event
+
+
+def test_a_long_chinese_sentence_without_a_comma_is_still_cut_at_its_limit():
+    text = "高齡智慧科技" * 15
+
+    sentences = cut(text)
+
+    assert len(sentences[0]) == 48
+    assert "".join(sentences) == text

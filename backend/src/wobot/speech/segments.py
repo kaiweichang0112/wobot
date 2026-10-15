@@ -11,7 +11,7 @@ SOFT = "，,、：:"
 FIRST_SOFT = "，,"
 FIRST_AT_LEAST = 6  # characters before the first sentence may end at a comma
 SOFT_LIMIT = 48  # a sentence this long ends at its last comma
-HARD_LIMIT = 80  # and one this long without a comma is cut here
+HARD_LIMIT = 80  # and one this long without a comma is cut there, between words if any
 
 
 class Segmenter:
@@ -40,7 +40,7 @@ class Segmenter:
             if end is None and len(self._buffer) >= SOFT_LIMIT:
                 end = self._last_soft_end()
             if end is None and len(self._buffer) >= HARD_LIMIT:
-                end = SOFT_LIMIT
+                end = self._last_space() or SOFT_LIMIT
             if end is None:
                 if force:
                     end = len(self._buffer)
@@ -75,6 +75,13 @@ class Segmenter:
     def _last_soft_end(self) -> int | None:
         for i in range(min(SOFT_LIMIT, len(self._buffer)) - 1, 17, -1):
             if self._soft(i):
+                return i + 1
+        return None
+
+    def _last_space(self) -> int | None:
+        """After the last space before SOFT_LIMIT, so an English word is never cut."""
+        for i in range(SOFT_LIMIT - 1, 17, -1):
+            if self._buffer[i].isspace():
                 return i + 1
         return None
 
