@@ -10,7 +10,7 @@ from wobot.agent.chat import RECENT_MESSAGES, chat_prompt
 def test_the_prompt_version_moves_with_the_prompt():
     fingerprint = hashlib.sha256(chat.INSTRUCTIONS.encode()).hexdigest()[:12]
 
-    assert (chat.PROMPT_VERSION, fingerprint) == (5, "fce8dc36b7bf")
+    assert (chat.PROMPT_VERSION, fingerprint) == (6, "7e3747b3e4ee")
 
 
 def test_the_name_is_given_as_data_after_the_rules():
@@ -21,7 +21,7 @@ def test_the_name_is_given_as_data_after_the_rules():
     assert isinstance(system, SystemMessage)
     rules, details = system.content.rsplit("\n\n", 1)
     assert rules == chat.INSTRUCTIONS
-    assert json.loads(details) == {"chatbot_name": name}
+    assert json.loads(details) == {"chatbot_name": name, "language": "Traditional Chinese"}
 
 
 def test_a_reply_reads_the_last_few_messages():
@@ -30,3 +30,13 @@ def test_a_reply_reads_the_last_few_messages():
     _, *sent = chat_prompt("Wobot", messages)
 
     assert sent == messages[-RECENT_MESSAGES:]
+
+
+def test_the_reply_is_in_the_latest_message_s_language():
+    # After Chinese turns, an English message is still answered in English.
+    messages = [HumanMessage("你好"), AIMessage("你好！"), HumanMessage("How are you?")]
+
+    system, *_ = chat_prompt("Wobot", messages)
+
+    assert '"language": "English"' in system.content
+    assert '"language": "Traditional Chinese"' in chat_prompt("Wobot", messages[:1])[0].content

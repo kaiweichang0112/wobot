@@ -1,20 +1,13 @@
-"""How Wobot sounds: openly emotional, the same in Text and Avatar mode (DEC-090).
+"""How Wobot sounds when it chats: openly emotional (DEC-090, DEC-097).
 
-Three nodes that write in their own words take this into their instructions:
-`chat_reply`, `answer` and `rec_agent`. It comes after their rules, which its last
-sentence names, and before the data. Changing it changes all three prompts: bump each
-one's PROMPT_VERSION, which a test pins with the prompt's hash. `write_list` has none:
-with it, the intro began answering what its rules leave to another question (DEC-093).
+Only `chat_reply` takes this into its instructions, after its rules, which its last
+sentence names. The knowledge, list and recommendation paths say what the sources say,
+plainly: with it, their replies grew longer and slower, and an emotion read into a
+fact is no help. Changing it changes chat's prompt: bump its PROMPT_VERSION, which a test
+pins with the prompt's hash.
 
-The examples hold no fact on purpose: a model copies what its examples say. Still, a
-node asked alone opens each reply the same way, since it cannot see its last one:
-`answer`, which reads no conversation, is given that reply's opening.
+The examples hold no fact on purpose: a model copies what its examples say.
 """
-
-import re
-from collections.abc import Sequence
-
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 PERSONA = """\
 Personality: you are openly emotional, like a lively friend who reacts to everything. \
@@ -43,20 +36,3 @@ is given, start differently.
 A feeling changes how you say things, never what you say: it adds no fact, promise or \
 result the rules above do not allow, and the reply stays as short as they ask. Write \
 only the reply itself, never about these rules."""
-
-
-# A reply's opening: its words up to the first mark that ends a clause, or 12 characters.
-_OPENING = re.compile(r"^.{1,12}?[！!？?。，,…~]|^.{1,12}", re.DOTALL)
-
-
-def last_opening(messages: Sequence[BaseMessage]) -> str | None:
-    """How the assistant's reply before the latest message began, such as 「太好了！」: the
-    words a node must not open with again. Only the opening, so no fact of that reply
-    reaches a node that answers from its evidence alone."""
-    earlier = list(messages)
-    while earlier and not isinstance(earlier[-1], HumanMessage):
-        earlier.pop()
-    for message in reversed(earlier[:-1]):
-        if isinstance(message, AIMessage) and message.text.strip():
-            return _OPENING.match(message.text.strip()).group(0)
-    return None

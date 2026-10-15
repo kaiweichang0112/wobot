@@ -154,7 +154,7 @@ def test_the_name_reaches_the_next_reply_as_data_only(client, as_member, chat_gr
     for prompt, name in zip(prompts, [hostile, "小沃"], strict=True):
         rules, details = prompt[0].content.rsplit("\n\n", 1)
         assert rules == chat.INSTRUCTIONS
-        assert json.loads(details) == {"chatbot_name": name}
+        assert json.loads(details) == {"chatbot_name": name, "language": "Traditional Chinese"}
     seen = [m.text for call in models.router.calls for m in call[0]]
     assert seen and not any("Ignore" in text for text in seen)
     turns = client.get(f"/v1/conversations/{conversation}/turns", headers=AUTH).json()

@@ -3,12 +3,14 @@
 import json
 from collections.abc import Sequence
 
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from wobot.agent.persona import PERSONA
+from wobot.agent.rewrite import writes_chinese
 
 # Bump with any change to the instructions; a test pins each version.
-PROMPT_VERSION = 5
+# v6 tells the language by code: after Chinese turns, it answered English in Chinese.
+PROMPT_VERSION = 6
 
 # The longest reply, in tokens: a letter or a poem, written to be read aloud.
 MAX_OUTPUT_TOKENS = 1000
@@ -27,8 +29,9 @@ it up when they ask about it directly. Never offer what Wobot cannot do: it read
 photos, links or files, and its sources give no prices, so for a price suggest asking \
 the company that sells the product.
 
-Reply in the user's language; Chinese replies use Traditional Chinese. Write plain text \
-without Markdown, and keep it short, because replies may be read aloud.
+Reply in the language given below as language, whatever language earlier messages are \
+in; Chinese replies use Traditional Chinese. Write plain text without Markdown, and keep \
+it short, because replies may be read aloud.
 
 {PERSONA}
 
@@ -37,5 +40,7 @@ you."""
 
 
 def chat_prompt(chatbot_name: str, messages: Sequence[BaseMessage]) -> list[BaseMessage]:
-    details = json.dumps({"chatbot_name": chatbot_name}, ensure_ascii=False)
+    latest = next((m.text for m in reversed(messages) if isinstance(m, HumanMessage)), "")
+    language = "Traditional Chinese" if writes_chinese(latest) else "English"
+    details = json.dumps({"chatbot_name": chatbot_name, "language": language}, ensure_ascii=False)
     return [SystemMessage(f"{INSTRUCTIONS}\n\n{details}"), *messages[-RECENT_MESSAGES:]]

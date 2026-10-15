@@ -7,6 +7,7 @@ import json
 import uuid
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from tests.agent.fakes import fake_models
 from tests.api import AUTH, sse_events, start, turn_row
@@ -260,3 +261,23 @@ def test_each_sentence_is_spoken_with_its_feeling(client, as_member, chat_graph,
     assert speaking.spoken[1][1] == "[excited] 太好了，找到了！"
     sentences = speech_of(turn_id)["speech"]["sentences"]
     assert [s["emotion"] for s in sentences] == ["neutral", "joy"]
+
+
+def test_only_small_talk_is_spoken_with_feeling(client, as_member, chat_graph, speaking):
+    as_member("uid-a")
+    start(client)
+    ready()
+    before = getattr(app.state, "emotions", None)
+    app.state.emotions = FakeEmotions()
+    try:
+        # The recommendation agent asks back, a sentence with 好 in it.
+        chat_graph(fake_models(route="recommend", rec_calls=(AIMessage("好的！你想用在家裡嗎？"),)))
+        conversation = start(client)
+
+        events = sse_events(ask(client, conversation, "推薦床墊").text)
+    finally:
+        app.state.emotions = before
+
+    speeches = [data for name, data in events if name == "speech"]
+    assert speeches and all(s["emotion"] == "neutral" for s in speeches)
+    assert not any(text.startswith("[") for _, text, _ in speaking.spoken)

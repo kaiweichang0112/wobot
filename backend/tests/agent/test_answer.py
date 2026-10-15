@@ -28,7 +28,7 @@ EVIDENCE = {
 def test_the_prompt_version_moves_with_the_prompt():
     fingerprint = hashlib.sha256(answer.INSTRUCTIONS.encode()).hexdigest()[:12]
 
-    assert (answer.PROMPT_VERSION, fingerprint) == (5, "2fd1a70a1388")
+    assert (answer.PROMPT_VERSION, fingerprint) == (6, "424817f5d9a1")
 
 
 def test_the_answer_reads_the_message_the_question_and_the_evidence():
@@ -41,12 +41,13 @@ def test_the_answer_reads_the_message_the_question_and_the_evidence():
     assert shown["records"] == [{"type": "student", "name": "王小明", "graduation_year": 2024}]
 
 
-def test_the_answer_reads_how_its_last_reply_began_only_when_there_was_one():
-    _, first = answer_prompt("q", "q", EVIDENCE, "Wobot")
-    _, later = answer_prompt("q", "q", EVIDENCE, "Wobot", "太好了！")
+def test_the_answer_is_told_the_language_of_the_message():
+    # The question read in English and the sources in Chinese: the message decides.
+    _, english = answer_prompt("Where is GRC?", "Where is GRC?", EVIDENCE, "Wobot")
+    _, chinese = answer_prompt("GRC 在哪？", "GRC 在哪裡？", EVIDENCE, "Wobot")
 
-    assert "last_opening" not in json.loads(first.content)
-    assert json.loads(later.content)["last_opening"] == "太好了！"
+    assert json.loads(english.content)["language"] == "English"
+    assert json.loads(chinese.content)["language"] == "Traditional Chinese"
 
 
 def test_the_answer_sees_no_handles_keys_or_links():
