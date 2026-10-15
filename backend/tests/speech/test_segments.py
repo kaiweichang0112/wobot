@@ -40,3 +40,9 @@ def test_a_long_sentence_without_a_full_stop_is_cut_at_a_comma():
 
 def test_marks_alone_are_not_spoken():
     assert cut("……！", "好。") == ["好。"]
+
+
+def test_the_first_sentence_never_ends_at_a_list_s_mark():
+    sentences = cut("哇，這張床墊把舒適、照護提醒和睡眠資料整合在一起，設計得真周到！")
+
+    assert sentences[0] == "哇，這張床墊把舒適、照護提醒和睡眠資料整合在一起，"
