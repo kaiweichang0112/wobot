@@ -75,9 +75,10 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 | `GET /v1/conversations` | The account's conversations, most recently active first, a `cursor` page at a time |
 | `GET /v1/conversations/{id}/turns` | The latest turns, oldest first, with stopped and failed ones; `cursor` reads earlier ones |
 | `DELETE /v1/conversations/{id}` | Deletes the graph's checkpoints, then the rows; safe to send again after a failure |
-| `POST /v1/conversations/{id}/turns` | Sends a message (`turn_id` made by the app, `text`); the reply streams back as server-sent events |
+| `POST /v1/conversations/{id}/turns` | Sends a message (`turn_id` made by the app, `text`, `mode`: `text` or `avatar`); the reply streams back as server-sent events |
 | `POST /v1/turns/{id}/cancel` | Stops the `attempt` given, keeping the `shown_text` the app had shown; answers how the turn stands, and changes nothing sent again or too late |
-| `POST /v1/turns/{id}/retry` | Writes a stopped or failed reply again, given the `expected_attempt`; streams as a turn does |
+| `POST /v1/turns/{id}/retry` | Writes a stopped or failed reply again, given the `expected_attempt`; streams as a turn does, in the mode it was asked in |
+| `POST /v1/turns/{id}/playback` | Avatar mode: how many sentences the `attempt` has `heard` (only moves forward), or `stopped` to end its speech; the text is written all the same |
 
 Another account's conversation is answered `404`, as one that does not exist. A
 conversation points at the checkpoint its last completed turn left
@@ -86,7 +87,9 @@ conversation points at the checkpoint its last completed turn left
 A turn is refused before its stream opens, as an ordinary HTTP error, when the message
 is not 1–2,000 characters (`422`), the conversation is not the account's (`404`), a
 reply is already being written in it (`409 TURN_IN_PROGRESS`) or the same `turn_id` was
-sent before (`409 TURN_EXISTS`). Otherwise the events are, in order:
+sent before (`409 TURN_EXISTS`). In Avatar mode the account's own avatar and voice must
+both be in use (`409 AVATAR_NOT_READY` or `VOICE_NOT_READY`). Otherwise the events are,
+in order:
 
 | Event | Data, besides `turn_id` and `attempt` |
 | --- | --- |
@@ -94,14 +97,25 @@ sent before (`409 TURN_EXISTS`). Otherwise the events are, in order:
 | `status` | `stage`: `searching` while a path looks things up, `writing` once only words are left |
 | `text_delta` | `text`: the next words, from chat and knowledge answers only |
 | `reply` | the whole reply: `text`, and `action` and `products` on the recommendation path. It replaces the deltas; the lists' record keys stay in the turn's row |
+| `speech` | Avatar mode only, between the others: `index`, `text`, `emotion` and `audio` (base64 MP3) of the next sentence spoken, in order |
+| `speech_error` | `index` of a sentence that could not be spoken; the text is unaffected |
 | `title` | `title`: the conversation's name, on its first turn only, before the last event. Written by a model alongside the reply, or the question shortened when it cannot be |
-| `completed` | none: the turn is saved and the conversation remembers it |
+| `completed` | none: the turn is saved and the conversation remembers it; in Avatar mode, after the last `speech`, or once the speech was stopped |
 | `error` | `code` (`PROVIDER_UNAVAILABLE`, `TURN_TIMEOUT` or `INTERNAL_ERROR`), `message`, `retryable`: the turn failed and is not remembered |
 
 The graph runs inside the request, from the checkpoint the conversation points at, and
 saves one checkpoint when it ends (`durability="exit"`). Each turn logs one `turn
-finished` line with its route, each node's seconds and the time to the first status and
-first word; no message text.
+finished` line with its route, each node's seconds and the time to the first status,
+first word and first sentence spoken; no message text.
+
+In Avatar mode the reply is also spoken in the account's voice (`wobot/speech/`, DEC-089):
+streamed words are cut into sentences, the first at its first comma so the voice starts
+early, and each sentence is one ElevenLabs request, two at a time, told in order. Code
+says what is spoken of the replies it writes: a list's intro and first three items, a
+recommendation's products and the needs they meet; never a link, phone number or
+address. The speech is a layer over the turn: the text completes it and moves the
+conversation's memory on, and a `playback` stop ends only the speech, read every second
+like a `cancel`. What was spoken is kept in the turn's `speech`.
 
 How a turn can end besides completing, each saved by a compare-and-swap on the turn's
 ID, attempt and status, so the first end written stands:
