@@ -54,7 +54,7 @@ from wobot.config import get_settings
 from wobot.knowledge.models import ActiveKnowledge
 from wobot.models import AvatarVersion, Conversation, Turn, VoiceVersion
 from wobot.speech.segments import Segmenter
-from wobot.speech.spoken import speakable, spoken_text
+from wobot.speech.spoken import PAGE_ITEMS, continue_from, list_page, speakable, spoken_text
 from wobot.speech.tts import Speaker
 
 logger = logging.getLogger(__name__)
@@ -86,6 +86,12 @@ class PlaybackRequest(BaseModel):
     heard: int | None = Field(default=None, ge=0)
     # The user interrupted: no sentence is spoken after. The text is written all the same.
     stopped: bool = False
+
+
+class ReadOnRequest(BaseModel):
+    attempt: int  # the attempt the app is showing: a retry may have written another list
+    # Where to go on, as the last `completed` gave it; the same start gives the same page.
+    start: int = Field(alias="from", ge=0)
 
 
 class PlaybackState(BaseModel):
@@ -133,6 +139,18 @@ class Started:
     needs_title: bool = False  # the conversation has none yet: this turn writes it
     mode: str = "text"
     voice: SpeakingVoice | None = None  # set in Avatar mode
+
+
+@dataclass(frozen=True)
+class Reading:
+    """A page of a list reply to be read out, in the account's voice."""
+
+    turn_id: uuid.UUID
+    attempt: int
+    start: int
+    page: str
+    next: int | None
+    voice: SpeakingVoice
 
 
 class TurnTimedOut(Exception):
@@ -391,7 +409,7 @@ async def finish(
 SHOWN_REPLY = ("text", "action", "products")
 
 
-def _event(name: str, started: Started, **data: Any) -> ServerSentEvent:
+def _event(name: str, started: Started | Reading, **data: Any) -> ServerSentEvent:
     data = {"turn_id": str(started.turn_id), "attempt": started.attempt, **data}
     # As UTF-8, not \u escapes: a Chinese reply would be three times the bytes.
     return ServerSentEvent(event=name, raw_data=json.dumps(data, ensure_ascii=False))
@@ -467,6 +485,91 @@ async def playback(
         heard_upto=turn.heard_upto,
         speech_stopped=turn.speech_stopped_at is not None,
     )
+
+
+def nothing_to_read() -> ApiError:
+    return ApiError(409, "NOTHING_TO_READ", "There is no more of this reply to read.")
+
+
+async def start_reading(
+    turn_id: uuid.UUID, body: ReadOnRequest, request: Request, principal: Owner
+) -> Reading:
+    """The page asked for, checked before the stream opens: the account's own completed
+    list reply, the attempt the app shows, and its avatar and voice still in use."""
+    async with request.app.state.sessionmaker() as session:
+        turn = await owned_turn(session, principal, turn_id)
+        reply = turn.reply or {}
+        if turn.status != "completed" or turn.attempt != body.attempt or "lists" not in reply:
+            raise nothing_to_read()
+        page, after = list_page(
+            reply["text"], body.start, PAGE_ITEMS, writes_chinese(turn.user_text)
+        )
+        if not page:
+            raise nothing_to_read()
+        # The voice in use now: a voice replaced since is gone from the provider.
+        voice = await speaking_voice(request, session, principal)
+    return Reading(turn.turn_id, turn.attempt, body.start, page, after, voice)
+
+
+@control.post("/{turn_id}/continue-reading", response_class=EventSourceResponse)
+async def continue_reading(
+    request: Request, reading: Annotated[Reading, Depends(start_reading)]
+) -> AsyncIterable[ServerSentEvent]:
+    """The next items of a list reply, spoken as `speech` events, then `completed` with
+    where the next page starts, null at the end (DEC-096). No graph runs and nothing is
+    searched: the reply kept holds every item. It is no turn, so it does not wait on one
+    running in the conversation, and the app's stopping it only stops playback: a page
+    is short enough that what is still spoken costs little."""
+    async for event in read_on(request.app.state, reading):
+        yield event
+
+
+async def read_on(state: Any, reading: Reading) -> AsyncIterable[ServerSentEvent]:
+    begun = time.perf_counter()
+    first_speech: float | None = None
+    events: asyncio.Queue = asyncio.Queue()
+    # Items are data: said without a feeling.
+    speaker = Speaker(
+        state.eleven,
+        reading.voice.provider_voice_id,
+        get_settings().tts_model,
+        emit=lambda name, data: events.put_nowait((name, data)),
+    )
+    whole = Segmenter()
+    for sentence in whole.add(reading.page) + whole.flush():
+        if text := speakable(sentence):
+            speaker.say(text)
+    speaker.close()
+    try:
+        deadline = time.monotonic() + SPEECH_SECONDS
+        while True:
+            try:
+                left = max(deadline - time.monotonic(), 0)
+                name, data = await asyncio.wait_for(events.get(), timeout=left)
+            except TimeoutError:
+                logger.warning("the reading ran past its time")
+                break
+            if name == "speech_end":
+                break
+            if name == "speech" and first_speech is None:
+                first_speech = round(time.perf_counter() - begun, 3)
+            yield _event(name, reading, **data)
+        yield _event("completed", reading, next=reading.next)
+    finally:
+        with anyio.CancelScope(shield=True):
+            await speaker.stop()
+        logger.info(
+            "reading finished",
+            extra={
+                "turn_id": str(reading.turn_id),
+                "attempt": reading.attempt,
+                "from": reading.start,
+                "next": reading.next,
+                "first_speech_s": first_speech,
+                "speech_s": speaker.seconds,
+                "total_s": round(time.perf_counter() - begun, 3),
+            },
+        )
 
 
 async def turn_state(state: Any, started: Started) -> tuple[bool, bool]:
@@ -690,7 +793,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                 # turn's end is told once the last sentence is, or the user stopped it.
                 async for name, data in spoken(state, started, speaker, events):
                     yield relay(name, data)
-            yield _event("completed", started)
+            if speaker is not None:
+                # Where reading a list goes on, if the user asks to hear more (DEC-096).
+                yield _event("completed", started, next=continue_from(reply))
+            else:
+                yield _event("completed", started)
         else:
             ended = "superseded"  # ended elsewhere meanwhile, such as stopped
     except TurnStopped:
