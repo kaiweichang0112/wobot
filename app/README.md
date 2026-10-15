@@ -44,7 +44,7 @@ How the app keeps to the API's rules:
   stale. They go when the avatar is replaced or deleted, and at sign-out.
 - **A spoken question becomes text on the phone** (DEC-092): Apple's recognizer,
   on the device, so the audio never leaves it. A question ends when no new words come
-  for 1.2 s, on a tap, after 60 s, or after 10 s with no words; all four go through one
+  for 1.8 s, on a tap, after 60 s, or after 10 s with no words; all four go through one
   finalize, so it is sent once, and nothing is sent when nothing was heard. Voice lab
   (Settings, debug builds) shows when and why a question ended, and measures CER against
   a script read aloud.
