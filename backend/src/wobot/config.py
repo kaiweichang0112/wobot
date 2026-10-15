@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     # Speaks replies and the voice preview: it takes audio tags for feelings, which flash
     # does not. Chosen without a comparison, to move faster (D7, DEC-094).
     tts_model: str = "eleven_v4_turbo"
+    # Each spoken sentence's feeling (DEC-095): Jev, chosen without a comparison. Below the
+    # threshold, or slower than the timeout, a sentence is neutral: a feeling shown wrongly
+    # is worse than none, and the voice must not wait long.
+    emotion_model: str = "jev-latest"
+    emotion_threshold: float = 0.7
+    emotion_timeout_seconds: float = 0.8
     # Paints the avatar's frames (DEC-049), pinned to a snapshot: the prompts were written
     # for it. The quality follows P8's comparison of the base frame.
     avatar_image_model: str = "gpt-image-2.5-sunburst-2026-09-08"

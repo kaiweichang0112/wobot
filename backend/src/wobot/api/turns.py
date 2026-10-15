@@ -561,6 +561,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             started.voice.provider_voice_id,
             get_settings().tts_model,
             emit=lambda name, data: events.put_nowait((name, data)),
+            feel=(
+                state.emotions.for_question(started.text)
+                if getattr(state, "emotions", None) is not None
+                else None
+            ),
         )
         if started.mode == "avatar" and started.voice is not None
         else None

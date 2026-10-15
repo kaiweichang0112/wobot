@@ -92,3 +92,48 @@ async def test_a_stop_tells_nothing_more_and_starts_nothing_more():
     assert told == []
     assert len(voice.started) == 2  # the two under way; the rest never started
     assert speaker.stopped
+
+
+async def test_a_feeling_is_spoken_with_its_tag_by_a_model_that_takes_tags():
+    voice = FakeVoice()
+    told = []
+    done = asyncio.Event()
+
+    async def feel(sentence, previous):
+        return "joy" if "好" in sentence else "neutral"
+
+    def emit(name, data):
+        told.append((name, data))
+        if name == "speech_end":
+            done.set()
+
+    speaker = Speaker(voice, "v-1", "eleven_v4_turbo", emit, feel=feel)
+    speaker.say("太好了！")
+    speaker.say("地址在桃園。")
+    speaker.close()
+    await asyncio.wait_for(done.wait(), 5)
+
+    assert voice.started == ["[excited] 太好了！", "地址在桃園。"]
+    assert [data["emotion"] for name, data in told if name == "speech"] == ["joy", "neutral"]
+    assert told[0][1]["text"] == "太好了！"  # the tag is spoken, never shown
+
+
+async def test_a_model_without_tags_gets_the_sentence_alone():
+    voice = FakeVoice()
+    done = asyncio.Event()
+
+    async def feel(sentence, previous):
+        return "joy"
+
+    speaker = Speaker(
+        voice,
+        "v-1",
+        "eleven_flash_v2_5",
+        lambda name, data: name == "speech_end" and done.set(),
+        feel=feel,
+    )
+    speaker.say("太好了！")
+    speaker.close()
+    await asyncio.wait_for(done.wait(), 5)
+
+    assert voice.started == ["太好了！"]

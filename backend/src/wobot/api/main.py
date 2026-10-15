@@ -35,6 +35,7 @@ from wobot.config import Settings, get_settings
 from wobot.db import create_engine
 from wobot.knowledge.embeddings import Embedder, OpenAIEmbedder
 from wobot.logs import configure_logging
+from wobot.speech.emotions import emotion_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 httpx2.AsyncClient(timeout=settings.elevenlabs_timeout_seconds)
             )
             app.state.eleven = ElevenLabs(client, settings.elevenlabs_api_key.get_secret_value())
+        # The feeling of each sentence an Avatar-mode reply speaks; neutral without Jev.
+        app.state.emotions = emotion_classifier(settings)
         # Paints avatars in this process when there is no job, as in development.
         app.state.painter = None
         if settings.openai_api_key is not None and settings.assets_job is None:
