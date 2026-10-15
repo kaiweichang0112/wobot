@@ -96,7 +96,7 @@ class _Kind:
     year: Any = None  # the column year filters compare
     category: Any = None
     categories: frozenset[str] = frozenset()  # the values category may take
-    order: tuple[Any, ...] = ()
+    order: tuple[Any, ...] = ()  # newest first for a dated kind; undated items last
     only: tuple[Any, ...] = ()  # conditions every query of the kind adds
     text: tuple[Any, ...] = ()  # the columns `contains` looks in
     span: Callable[[Mapping[str, Any]], Span] | None = None  # for windows; None: undated
@@ -110,7 +110,11 @@ KINDS: dict[str, _Kind] = {
         year=LectureRecord.year,
         category=LectureRecord.category,
         categories=frozenset({"keynote", "invited"}),
-        order=(LectureRecord.lecture_date,),
+        # A talk dated by its year alone comes after that year's dated ones.
+        order=(
+            LectureRecord.year.desc().nulls_last(),
+            LectureRecord.lecture_date.desc().nulls_last(),
+        ),
         span=_lecture_span,
         # The entry as listed holds the title, event and place.
         text=(LectureRecord.entry_text,),
@@ -118,14 +122,14 @@ KINDS: dict[str, _Kind] = {
     "student": _Kind(
         StudentRecord,
         year=StudentRecord.graduation_year,
-        order=(StudentRecord.graduation_year,),
+        order=(StudentRecord.graduation_year.desc().nulls_last(),),
         span=lambda fields: _year_span(fields["graduation_year"]),
         text=(StudentRecord.name, StudentRecord.thesis_title_zh, StudentRecord.thesis_title_en),
     ),
     "project": _Kind(
         ProjectRecord,
         year=ProjectRecord.year,
-        order=(ProjectRecord.year,),
+        order=(ProjectRecord.year.desc().nulls_last(),),
         span=lambda fields: _year_span(fields["year"]),
         text=(ProjectRecord.title_zh, ProjectRecord.title_en, ProjectRecord.funder_raw),
     ),
@@ -142,7 +146,7 @@ KINDS: dict[str, _Kind] = {
                 "General publications",
             }
         ),
-        order=(ListItemRecord.year,),
+        order=(ListItemRecord.year.desc().nulls_last(),),
         only=(ListItemRecord.list_kind == "publication",),
         span=lambda fields: _year_span(fields["year"]),
         text=(ListItemRecord.item_text,),
