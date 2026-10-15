@@ -52,11 +52,20 @@ async def test_contains_finds_records_by_name_or_title(knowledge, query, found):
     assert await keys(knowledge, query) == found
 
 
-async def test_students_come_in_graduation_order(knowledge):
+async def test_students_come_newest_first(knowledge):
     assert await keys(knowledge, RecordQuery("student")) == [
-        "student:phd:劉大同",
         "student:master:王小明",
+        "student:phd:劉大同",
     ]
+
+
+async def test_talks_come_newest_first(knowledge):
+    async with knowledge.db.begin() as conn:
+        talks = (await find_records(conn, knowledge.version_id, RecordQuery("lecture"))).items
+
+    dates = [(t.fields["year"], t.fields["lecture_date"] or "") for t in talks]
+    assert len(dates) > 1
+    assert dates == sorted(dates, reverse=True)
 
 
 async def test_each_item_says_where_it_was_read(knowledge):

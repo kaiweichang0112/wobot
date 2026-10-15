@@ -344,7 +344,8 @@ and every path ends with the reply; a test holds the drawing to
   comparison and recorded in a decision (the settings below). Jev routes; when it fails
   twice, an OpenAI model does.
 - Lists and product cards are written by code from the records, so a phone number or a
-  link is never a model's.
+  link is never a model's. Talks, graduates, projects and publications come newest
+  first, and what has no date last; products by category and name.
 - A recommendation is judged by code. `rec_agent` turns the need into a query in the facet
   vocabulary; `find_products` (`agent/find.py`) keeps the products whose facets state
   every function and contradict no condition, ranks them, and shows them at once when
