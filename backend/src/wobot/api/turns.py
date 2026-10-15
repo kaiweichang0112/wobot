@@ -30,7 +30,7 @@ from collections.abc import AsyncIterable
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import anyio
 from fastapi import APIRouter, Depends, Request
@@ -43,6 +43,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from wobot.agent.rewrite import writes_chinese
 from wobot.agent.streaming import Played, play
 from wobot.agent.title import shortened, write_title
 from wobot.api.accounts import register, settings_of
@@ -51,7 +52,10 @@ from wobot.api.conversations import end_stale, owned, thread_of
 from wobot.api.errors import ApiError
 from wobot.config import get_settings
 from wobot.knowledge.models import ActiveKnowledge
-from wobot.models import Conversation, Turn
+from wobot.models import AvatarVersion, Conversation, Turn, VoiceVersion
+from wobot.speech.segments import Segmenter
+from wobot.speech.spoken import speakable, spoken_text
+from wobot.speech.tts import Speaker
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +69,30 @@ TURN_SECONDS = 90  # a turn still running then fails, and may be tried again (DE
 CHECK_SECONDS = 1.0  # how often a running turn reads whether it was stopped
 SHOWN_LIMIT = 20_000  # characters of a stopped reply the app may send back
 TITLE_WAIT_SECONDS = 1.0  # how long a finished reply waits for its title
+SPEECH_SECONDS = 60  # how long the voice may go on once the text is written
 
 
 class TurnRequest(BaseModel):
     # Made by the app: sent again after a lost connection, it finds the same turn.
     turn_id: uuid.UUID
     text: str
+    # Avatar mode also speaks the reply, in the account's voice (DEC-089).
+    mode: Literal["text", "avatar"] = "text"
+
+
+class PlaybackRequest(BaseModel):
+    attempt: int
+    # Sentences the app has played to the end; a smaller number than before changes nothing.
+    heard: int | None = Field(default=None, ge=0)
+    # The user interrupted: no sentence is spoken after. The text is written all the same.
+    stopped: bool = False
+
+
+class PlaybackState(BaseModel):
+    turn_id: uuid.UUID
+    attempt: int
+    heard_upto: int | None
+    speech_stopped: bool
 
 
 class CancelRequest(BaseModel):
@@ -90,6 +112,14 @@ class TurnState(BaseModel):
 
 
 @dataclass(frozen=True)
+class SpeakingVoice:
+    """The voice version an Avatar-mode turn speaks in, as it stood when the turn began."""
+
+    voice_id: uuid.UUID
+    provider_voice_id: str
+
+
+@dataclass(frozen=True)
 class Started:
     """A turn saved as running, with what it runs on."""
 
@@ -101,6 +131,8 @@ class Started:
     index_version: int
     head_checkpoint_id: str | None
     needs_title: bool = False  # the conversation has none yet: this turn writes it
+    mode: str = "text"
+    voice: SpeakingVoice | None = None  # set in Avatar mode
 
 
 class TurnTimedOut(Exception):
@@ -140,6 +172,33 @@ async def _active_version(session: AsyncSession) -> int:
     return version
 
 
+async def speaking_voice(
+    request: Request, session: AsyncSession, principal: Principal
+) -> SpeakingVoice:
+    """The account's voice, when Avatar mode may be used: only with its own avatar and
+    voice both in use, read from the database on every turn (MODE-004, spec 23)."""
+    owner = principal.account_id
+    avatar = await session.scalar(
+        select(AvatarVersion.avatar_id).where(
+            AvatarVersion.owner_id == owner, AvatarVersion.status == "active"
+        )
+    )
+    if avatar is None:
+        raise ApiError(409, "AVATAR_NOT_READY", "Set up your avatar to use Avatar mode.")
+    voice = (
+        await session.execute(
+            select(VoiceVersion.voice_id, VoiceVersion.provider_voice_id).where(
+                VoiceVersion.owner_id == owner, VoiceVersion.status == "active"
+            )
+        )
+    ).first()
+    if voice is None:
+        raise ApiError(409, "VOICE_NOT_READY", "Set up your voice to use Avatar mode.")
+    if request.app.state.eleven is None:
+        raise ApiError(503, "PROVIDER_UNAVAILABLE", "Voice is unavailable right now.")
+    return SpeakingVoice(voice.voice_id, voice.provider_voice_id)
+
+
 async def owned_turn(session: AsyncSession, principal: Principal, turn_id: uuid.UUID) -> Turn:
     """The account's turn, or 404."""
     turn = await session.scalar(
@@ -171,6 +230,9 @@ async def start_turn(
                 if existing.status == "running":
                     raise in_progress()
                 raise ApiError(409, "TURN_EXISTS", "This message was already sent.")
+            voice = (
+                await speaking_voice(request, session, principal) if body.mode == "avatar" else None
+            )
             version = await _active_version(session)
             settings = await settings_of(session, principal.account_id)
             turn = Turn(
@@ -181,6 +243,7 @@ async def start_turn(
                 status="running",
                 index_version=version,
                 app_version=get_settings().app_version,
+                mode=body.mode,
             )
             session.add(turn)
             conversation.updated_at = func.now()
@@ -199,6 +262,8 @@ async def start_turn(
         index_version=version,
         head_checkpoint_id=conversation.head_checkpoint_id,
         needs_title=conversation.title is None,
+        mode=body.mode,
+        voice=voice,
     )
 
 
@@ -227,12 +292,15 @@ async def restart_turn(
                 "TURN_NOT_RETRYABLE",
                 "Only the last reply can be tried again, if it was stopped or failed.",
             )
+        # Tried again in the mode it was asked in, so Avatar mode needs its voice still.
+        voice = await speaking_voice(request, session, principal) if turn.mode == "avatar" else None
         version = await _active_version(session)
         settings = await settings_of(session, principal.account_id)
         # The attempt before is replaced: a turn keeps only its latest reply (DEC-079).
         turn.status = "running"
         turn.attempt += 1
         turn.reply_text = turn.reply = turn.route = turn.error_code = None
+        turn.speech = turn.heard_upto = turn.speech_stopped_at = None
         turn.index_version = version
         turn.app_version = get_settings().app_version
         turn.started_at = func.now()
@@ -247,6 +315,8 @@ async def restart_turn(
         index_version=version,
         head_checkpoint_id=conversation.head_checkpoint_id,
         needs_title=conversation.title is None,
+        mode=turn.mode,
+        voice=voice,
     )
 
 
@@ -369,14 +439,71 @@ async def cancel_turn(
     return TurnState(turn_id=turn.turn_id, attempt=turn.attempt, status=turn.status)
 
 
-async def still_running(state: Any, started: Started) -> bool:
-    async with state.sessionmaker() as session:
-        status = await session.scalar(
-            select(Turn.status).where(
-                Turn.turn_id == started.turn_id, Turn.attempt == started.attempt
+@control.post("/{turn_id}/playback")
+async def playback(
+    turn_id: uuid.UUID, body: PlaybackRequest, request: Request, principal: Owner
+) -> PlaybackState:
+    """How far the app has played the reply's speech, and whether the user stopped it.
+    Only moves forward, so a late or repeated report changes nothing. A stop ends the
+    speech, not the turn: the request running it reads the stop within a second and
+    speaks no more, and the text is written and kept all the same (DEC-089)."""
+    async with request.app.state.sessionmaker() as session, session.begin():
+        await owned_turn(session, principal, turn_id)
+        values: dict[str, Any] = {}
+        if body.heard is not None:
+            values["heard_upto"] = func.greatest(func.coalesce(Turn.heard_upto, 0), body.heard)
+        if body.stopped:
+            values["speech_stopped_at"] = func.coalesce(Turn.speech_stopped_at, func.now())
+        if values:
+            await session.execute(
+                update(Turn)
+                .where(Turn.turn_id == turn_id, Turn.attempt == body.attempt)
+                .values(**values)
             )
-        )
-    return status == "running"
+        turn = await session.get(Turn, turn_id, populate_existing=True)
+    return PlaybackState(
+        turn_id=turn.turn_id,
+        attempt=turn.attempt,
+        heard_upto=turn.heard_upto,
+        speech_stopped=turn.speech_stopped_at is not None,
+    )
+
+
+async def turn_state(state: Any, started: Started) -> tuple[bool, bool]:
+    """Whether the turn is still running, and whether its speech was stopped."""
+    async with state.sessionmaker() as session:
+        row = (
+            await session.execute(
+                select(Turn.status, Turn.speech_stopped_at).where(
+                    Turn.turn_id == started.turn_id, Turn.attempt == started.attempt
+                )
+            )
+        ).first()
+    if row is None:
+        return False, True
+    return row.status == "running", row.speech_stopped_at is not None
+
+
+async def still_running(state: Any, started: Started) -> bool:
+    return (await turn_state(state, started))[0]
+
+
+async def keep_speech(state: Any, started: Started, speaker: Speaker) -> None:
+    """Keeps what was spoken beside the reply. It never raises: the turn has ended."""
+    speech = {
+        "voice_id": str(started.voice.voice_id),
+        "sentences": speaker.spoken,
+        "stopped": speaker.stopped,
+    }
+    try:
+        async with state.sessionmaker() as session, session.begin():
+            await session.execute(
+                update(Turn)
+                .where(Turn.turn_id == started.turn_id, Turn.attempt == started.attempt)
+                .values(speech=speech)
+            )
+    except Exception:
+        logger.warning("the speech could not be kept", exc_info=True)
 
 
 async def keep_title(state: Any, started: Started, title: str) -> bool:
@@ -426,6 +553,32 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
         if await keep_title(state, started, title):
             yield _event("title", started, title=title)
 
+    # The graph's events and the voice's share one queue, told in the order they come.
+    events: asyncio.Queue = asyncio.Queue()
+    speaker = (
+        Speaker(
+            state.eleven,
+            started.voice.provider_voice_id,
+            get_settings().tts_model,
+            emit=lambda name, data: events.put_nowait((name, data)),
+        )
+        if started.mode == "avatar" and started.voice is not None
+        else None
+    )
+    sentences = Segmenter()
+    first_speech: float | None = None
+
+    async def stop_speaking() -> None:
+        if speaker is not None and not speaker.stopped:
+            with anyio.CancelScope(shield=True):
+                await speaker.stop()
+
+    def relay(name: str, data: dict[str, Any]) -> ServerSentEvent:
+        nonlocal first_speech
+        if name == "speech" and first_speech is None:
+            first_speech = round(time.perf_counter() - begun, 3)
+        return _event(name, started, **data)
+
     yield _event("accepted", started)
     try:
         thread = thread_of(started.conversation_id)
@@ -442,11 +595,10 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             "query_time": datetime.now(UTC),
             "chatbot_name": started.chatbot_name,
         }
+
         # The graph runs in a task of its own, so this loop can wait for its next event
         # a second at a time, to read whether the turn was stopped, without cutting into
         # it. A timeout scope never spans a yield: it would cancel whoever iterates this.
-        events: asyncio.Queue = asyncio.Queue()
-
         async def run_graph() -> None:
             try:
                 async with aclosing(play(state.graph, turn, config, played)) as stream:
@@ -465,8 +617,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                     raise TurnTimedOut
                 if now - checked >= CHECK_SECONDS:
                     checked = now
-                    if not await still_running(state, started):
+                    running, speech_stopped = await turn_state(state, started)
+                    if not running:
                         raise TurnStopped
+                    if speech_stopped:
+                        await stop_speaking()
                 try:
                     wait = min(CHECK_SECONDS, deadline - now)
                     event = await asyncio.wait_for(events.get(), timeout=wait)
@@ -476,7 +631,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                     await graph  # raises what the graph raised
                     break
                 name, data = event
-                yield _event(name, started, **data)
+                if name == "text_delta" and speaker is not None and not speaker.stopped:
+                    for sentence in sentences.add(data["text"]):
+                        if text := speakable(sentence):
+                            speaker.say(text)
+                yield relay(name, data)
         finally:
             if not graph.done():
                 graph.cancel()
@@ -485,6 +644,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
 
         reply = {k: v for k, v in played.reply.items() if k != "retryable"}
         shown = _event("reply", started, **{k: v for k, v in reply.items() if k in SHOWN_REPLY})
+        if speaker is not None:
+            if played.reply.get("retryable"):
+                await stop_speaking()  # the error is shown, not spoken
+            else:
+                speak_rest(speaker, sentences, played, started.text)
         # Each end is saved before it is told: a turn stopped meanwhile sends nothing more.
         if played.reply.get("retryable"):
             # The graph said a model or a lookup failed; it may work if tried again.
@@ -516,6 +680,11 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             yield shown
             async for event in titled():
                 yield event
+            if speaker is not None:
+                # The text is written and kept; the voice may still be speaking it. The
+                # turn's end is told once the last sentence is, or the user stopped it.
+                async for name, data in spoken(state, started, speaker, events):
+                    yield relay(name, data)
             yield _event("completed", started)
         else:
             ended = "superseded"  # ended elsewhere meanwhile, such as stopped
@@ -566,6 +735,10 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             )
         raise
     finally:
+        await stop_speaking()
+        if speaker is not None:
+            with anyio.CancelScope(shield=True):
+                await keep_speech(state, started, speaker)
         if titling is not None and not told:
             # A stopped turn still names its conversation: the request stays open till
             # then, as Cloud Run gives CPU only while it is.
@@ -584,6 +757,8 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
                 "nodes": played.nodes,
                 "first_status_s": played.first_status,
                 "first_token_s": played.first_token,
+                "first_speech_s": first_speech,
+                "speech_s": speaker.seconds if speaker is not None else None,
                 "total_s": round(time.perf_counter() - begun, 3),
                 "index_version": started.index_version,
             },
@@ -593,6 +768,54 @@ async def run_turn(state: Any, started: Started) -> AsyncIterable[ServerSentEven
             # while a request is open, so they are sent before this one closes.
             with anyio.CancelScope(shield=True):
                 await anyio.to_thread.run_sync(wait_for_all_tracers)
+
+
+def speak_rest(speaker: Speaker, sentences: Segmenter, played: Played, question: str) -> None:
+    """Speaks what is left of the reply once the graph is done, and says no more come: the
+    end of streamed words, or what is said of a reply code wrote (P16)."""
+    if not speaker.stopped:
+        rest = sentences.flush()
+        said = spoken_text(played.route, played.reply, writes_chinese(question))
+        if said is None and not played.shown:
+            said = played.reply.get("text")  # written whole, not streamed
+        if said is not None:
+            whole = Segmenter()
+            rest += whole.add(said) + whole.flush()
+        for sentence in rest:
+            if text := speakable(sentence):
+                speaker.say(text)
+    speaker.close()
+
+
+async def spoken(
+    state: Any, started: Started, speaker: Speaker, events: asyncio.Queue
+) -> AsyncIterable[tuple[str, dict[str, Any]]]:
+    """The speech still to come once the text is written, until its end, a stop by the
+    user, or SPEECH_SECONDS: what the graph left in the queue first, in order."""
+    deadline = time.monotonic() + SPEECH_SECONDS
+    checked = time.monotonic()
+    while not speaker.stopped:
+        now = time.monotonic()
+        if now >= deadline:
+            logger.warning("the speech ran past its time")
+            await speaker.stop()
+            return
+        if now - checked >= CHECK_SECONDS:
+            checked = now
+            if (await turn_state(state, started))[1]:
+                await speaker.stop()
+                return
+        try:
+            event = await asyncio.wait_for(events.get(), timeout=min(CHECK_SECONDS, deadline - now))
+        except TimeoutError:
+            continue
+        if event is None:
+            continue  # the graph's end, already read
+        name, data = event
+        if name == "speech_end":
+            return
+        if name in ("speech", "speech_error"):
+            yield name, data
 
 
 ERRORS = {

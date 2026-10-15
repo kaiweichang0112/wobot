@@ -108,8 +108,9 @@ class Settings(BaseSettings):
     # In the cloud it comes from Secret Manager.
     elevenlabs_api_key: SecretStr | None = None
     elevenlabs_timeout_seconds: float = 60
-    # Speaks the voice preview; a placeholder until the TTS comparison chooses (D7).
-    tts_model: str = "eleven_flash_v2_5"
+    # Speaks replies and the voice preview: it takes audio tags for feelings, which flash
+    # does not. Chosen without a comparison, to move faster (D7, DEC-094).
+    tts_model: str = "eleven_v4_turbo"
     # Paints the avatar's frames (DEC-049), pinned to a snapshot: the prompts were written
     # for it. The quality follows P8's comparison of the base frame.
     avatar_image_model: str = "gpt-image-2.5-sunburst-2026-09-08"
