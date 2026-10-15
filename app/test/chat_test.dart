@@ -53,6 +53,39 @@ void main() {
     },
   );
 
+  test(
+    'in Avatar mode the speech goes to who plays it, and a list says where it goes on',
+    () async {
+      server.reply(
+        'POST /v1/conversations/c1/turns',
+        200,
+        sse([
+          ('accepted', {'turn_id': 't', 'attempt': 1}),
+          ('reply', {'text': '共 5 場演講。'}),
+          (
+            'speech',
+            {'index': 0, 'text': '共 5 場演講。', 'emotion': 'neutral', 'audio': ''},
+          ),
+          ('speech_error', {'index': 1}),
+          ('completed', {'next': 3}),
+        ]),
+      );
+      final heard = <String>[];
+      chat.speech = (turn, event) => heard.add(event.name);
+
+      await chat.send('列出演講', mode: 'avatar');
+
+      final turn = chat.turns.single;
+      expect(server.bodies['POST /v1/conversations/c1/turns'], {
+        'turn_id': turn.id,
+        'text': '列出演講',
+        'mode': 'avatar',
+      });
+      expect(heard, ['speech', 'speech_error']);
+      expect((turn.mode, turn.next), ('avatar', 3));
+    },
+  );
+
   test('a failed reply can be tried again, as its next attempt', () async {
     server.reply(
       'POST /v1/conversations/c1/turns',

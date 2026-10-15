@@ -6,7 +6,7 @@ import 'package:http/testing.dart';
 import 'package:wobot/api.dart';
 import 'package:wobot/avatar/frame_cache.dart';
 
-String sse(List<(String, Map<String, Object>)> events) => [
+String sse(List<(String, Map<String, Object?>)> events) => [
   for (final (name, data) in events)
     'event: $name\ndata: ${jsonEncode(data)}\n\n',
 ].join();
@@ -18,7 +18,8 @@ const newConversation = {
   'updated_at': '2026-10-13T10:00:00Z',
 };
 
-/// An API whose routes answer as given; each request is kept.
+/// An API whose routes answer as given; each request is kept. A `*` in a route
+/// stands for one segment of the path, such as a turn's ID the app made.
 class FakeServer {
   final requests = <http.BaseRequest>[];
   final bodies = <String, Object?>{};
@@ -38,6 +39,17 @@ class FakeServer {
         http.StreamedResponse(Stream.value(body), 200, headers: headers);
   }
 
+  Future<http.StreamedResponse> Function()? _matching(String route) {
+    for (final MapEntry(:key, :value) in routes.entries) {
+      if (!key.contains('*')) continue;
+      final pattern = RegExp(
+        '^${key.split('*').map(RegExp.escape).join('[^/]+')}\$',
+      );
+      if (pattern.hasMatch(route)) return value;
+    }
+    return null;
+  }
+
   /// The requests sent to a route, such as `GET /v1/me`.
   int count(String route) =>
       requests.where((r) => '${r.method} ${r.url.path}' == route).length;
@@ -50,7 +62,7 @@ class FakeServer {
       final text = await body.bytesToString();
       final route = '${request.method} ${request.url.path}';
       bodies[route] = text.isEmpty ? null : _decoded(text);
-      final answer = routes[route];
+      final answer = routes[route] ?? _matching(route);
       if (answer == null) throw StateError('no route for $route');
       return answer();
     }),

@@ -1,49 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wobot/voice/cer.dart';
 import 'package:wobot/voice/listener.dart';
 
-/// A recognizer the test speaks through.
-class FakeEngine implements SpeechEngine {
-  bool available = true;
-  void Function(String words, bool isFinal)? _onResult;
-  late void Function(String error) onError;
-  late void Function(String status) onStatus;
-  int stops = 0;
-  int cancels = 0;
-
-  /// What the recognizer settles on after a stop, or nothing.
-  String? finalText;
-
-  @override
-  Future<bool> initialize({
-    required void Function(String error) onError,
-    required void Function(String status) onStatus,
-  }) async {
-    this.onError = onError;
-    this.onStatus = onStatus;
-    return available;
-  }
-
-  @override
-  Future<void> listen({
-    required String localeId,
-    required void Function(String words, bool isFinal) onResult,
-  }) async => _onResult = onResult;
-
-  void say(String words, {bool isFinal = false}) => _onResult!(words, isFinal);
-
-  @override
-  Future<void> stop() async {
-    stops++;
-    final text = finalText;
-    if (text != null) scheduleMicrotask(() => _onResult!(text, true));
-  }
-
-  @override
-  Future<void> cancel() async => cancels++;
-}
+import 'fake_speech.dart';
 
 void main() {
   late FakeEngine engine;
@@ -147,7 +106,7 @@ void main() {
   test('words from an earlier question never reach the next', () async {
     final first = listener.listen();
     await pumpEventQueue();
-    final stale = engine._onResult!;
+    final stale = engine.onResult!;
     final second = listener.listen();
     await pumpEventQueue();
 
