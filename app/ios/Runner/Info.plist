@@ -37,6 +37,8 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Wobot connects to your Wobot robot over Bluetooth in Avatar mode, so the phone moves as the avatar speaks.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Wobot takes a photo of your face to draw your avatar.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

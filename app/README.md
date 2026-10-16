@@ -14,7 +14,8 @@ from; in Avatar mode the avatar speaks the replies in that voice.
 | `lib/assets.dart` | What voices and avatars share: their status in a word, failures, and reading one being made every 2.5 s |
 | `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with; `QuestionListener`, which turns a spoken question into text on the phone; `SpeechQueue`, which plays a reply's sentences in order; the question language; Voice lab's script and CER |
 | `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device; `AvatarSession`, Avatar mode's state; `AnimatedAvatar`, the face that breathes and speaks |
-| `lib/pages/` | Sign-in, chat, the chats drawer, settings, the Voice and Avatar pages, and Avatar mode |
+| `lib/robot/` | The robot's wire format; `RobotLink`, which finds the robot over Bluetooth, attaches it, keeps its lease and writes commands in order; `Robot`, what Avatar mode holds of it |
+| `lib/pages/` | Sign-in, chat, the chats drawer, settings, the Voice and Avatar pages, Avatar mode, and the debug Voice and Robot labs |
 | `lib/widgets/` | The thinking mark shown while a reply is awaited, replies with tappable links, and the setup pages' notes |
 | `lib/theme.dart` | The dark theme and its orange accent |
 
@@ -66,6 +67,18 @@ How the app keeps to the API's rules:
   a question is heard, an error shows, the transcript is open or a screen reader is on,
   and hidden ones are left out of what it reads. Out of sight, nothing is heard or
   played, and the reply stops; back, nothing starts by itself.
+- **The robot is found by itself, and never needed** (spec 26). Opening Avatar mode
+  looks for a `Wobot-Robot-*`: the one this phone remembers, or else the strongest
+  heard in 2 s, which it then remembers (Settings can forget it). iOS asks for
+  Bluetooth the first time; without Bluetooth, permission or a robot, Avatar mode is
+  unchanged and the robot button says why, and looks again when tapped. Connected, it
+  writes `attach` and an `O` that sets a 2.5 s lease, then sends the last `O` again
+  whenever 0.8 s pass in silence, so a phone that crashes or leaves leaves the head at
+  neutral. Every command is one write of at most 20 bytes, whole degrees, so it fits
+  the smallest MTU; poses go without a response, since the next one sets the head
+  again, and a look still waiting is replaced by a newer one. Leaving Avatar mode or
+  going out of sight sends `X` and lets go; back in sight, it connects again. Robot
+  lab (Settings, debug builds) connects the same way and sends commands by hand.
 - **Questions are spoken in the language chosen in Settings** (中文 or English, kept on
   the phone), never switched on the Avatar screen (VOI-012).
 

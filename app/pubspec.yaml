@@ -46,6 +46,7 @@ dependencies:
   speech_to_text: ^7.5.0
   audio_session: ^0.2.4
   shared_preferences: ^2.5.5
+  universal_ble: ^3.0.2
 
 dev_dependencies:
   flutter_test:

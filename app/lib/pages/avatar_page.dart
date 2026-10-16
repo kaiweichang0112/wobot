@@ -6,6 +6,8 @@ import '../avatar/animated_avatar.dart';
 import '../avatar/avatar_look.dart';
 import '../avatar/avatar_session.dart';
 import '../chat.dart';
+import '../robot/link.dart';
+import '../robot/robot.dart';
 import '../theme.dart';
 import '../widgets/linked_text.dart';
 import '../widgets/thinking.dart';
@@ -62,9 +64,16 @@ class _AvatarPageState extends State<AvatarPage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Out of sight: nothing is heard or played (CHAT-011); the chat page stops the
-    // reply itself. Back again, nothing starts by itself.
-    if (state == AppLifecycleState.hidden) unawaited(_session.pause());
+    // Out of sight: nothing is heard or played (CHAT-011), and the robot is let go;
+    // the chat page stops the reply itself. Back again, nothing starts by itself but
+    // finding the robot.
+    switch (state) {
+      case AppLifecycleState.hidden:
+        unawaited(_session.pause());
+      case AppLifecycleState.resumed:
+        unawaited(_session.robot?.open());
+      default:
+    }
   }
 
   void _changed() {
@@ -218,6 +227,8 @@ class _AvatarPageState extends State<AvatarPage> with WidgetsBindingObserver {
                   onPressed: () => _act(_toText),
                 ),
                 const Spacer(),
+                if (session.robot case final robot?)
+                  _RobotButton(robot: robot, onTap: _later),
                 IconButton(
                   tooltip: 'Show transcript',
                   icon: const Icon(Icons.subject),
@@ -248,6 +259,40 @@ class _AvatarPageState extends State<AvatarPage> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// How the robot stands, as an icon; a tap says it in words, and looks again when
+/// none is connected.
+class _RobotButton extends StatelessWidget {
+  const _RobotButton({required this.robot, required this.onTap});
+
+  final Robot robot;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<RobotStatus>(
+      valueListenable: robot.status,
+      builder: (context, status, _) => IconButton(
+        tooltip: status.message,
+        icon: Icon(
+          status.connected ? Icons.smart_toy : Icons.smart_toy_outlined,
+          color: status.connected ? WobotColors.accent : WobotColors.muted,
+        ),
+        onPressed: () {
+          onTap();
+          var said = status;
+          if (status.retryable) {
+            unawaited(robot.retry());
+            said = const RobotStatus(RobotState.searching);
+          }
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(said.message)));
+        },
       ),
     );
   }

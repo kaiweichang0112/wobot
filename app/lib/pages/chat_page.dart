@@ -8,6 +8,7 @@ import '../avatar/avatar_look.dart';
 import '../avatar/avatar_session.dart';
 import '../avatar/frame_cache.dart';
 import '../chat.dart';
+import '../robot/robot.dart';
 import '../theme.dart';
 import '../voice/listener.dart';
 import '../voice/question_language.dart';
@@ -156,6 +157,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     listener: QuestionListener(DeviceSpeechEngine()),
     queue: SpeechQueue(DeviceSentencePlayer()),
     locale: QuestionLanguage.read,
+    robot: Robot.onPhone(),
   );
 
   Future<void> _push(Widget page) =>
