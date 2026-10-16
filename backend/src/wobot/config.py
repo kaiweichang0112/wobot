@@ -108,10 +108,11 @@ class Settings(BaseSettings):
     # In the cloud it comes from Secret Manager.
     elevenlabs_api_key: SecretStr | None = None
     elevenlabs_timeout_seconds: float = 60
-    # Speaks replies and the voice preview. It takes no audio tags, so feelings show on
-    # the face alone, but speaks no Cantonese, which eleven_v4_turbo drifted into whatever
-    # language it was told, and is the fastest (DEC-100).
-    tts_model: str = "eleven_flash_v2_5"
+    # Speaks replies and the voice preview, with audio tags for feelings. Chosen by ear on
+    # the phone over eleven_v4_turbo (it drifted into Cantonese), eleven_v3_conversational
+    # and eleven_flash_v2_5 (both misread words), at about 1.4 s a sentence and twice
+    # their price (DEC-100).
+    tts_model: str = "eleven_v4"
     # Each spoken sentence's feeling (DEC-095): Jev, chosen without a comparison. Below the
     # threshold, or slower than the timeout, a sentence is neutral: a feeling shown wrongly
     # is worse than none, and the voice must not wait long.

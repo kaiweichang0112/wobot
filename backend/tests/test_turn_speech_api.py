@@ -258,8 +258,7 @@ def test_each_sentence_is_spoken_with_its_feeling(client, as_member, chat_graph,
         ("太好了，找到了！", "joy"),
     ]
     assert feelings.questions == ["GRC 在哪？"]
-    # The face shows the feeling; the model takes no tags, so the voice gets the words.
-    assert speaking.spoken[1][1] == "太好了，找到了！"
+    assert speaking.spoken[1][1] == "[excited] 太好了，找到了！"
     sentences = speech_of(turn_id)["speech"]["sentences"]
     assert [s["emotion"] for s in sentences] == ["neutral", "joy"]
 
