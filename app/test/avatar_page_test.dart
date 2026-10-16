@@ -7,10 +7,13 @@ import 'package:wobot/avatar/avatar_session.dart';
 import 'package:wobot/avatar/frames.dart';
 import 'package:wobot/chat.dart';
 import 'package:wobot/pages/avatar_page.dart';
+import 'package:wobot/robot/link.dart';
+import 'package:wobot/robot/robot.dart';
 import 'package:wobot/theme.dart';
 import 'package:wobot/voice/listener.dart';
 import 'package:wobot/voice/speech_queue.dart';
 
+import 'fake_robot.dart';
 import 'fake_server.dart';
 import 'fake_speech.dart';
 
@@ -23,7 +26,7 @@ void main() {
   late FakeEngine engine;
   late AvatarSession session;
 
-  Future<void> show(WidgetTester tester) async {
+  Future<void> show(WidgetTester tester, {Robot? robot}) async {
     final server = FakeServer();
     final api = server.api();
     final chat = ChatController(api, HistoryController(api));
@@ -34,6 +37,7 @@ void main() {
       listener: QuestionListener(engine),
       queue: SpeechQueue(FakePlayer()),
       locale: () async => 'zh-TW',
+      robot: robot,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -119,5 +123,34 @@ void main() {
     expect(speak(), findsOne);
     await close(tester);
     semantics.dispose();
+  });
+
+  testWidgets(
+    'without Bluetooth the robot only says why; the avatar is the same',
+    (tester) async {
+      final ble = FakeBle()..state = Bluetooth.denied;
+      final robot = Robot(RobotLink(ble, FakeMemory()));
+      await show(tester, robot: robot);
+      await tester.pump();
+      expect(robot.status.value.state, RobotState.unavailable);
+
+      await reveal(tester);
+      const why = 'Wobot may not use Bluetooth. Allow it in Settings.';
+      expect(control(why), findsOneWidget);
+      expect(control('Speak'), findsOneWidget);
+
+      await tester.tap(control(why));
+      await tester.pump();
+      expect(find.text('Looking for the robot…'), findsOneWidget);
+      expect(ble.scans, 0);
+      await close(tester);
+    },
+  );
+
+  testWidgets('without a robot there is no robot button', (tester) async {
+    await show(tester);
+    await reveal(tester);
+    expect(find.byIcon(Icons.smart_toy_outlined), findsNothing);
+    await close(tester);
   });
 }

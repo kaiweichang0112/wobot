@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../api.dart';
 import '../chat.dart';
+import '../robot/robot.dart';
 import '../sse.dart';
 import '../voice/listener.dart';
 import '../voice/speech_queue.dart';
@@ -39,6 +40,7 @@ class AvatarSession extends ChangeNotifier {
     required this._listener,
     required this._queue,
     required this._locale,
+    this.robot,
     this.previousWait = const Duration(seconds: 15),
     this.hold = const Duration(milliseconds: 1600),
   }) {
@@ -52,6 +54,9 @@ class AvatarSession extends ChangeNotifier {
   final QuestionListener _listener;
   final SpeechQueue _queue;
   final Future<String> Function() _locale;
+
+  /// The robot the phone sits on, if any: connected while Avatar mode is open.
+  final Robot? robot;
 
   /// How long a question waits for the reply before it to be written, before that
   /// reply is stopped, keeping its words.
@@ -88,8 +93,12 @@ class AvatarSession extends ChangeNotifier {
   /// A list reply has more to read, and the user may ask for it.
   bool get canReadOn => _last?.next != null && state == AvatarState.idle;
 
-  /// Sets the phone up to play speech; before the first question.
-  Future<void> prepare() => _queue.prepare();
+  /// Sets the phone up to play speech, before the first question, and starts
+  /// looking for the robot.
+  Future<void> prepare() {
+    unawaited(robot?.open());
+    return _queue.prepare();
+  }
 
   /// The one button: sends the question being heard, or stops what is being said
   /// and listens.
@@ -138,6 +147,8 @@ class AvatarSession extends ChangeNotifier {
   /// Out of sight, or leaving for Text: nothing is heard or played any more. The
   /// text of a reply being written goes on.
   Future<void> pause() async {
+    // Not awaited: an unreachable robot must not hold up leaving.
+    unawaited(robot?.pause());
     await _silence();
     await _listener.cancel();
     _idle();
@@ -257,6 +268,7 @@ class AvatarSession extends ChangeNotifier {
     _listener.removeListener(notifyListeners);
     _listener.dispose();
     unawaited(_queue.dispose());
+    unawaited(robot?.dispose());
     super.dispose();
   }
 }
