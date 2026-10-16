@@ -1,0 +1,19 @@
+name: wobot_faces
+description: "Faces seen by the phone's front camera, found on the phone, for the robot to turn toward."
+version: 0.1.0
+publish_to: 'none'
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: WobotFacesPlugin

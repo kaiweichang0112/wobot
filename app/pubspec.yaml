@@ -21,6 +21,10 @@ version: 1.0.0+1
 environment:
   sdk: ^3.12.2
 
+# The local plugins live in this workspace: one `pub get` resolves and analyzes them.
+workspace:
+  - packages/wobot_faces
+
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
 # consider running `flutter pub upgrade --major-versions`. Alternatively,
@@ -47,6 +51,7 @@ dependencies:
   audio_session: ^0.2.4
   shared_preferences: ^2.5.5
   universal_ble: ^3.0.2
+  wobot_faces: ^0.1.0
 
 dev_dependencies:
   flutter_test:
