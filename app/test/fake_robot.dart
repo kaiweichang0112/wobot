@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_test/flutter_test.dart';
 import 'package:wobot/robot/link.dart';
 
 /// Bluetooth with robots in reach, a write log and connections that can drop.
@@ -79,4 +80,13 @@ class FakeMemory implements RobotMemory {
 
   @override
   Future<void> forget() async => robot = null;
+}
+
+/// Waits, a little at a time, until [ok] holds.
+Future<void> until(bool Function() ok) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 2));
+  while (!ok()) {
+    if (DateTime.now().isAfter(deadline)) fail('timed out waiting');
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
 }

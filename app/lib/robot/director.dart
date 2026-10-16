@@ -72,6 +72,10 @@ class Director {
   /// The motion the last sentence started with, for tests and Robot lab.
   String? accent;
 
+  /// Each pondering pose taken, and the side it was turned to.
+  @visibleForTesting
+  final pondered = <(String, int)>[];
+
   /// Each axis's oscillation as last sent.
   final _swings = <RobotAxis, (double, int)>{};
   int _generation = 0;
@@ -86,7 +90,7 @@ class Director {
   int _run = 0;
   int _introduced = -10;
   int _place = 0;
-  String? _pondered;
+  int _ponderFirst = 1;
 
   /// The robot has just been connected and attached: it greets, then goes on
   /// where Avatar mode is.
@@ -95,6 +99,7 @@ class Director {
     _swings.clear();
     final cue = _cue;
     final generation = _begin();
+    holding.value = true; // the greeting looks up; tracking starts after it
     unawaited(() async {
       await _play(generation, waking.steps);
       if (generation != _generation) return;
@@ -115,7 +120,7 @@ class Director {
     final generation = _begin();
     _resetRun();
     _carry(listeningCarrier);
-    unawaited(_play(generation, leaningIn.scaled(side: _side()).steps));
+    unawaited(_play(generation, leaningIn.steps));
   }
 
   /// The reply is awaited: the head looks away, pondering, a new way every few
@@ -270,12 +275,17 @@ class Director {
     if (generation == _generation) _carry(breathing);
   }
 
+  /// Ponders until the generation moves on. Sides take turns, and each wait starts
+  /// on the other side from the last: chance alone, seen once a question, looked
+  /// like the same side every time.
   Future<void> _ponder(int generation) async {
+    final ways = [...pondering, ...feelings['thinking']!];
+    var side = _ponderFirst = -_ponderFirst;
     while (generation == _generation) {
-      final choices = pondering.where((m) => m.id != _pondered).toList();
-      final motion = choices[_random.nextInt(choices.length)];
-      _pondered = motion.id;
-      await _play(generation, _vary(motion, 1).steps);
+      final motion = _pick('ponder', ways, (_) => true)!;
+      pondered.add((motion.id, side));
+      await _play(generation, _vary(motion, 1, side: side).steps);
+      side = -side;
       final (low, high) = ponderEvery;
       await _sleep(low + _random.nextInt(high - low));
     }
@@ -388,10 +398,10 @@ class Director {
 
   /// The motion as played this time: a little smaller and slower at random, and
   /// turned to a side.
-  Motion _vary(Motion motion, double amplitude) => motion.scaled(
+  Motion _vary(Motion motion, double amplitude, {int? side}) => motion.scaled(
     amplitude: amplitude * (0.9 + 0.1 * _random.nextDouble()),
     time: 1 + 0.15 * _random.nextDouble(),
-    side: motion.mirror ? _side() : 1,
+    side: motion.mirror ? side ?? _side() : 1,
   );
 
   /// Left or right at random, but never the same side three times running.

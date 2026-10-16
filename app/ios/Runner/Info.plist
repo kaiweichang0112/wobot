@@ -40,7 +40,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Wobot connects to your Wobot robot over Bluetooth in Avatar mode, so the phone moves as the avatar speaks.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Wobot takes a photo of your face to draw your avatar.</string>
+	<string>Wobot takes a photo of your face to draw your avatar. In Avatar mode with the robot, it watches for your face to keep the phone turned toward you; the pictures stay on this phone.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Wobot turns your spoken questions into text on this phone.</string>
 	<key>NSMicrophoneUsageDescription</key>

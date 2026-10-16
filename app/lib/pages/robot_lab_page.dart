@@ -1,21 +1,28 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:wobot_faces/wobot_faces.dart';
 
 import '../robot/director.dart';
 import '../robot/link.dart';
 import '../robot/motions.dart';
+import '../robot/pose_model.dart';
 import '../robot/protocol.dart';
+import '../robot/tracker.dart';
 import '../theme.dart';
 
 /// Debug builds only: connects to the robot as Avatar mode does and drives it by
 /// hand, to bring it up, to try a command before it is used in a motion, and to
 /// watch each motion and a scripted reply on the rig.
 class RobotLabPage extends StatefulWidget {
-  const RobotLabPage({super.key, this.link});
+  const RobotLabPage({super.key, this.link, this.faces});
 
   /// The phone's Bluetooth by default; a test gives its own.
   final RobotLink? link;
+
+  /// The phone's front camera by default.
+  final FaceSource? faces;
 
   @override
   State<RobotLabPage> createState() => _RobotLabPageState();
@@ -25,6 +32,21 @@ class _RobotLabPageState extends State<RobotLabPage> {
   late final RobotLink _link =
       widget.link ?? RobotLink(UniversalBleTransport(), PhoneRobotMemory());
   late final Director _director = Director(_send);
+  late final GazeTracker _tracker = GazeTracker(
+    send: (command) {
+      if (_aim) _send(command);
+    },
+    centre: _director.model,
+    look: LookModel(DateTime.now),
+  );
+  late final FaceSource _faces = widget.faces ?? PhoneFaceSource();
+  StreamSubscription<FaceFrame>? _watching;
+  FaceFrame? _frame;
+  String? _cameraError;
+
+  /// Whether the tracker's aims are sent to the robot, or only shown.
+  bool _aim = false;
+  final _frameTimes = <DateTime>[];
   final _line = TextEditingController();
   final _sent = <String>[];
   String? _pose;
@@ -36,11 +58,46 @@ class _RobotLabPageState extends State<RobotLabPage> {
   @override
   void initState() {
     super.initState();
-    _link.onConnected = _director.connected;
+    _link.onConnected = () {
+      _director.connected();
+      _tracker.reset();
+    };
+    _director.holding.addListener(_hold);
+  }
+
+  void _hold() => _tracker.hold = _director.holding.value;
+
+  void _watch(bool on) {
+    unawaited(_watching?.cancel());
+    _watching = null;
+    setState(() {
+      _frame = null;
+      _cameraError = null;
+    });
+    if (!on) return;
+    _watching = _faces.frames().listen(
+      (frame) {
+        _tracker.see(frame);
+        final now = DateTime.now();
+        _frameTimes
+          ..add(now)
+          ..removeWhere((t) => now.difference(t) > const Duration(seconds: 1));
+        if (mounted) setState(() => _frame = frame);
+      },
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() {
+          _cameraError = error is PlatformException ? error.message : '$error';
+          _watching = null;
+        });
+      },
+    );
   }
 
   @override
   void dispose() {
+    unawaited(_watching?.cancel());
+    _director.holding.removeListener(_hold);
     _script++;
     _line.dispose();
     _director.dispose();
@@ -266,6 +323,8 @@ class _RobotLabPageState extends State<RobotLabPage> {
                 ],
               ),
               const SizedBox(height: 24),
+              ..._facesView(text, connected),
+              const SizedBox(height: 24),
               Text('Sent, latest first', style: text.titleSmall),
               const SizedBox(height: 8),
               for (final line in _sent)
@@ -281,6 +340,67 @@ class _RobotLabPageState extends State<RobotLabPage> {
         },
       ),
     );
+  }
+
+  /// Faces as the camera sees them, where the tracker thinks the user is, and what
+  /// it aims; for checking the signs on the rig before the robot follows.
+  List<Widget> _facesView(TextTheme text, bool connected) {
+    final frame = _frame;
+    final estimate = _tracker.estimate;
+    final (aimPan, aimTilt) = _tracker.look.target;
+    String degrees(double value) => value.toStringAsFixed(1);
+    return [
+      Text('Faces', style: text.titleSmall),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Watch the front camera'),
+        value: _watching != null,
+        onChanged: _watch,
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Turn the robot toward the face'),
+        value: _aim,
+        onChanged: connected ? (on) => setState(() => _aim = on) : null,
+      ),
+      if (_cameraError case final error?)
+        Text(
+          error,
+          style: text.bodyMedium?.copyWith(color: WobotColors.danger),
+        ),
+      if (frame != null) ...[
+        Center(
+          child: SizedBox(
+            width: 180,
+            child: AspectRatio(
+              aspectRatio: frame.hfov / frame.vfov,
+              child: CustomPaint(
+                painter: _FacesPainter(frame.faces, _tracker.face),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${frame.faces.length} face(s), ${_frameTimes.length} frames/s, '
+          'found in ${frame.detect.inMilliseconds} ms, '
+          '${frame.age.inMilliseconds} ms old',
+          style: text.bodyMedium,
+        ),
+        Text(
+          'User at pan ${estimate == null ? '-' : degrees(estimate.$1)}, '
+          'tilt ${estimate == null ? '-' : degrees(estimate.$2)}; '
+          'aim pan ${degrees(aimPan)}, tilt ${degrees(aimTilt)}',
+          style: text.bodyMedium,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Step to your own right: the box and pan go right, up. '
+          'Raise your face: tilt goes down, below 0.',
+          style: text.bodySmall?.copyWith(color: WobotColors.muted),
+        ),
+      ],
+    ];
   }
 }
 
@@ -332,3 +452,52 @@ final _scripts = [
     ],
   ),
 ];
+
+/// The picture's frame, its middle, and each face; the followed one in the accent.
+class _FacesPainter extends CustomPainter {
+  _FacesPainter(this.faces, this.followed);
+
+  final List<FaceBox> faces;
+  final FaceBox? followed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = WobotColors.muted;
+    canvas
+      ..drawRect(Offset.zero & size, line)
+      ..drawLine(
+        Offset(size.width / 2, 0),
+        Offset(size.width / 2, size.height),
+        line,
+      )
+      ..drawLine(
+        Offset(0, size.height / 2),
+        Offset(size.width, size.height / 2),
+        line,
+      );
+    for (final face in faces) {
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = identical(face, followed)
+            ? WobotColors.accent
+            : WobotColors.faint;
+      canvas.drawRect(
+        Rect.fromLTWH(
+          face.x * size.width,
+          face.y * size.height,
+          face.width * size.width,
+          face.height * size.height,
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FacesPainter old) =>
+      old.faces != faces || old.followed != followed;
+}

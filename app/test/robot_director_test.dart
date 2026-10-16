@@ -208,7 +208,10 @@ void main() {
     final takes = int.parse(first.line.split(' ').last);
     final next = moves().elementAt(1);
     expect(next.at, greaterThanOrEqualTo(takes));
-    expect(next.line, startsWith('M 90 165 ')); // leaning in, tilt +3 × 1.8
+    expect(
+      next.line,
+      'M 90 165 90 700',
+    ); // leaning in, tilt +3 × 1.8, no tilt aside
     expect(sent.map((s) => s.line), contains('O t 1.8 2600 0'));
   });
 
@@ -226,6 +229,43 @@ void main() {
     for (var i = 1; i < list.length; i++) {
       expect(list[i], isNot(list[i - 1]));
     }
+  });
+
+  test(
+    'pondering turns to each side in turn, each wait from the other side',
+    () {
+      late int secondWait;
+      run((async) {
+        director.waiting();
+        async.elapse(const Duration(seconds: 30));
+        director.listening();
+        async.elapse(const Duration(seconds: 1));
+        secondWait = director.pondered.length;
+        director.waiting();
+        async.elapse(const Duration(seconds: 3));
+      });
+      final first = director.pondered.sublist(0, secondWait);
+      for (var i = 1; i < first.length; i++) {
+        expect(first[i].$2, -first[i - 1].$2);
+        expect(first[i].$1, isNot(first[i - 1].$1));
+        if (i >= 2) expect(first[i].$1, isNot(first[i - 2].$1));
+      }
+      // The next wait starts on the other side from where this one started.
+      expect(director.pondered[secondWait].$2, -first.first.$2);
+      final ids = first.map((p) => p.$1).toSet();
+      expect(ids.where((id) => id.startsWith('think.')), isNotEmpty);
+      expect(ids.length, greaterThanOrEqualTo(5));
+    },
+  );
+
+  test('listening leans in without turning aside', () {
+    run((async) {
+      for (var i = 0; i < 4; i++) {
+        director.listening();
+        async.elapse(const Duration(seconds: 1));
+      }
+    });
+    expect(moves().map((s) => s.line).toSet(), {'M 90 165 90 700'});
   });
 
   test('the gaze is held only through an accent', () {
