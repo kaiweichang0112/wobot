@@ -8,12 +8,14 @@ personalized cartoon avatar that speaks with the user's cloned voice.
 
 It is built for an internal pilot of up to ten people.
 
-**Status:** Phases 0 and A are done. The iOS app signs in with Google, and the API
-on Cloud Run checks the Firebase ID token and an allowlist in Cloud SQL; CI deploys
-every merge to `main`. A Cloud Run job ingests the two websites, their images, three
-PDFs and the product catalog into versioned, embedded knowledge once a month, and a
-labelled evaluation set scores lists, fields, retrieval and image reading. Next:
-phase B, the agentic RAG answer.
+**Status:** Phases 0 to E are done. The iOS app signs in with Google and chats over a
+streamed turn API on Cloud Run, in text or as the user's own avatar speaking in their
+cloned voice. A LangGraph router answers from versioned knowledge ingested monthly
+from the two websites, their images, three PDFs and the product catalog, lists records
+in full, and recommends products from facets the code checks; each of the graph's
+model nodes was chosen by its own evaluation. Accounts can be deleted, a daily job
+finishes what requests left undone, and errors and spending email the developer. Not
+done yet: the Android build and a pilot with other users.
 
 ## Architecture
 
@@ -23,7 +25,7 @@ flowchart LR
     App --> API["Cloud Run service<br/>FastAPI + LangGraph"]
     API --> DB["Cloud SQL<br/>PostgreSQL + pgvector"]
     API --> AI["OpenAI / ElevenLabs"]
-    Jobs["Cloud Run jobs<br/>migrations · ingestion · asset creation"] --> DB
+    Jobs["Cloud Run jobs<br/>migrations · ingestion · assets · sweep"] --> DB
     Jobs --> Store["Cloud Storage"]
     Jobs --> AI
 ```
@@ -74,4 +76,4 @@ flowchart LR
 | B · Agentic RAG | LangGraph routing, retrieval tools, neutral recommendation, RAGAS evaluation |
 | C · Identity & chat | Conversations, streaming, cancellation and retry in the app |
 | D · Avatar & voice | 21-frame cartoon avatar, voice clone, spoken turns |
-| E · Operations & pilot | Deletion, backups, on-device validation |
+| E · Operations | Account deletion, a daily sweep, alerts and a budget (Android and the pilot come later) |
