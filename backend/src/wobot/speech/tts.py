@@ -23,7 +23,7 @@ CONCURRENCY = 2
 SPEECH_FORMAT = "mp3_44100_64"
 NEUTRAL = "neutral"
 # The models that take audio tags, such as [excited], to speak with a feeling (DEC-091).
-TAGGED_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo", "eleven_v3"})
+TAGGED_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo", "eleven_v3", "eleven_v3_conversational"})
 
 # Han characters, the basic block and extension A.
 HAN = (("\u4e00", "\u9fff"), ("\u3400", "\u4dbf"))
@@ -47,7 +47,7 @@ def language_of(text: str, previous: str = "zh") -> str:
     """The language a sentence is spoken in: Mandarin if it has a Chinese character,
     names in English included; English if it has only Latin letters; otherwise, such as
     a date alone, the language of the sentence before. Told, never left to the model:
-    eleven_v4_turbo also speaks Cantonese, and guesses it from Traditional characters."""
+    it also says how numbers and dates are read."""
     if any(low <= c <= high for c in text for low, high in HAN):
         return "zh"
     if any("a" <= c.lower() <= "z" for c in text):

@@ -39,7 +39,7 @@ async def speak_all(voice: FakeVoice, sentences: list[str]) -> list[tuple[str, d
         if name == "speech_end":
             done.set()
 
-    speaker = Speaker(voice, "v-1", "eleven_v4_turbo", emit)
+    speaker = Speaker(voice, "v-1", "eleven_v3_conversational", emit)
     for sentence in sentences:
         speaker.say(sentence)
     speaker.close()
@@ -109,7 +109,7 @@ async def test_a_feeling_is_spoken_with_its_tag_by_a_model_that_takes_tags():
         if name == "speech_end":
             done.set()
 
-    speaker = Speaker(voice, "v-1", "eleven_v4_turbo", emit, feel=feel)
+    speaker = Speaker(voice, "v-1", "eleven_v3_conversational", emit, feel=feel)
     speaker.say("太好了！")
     speaker.say("地址在桃園。")
     speaker.close()
