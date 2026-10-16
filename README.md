@@ -8,14 +8,17 @@ personalized cartoon avatar that speaks with the user's cloned voice.
 
 It is built for an internal pilot of up to ten people.
 
-**Status:** Phases 0 to E are done. The iOS app signs in with Google and chats over a
+**Status:** Phases 0 to F are done. The iOS app signs in with Google and chats over a
 streamed turn API on Cloud Run, in text or as the user's own avatar speaking in their
 cloned voice. A LangGraph router answers from versioned knowledge ingested monthly
 from the two websites, their images, three PDFs and the product catalog, lists records
 in full, and recommends products from facets the code checks; each of the graph's
 model nodes was chosen by its own evaluation. Accounts can be deleted, a daily job
-finishes what requests left undone, and errors and spending email the developer. Not
-done yet: the Android build and a pilot with other users.
+finishes what requests left undone, and errors and spending email the developer. In
+Avatar mode the phone can ride a three-axis robot head: the app finds it over
+Bluetooth, moves it with each spoken sentence's feeling, and keeps the phone turned
+toward the user's face, found on the phone. Not done yet: the Android build and a
+pilot with other users.
 
 ## Architecture
 
@@ -23,6 +26,7 @@ done yet: the Android build and a pilot with other users.
 flowchart LR
     App["Flutter app<br/>iOS / Android"] --> Auth["Firebase Authentication<br/>Google Sign-In"]
     App --> API["Cloud Run service<br/>FastAPI + LangGraph"]
+    App -- BLE --> Robot["Robot head<br/>Pico W"]
     API --> DB["Cloud SQL<br/>PostgreSQL + pgvector"]
     API --> AI["OpenAI / ElevenLabs"]
     Jobs["Cloud Run jobs<br/>migrations · ingestion · assets · sweep"] --> DB
@@ -43,10 +47,10 @@ flowchart LR
 
 | Path | Contents |
 | --- | --- |
-| [`app/`](app/README.md) | Flutter client: Google Sign-In and the account check on iOS; Android follows |
+| [`app/`](app/README.md) | Flutter client on iOS (Android follows): text chat, Avatar mode, and the robot's motions and face tracking |
 | [`backend/`](backend/README.md) | FastAPI service, database migrations, knowledge ingestion and its evaluation; LangGraph agents to come |
 | [`infra/`](infra/README.md) | Google Cloud runbook, environment template, database bootstrap |
-| [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for a robot head; out of scope for v1 |
+| [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for the robot head: motion primitives over BLE, a gaze layer and a lease |
 
 ## Development
 
@@ -77,3 +81,4 @@ flowchart LR
 | C · Identity & chat | Conversations, streaming, cancellation and retry in the app |
 | D · Avatar & voice | 21-frame cartoon avatar, voice clone, spoken turns |
 | E · Operations | Account deletion, a daily sweep, alerts and a budget (Android and the pilot come later) |
+| F · Robot | The robot head in Avatar mode: connected by itself, a motion for each sentence's feeling, the phone turned toward the user's face |

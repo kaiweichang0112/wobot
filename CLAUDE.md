@@ -140,6 +140,14 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   in the media bucket, or locally under `backend/.data/` (gitignored), and `paint` writes
   there. Avatar prompts are versioned like the graph's: `avatar_prompts.PROMPT_VERSION`
   is pinned with the prompts' hash.
+- **The robot is optional, and the app choreographs it.** Avatar mode works the same
+  without one (AC-AVA-05). The firmware knows primitives (`M`, `O`, `L`, `X`;
+  `firmware/CLAUDE.md`); motions are data in `app/lib/robot/motions.dart`, played
+  larger than written (`gain`, `rollGain`), and every one stays under `Budget`, 80% of
+  the rig's measured limits, which a test checks: a motion that does not fit is slowed,
+  never given a higher limit. A command is one write of at most 20 bytes. The camera
+  runs only while a robot is connected, and frames never leave the phone
+  (`app/packages/wobot_faces`).
 - **Every API request is checked**: Firebase ID token, verified email,
   allowlist. Errors use the `{"error": {"code", "message"}}` envelope.
 - **A turn runs inside its request, and a stop is a request of its own.** Cloud Run's
