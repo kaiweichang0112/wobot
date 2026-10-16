@@ -424,14 +424,14 @@ const glancing = Motion('state.glance', mirror: true, [
 ]);
 const glanceEvery = (9000, 16000);
 
-/// Leaning in while the user speaks; each question tilts to the other side.
-const leaningIn = Motion('state.listen', mirror: true, [
-  Go(Pose(tilt: 3, roll: 5), 700),
-]);
+/// Leaning in while the user speaks. No head tilt: one to a side, seen once a
+/// question, read as the same lean every time (2026-10-16).
+const leaningIn = Motion('state.listen', [Go(Pose(tilt: 3), 700)]);
 const listeningCarrier = <RobotAxis, (double, int)>{RobotAxis.tilt: (1, 2600)};
 
-/// While the reply is awaited the head ponders, looking away; every
-/// [ponderEvery] it takes another of these, never the same twice.
+/// While the reply is awaited the head ponders, looking away: every [ponderEvery]
+/// it takes another of these or of the thinking feeling's motions, never one of the
+/// last two, turned to each side in turn.
 const pondering = [
   Motion('state.ponder.up', mirror: true, [
     Go(Pose(pan: 9, tilt: -9, roll: 4), 900),
