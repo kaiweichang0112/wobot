@@ -35,10 +35,12 @@ class FakeDispatcher:
 
 class FakeElevenLabs:
     def __init__(self) -> None:
-        self.spoken: list[tuple[str, str]] = []
+        self.spoken: list[tuple[str, str, str | None]] = []
 
-    async def speak(self, provider_voice_id: str, text: str, model: str) -> bytes:
-        self.spoken.append((provider_voice_id, model))
+    async def speak(
+        self, provider_voice_id: str, text: str, model: str, language: str | None = None
+    ) -> bytes:
+        self.spoken.append((provider_voice_id, model, language))
         return b"ID3 mp3"
 
 
@@ -222,7 +224,8 @@ def test_a_ready_voice_is_previewed_in_itself(client, as_member, assets):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/mpeg"
-    assert assets.eleven.spoken == [(f"provider-{voice_id}", "eleven_v4_turbo")]
+    # Mandarin, told: the model also speaks Cantonese.
+    assert assets.eleven.spoken == [(f"provider-{voice_id}", "eleven_v4_turbo", "zh")]
 
 
 def test_a_voice_being_made_has_no_preview(client, as_member, assets):

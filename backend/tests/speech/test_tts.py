@@ -2,7 +2,7 @@ import asyncio
 import base64
 
 from wobot.assets.eleven import ElevenLabsError
-from wobot.speech.tts import Speaker
+from wobot.speech.tts import Speaker, language_of
 
 
 class FakeVoice:
@@ -12,11 +12,13 @@ class FakeVoice:
         self.delays = delays or {}
         self.fails = fails or set()
         self.started: list[str] = []
+        self.languages: list[str | None] = []
         self.busy = 0
         self.most = 0
 
-    async def speak(self, voice_id, text, model, output_format):
+    async def speak(self, voice_id, text, model, output_format, language=None):
         self.started.append(text)
+        self.languages.append(language)
         self.busy += 1
         self.most = max(self.most, self.busy)
         try:
@@ -137,3 +139,20 @@ async def test_a_model_without_tags_gets_the_sentence_alone():
     await asyncio.wait_for(done.wait(), 5)
 
     assert voice.started == ["太好了！"]
+
+
+def test_a_sentence_with_a_chinese_character_is_spoken_in_mandarin():
+    assert language_of("這款產品可以幫忙。") == "zh"
+    assert language_of("WhizPad 是一款床墊。") == "zh"  # a name in English, said in Mandarin
+    assert language_of("WhizPad is a mattress.") == "en"
+    # A date alone is said as the sentence before it was.
+    assert language_of("2023/11/20，") == "zh"
+    assert language_of("2023/11/20,", previous="en") == "en"
+
+
+async def test_each_sentence_is_spoken_in_its_own_language():
+    voice = FakeVoice()
+
+    await speak_all(voice, ["你好。", "Hello there.", "2023/11/20,", "再見。"])
+
+    assert voice.languages == ["zh", "en", "en", "zh"]

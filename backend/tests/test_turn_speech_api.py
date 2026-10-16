@@ -25,7 +25,7 @@ class FakeVoice:
         self.spoken: list[tuple[str, str, str]] = []
         self.on_speak = on_speak
 
-    async def speak(self, voice_id, text, model, output_format="mp3"):
+    async def speak(self, voice_id, text, model, output_format="mp3", language=None):
         self.spoken.append((voice_id, text, model))
         if self.on_speak:
             await self.on_speak(len(self.spoken))
