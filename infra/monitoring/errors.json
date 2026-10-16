@@ -1,0 +1,22 @@
+{
+  "displayName": "Wobot: error logs",
+  "documentation": {
+    "content": "A wobot-api request or a wobot-* job logged an ERROR. Read it with gcloud logging read (infra/README.md, Alerts).",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "ERROR in wobot-api or a wobot job",
+      "conditionMatchedLog": {
+        "filter": "severity>=ERROR AND ((resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"wobot-api\") OR (resource.type=\"cloud_run_job\" AND resource.labels.job_name=~\"^wobot-\"))"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "3600s"
+    },
+    "autoClose": "86400s"
+  }
+}
