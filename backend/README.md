@@ -71,6 +71,7 @@ database that cannot be reached is `503 DATABASE_UNAVAILABLE`, never an empty an
 | --- | --- |
 | `GET /v1/me` | Registers the account; returns it, its settings, its voice and avatar (the `active` version and the newer `candidate`, if any), and `avatar_mode`: true only while both are active |
 | `PATCH /v1/me/settings` | Renames the assistant (1–40 characters, one line) given the `expected_version` last read; another device's change meanwhile is `409 REVISION_CONFLICT` |
+| `DELETE /v1/me` | Deletes the account: needs a sign-in in the last 5 minutes (`401 REAUTH_REQUIRED`), marks it deleted, which refuses its every request from then on (`403 ACCOUNT_DELETED`), deletes its conversations and their checkpoints, and hands its voices and avatars to the asset job to remove; `202`, and safe to send again |
 | `POST /v1/conversations` | Starts an empty conversation |
 | `GET /v1/conversations` | The account's conversations, most recently active first, a `cursor` page at a time |
 | `GET /v1/conversations/{id}/turns` | The latest turns, oldest first, with stopped and failed ones; `cursor` reads earlier ones |

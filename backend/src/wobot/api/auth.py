@@ -8,7 +8,7 @@ from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from wobot.api.errors import ApiError
-from wobot.models import AllowedEmail
+from wobot.models import Account, AllowedEmail
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,16 @@ logger = logging.getLogger(__name__)
 class Principal:
     account_id: str  # Firebase UID
     email: str
+    deleted: bool = False  # the owner asked for the account to be deleted
 
 
 def not_allowed() -> ApiError:
     # A new instance per raise: re-raising a shared one grows its traceback on every request.
     return ApiError(403, "ACCOUNT_NOT_ALLOWED", "This account is not authorized.")
+
+
+def account_deleted() -> ApiError:
+    return ApiError(403, "ACCOUNT_DELETED", "This account was deleted.")
 
 
 async def get_token_claims(
@@ -43,18 +48,35 @@ async def get_token_claims(
         raise ApiError(503, "PROVIDER_UNAVAILABLE", "Sign-in is unavailable. Try again.") from exc
 
 
-async def current_principal(
+async def allowed_principal(
     request: Request, claims: Annotated[dict[str, Any], Depends(get_token_claims)]
 ) -> Principal:
-    """The signed-in account, if its verified email is on the allowlist."""
+    """The signed-in account, if its verified email is on the allowlist, deleted or not.
+    Only deleting it, which may be sent again, takes a deleted account."""
     email = str(claims.get("email", "")).lower()
     if not email or not claims.get("email_verified"):
         raise not_allowed()
-    # Checked on every request, so removing an email takes effect immediately.
+    # Checked on every request, so removing an email takes effect immediately. A first
+    # sign-in has no account row yet: the join leaves it not deleted.
     async with request.app.state.sessionmaker() as session:
-        allowed = await session.scalar(
-            select(AllowedEmail.email).where(AllowedEmail.email == email)
-        )
-    if allowed is None:
+        row = (
+            await session.execute(
+                select(AllowedEmail.email, Account.deleted_at)
+                .select_from(AllowedEmail)
+                .outerjoin(Account, Account.account_id == claims["uid"])
+                .where(AllowedEmail.email == email)
+            )
+        ).first()
+    if row is None:
         raise not_allowed()
-    return Principal(account_id=claims["uid"], email=email)
+    return Principal(account_id=claims["uid"], email=email, deleted=row.deleted_at is not None)
+
+
+async def current_principal(
+    principal: Annotated[Principal, Depends(allowed_principal)],
+) -> Principal:
+    """The signed-in account, unless it was deleted: from then on it is refused
+    everything, including what a token still valid for the hour would allow."""
+    if principal.deleted:
+        raise account_deleted()
+    return principal

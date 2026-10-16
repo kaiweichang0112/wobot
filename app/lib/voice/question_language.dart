@@ -22,4 +22,10 @@ abstract final class QuestionLanguage {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, locale);
   }
+
+  /// Forgets the choice, as signing out does: the next account starts in Chinese.
+  static Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+  }
 }
