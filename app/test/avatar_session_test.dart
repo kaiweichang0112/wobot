@@ -5,9 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:wobot/avatar/avatar_session.dart';
 import 'package:wobot/chat.dart';
+import 'package:wobot/robot/director.dart';
+import 'package:wobot/robot/link.dart';
+import 'package:wobot/robot/robot.dart';
 import 'package:wobot/voice/listener.dart';
 import 'package:wobot/voice/speech_queue.dart';
 
+import 'fake_robot.dart';
 import 'fake_server.dart';
 import 'fake_speech.dart';
 
@@ -32,6 +36,31 @@ const _state = {
   'heard_upto': null,
   'speech_stopped': true,
 };
+
+/// A robot that only notes what Avatar mode tells it.
+class RecordingRobot extends Robot {
+  RecordingRobot()
+    : super(RobotLink(FakeBle()..state = Bluetooth.denied, FakeMemory()));
+
+  final cues = <String>[];
+
+  @override
+  void listening() => cues.add('listening');
+
+  @override
+  void waiting() => cues.add('waiting');
+
+  @override
+  void speaking(Spoken line) => cues.add(
+    'speaking ${line.index} ${line.emotion} ${line.route} reading=${line.reading}',
+  );
+
+  @override
+  void rested() => cues.add('rested');
+
+  @override
+  void idle({bool error = false}) => cues.add(error ? 'error' : 'idle');
+}
 
 void main() {
   late FakeServer server;
@@ -276,4 +305,55 @@ void main() {
     expect(session.state, AvatarState.idle);
     expect(session.expression, 'neutral');
   });
+
+  test(
+    'the robot is told each step: listening, waiting, each sentence, the end',
+    () async {
+      final robot = RecordingRobot();
+      final api = server.api();
+      final withRobot = AvatarSession(
+        api: api,
+        chat: chat,
+        listener: QuestionListener(
+          engine,
+          pause: const Duration(milliseconds: 100),
+          silence: const Duration(milliseconds: 300),
+          limit: const Duration(seconds: 2),
+          finalWait: const Duration(milliseconds: 20),
+        ),
+        queue: SpeechQueue(player),
+        locale: () async => 'zh-TW',
+        robot: robot,
+        hold: const Duration(milliseconds: 50),
+      );
+      server.reply(
+        'POST /v1/conversations/c1/turns',
+        200,
+        sse([
+          ('accepted', {'turn_id': 't', 'attempt': 1}),
+          ('status', {'stage': 'writing', 'route': 'chat'}),
+          ('speech', speech(0, '太好了，我知道！', emotion: 'joy')),
+          ('speech', speech(1, 'GRC 在桃園。')),
+          ('reply', {'text': '太好了，我知道！GRC 在桃園。'}),
+          ('completed', {'next': null}),
+        ]),
+      );
+
+      final done = withRobot.talk();
+      await pumpEventQueue();
+      engine.say('GRC 在哪裡');
+      await done;
+      await pumpEventQueue();
+
+      expect(chat.turns.single.route, 'chat');
+      expect(robot.cues, [
+        'listening',
+        'waiting',
+        'speaking 0 joy chat reading=false',
+        'speaking 1 neutral chat reading=false',
+        'rested',
+      ]);
+      withRobot.dispose();
+    },
+  );
 }

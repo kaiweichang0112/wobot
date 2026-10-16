@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../robot/director.dart';
 import '../robot/link.dart';
+import '../robot/motions.dart';
 import '../robot/protocol.dart';
 import '../theme.dart';
 
 /// Debug builds only: connects to the robot as Avatar mode does and drives it by
-/// hand, to bring it up and to try a command before it is used in a motion.
+/// hand, to bring it up, to try a command before it is used in a motion, and to
+/// watch each motion and a scripted reply on the rig.
 class RobotLabPage extends StatefulWidget {
   const RobotLabPage({super.key, this.link});
 
@@ -21,19 +24,32 @@ class RobotLabPage extends StatefulWidget {
 class _RobotLabPageState extends State<RobotLabPage> {
   late final RobotLink _link =
       widget.link ?? RobotLink(UniversalBleTransport(), PhoneRobotMemory());
+  late final Director _director = Director(_send);
   final _line = TextEditingController();
   final _sent = <String>[];
   String? _pose;
+  int _mirror = 1;
+
+  /// The scripted reply under way; another tap or leaving stops it.
+  int _script = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _link.onConnected = _director.connected;
+  }
 
   @override
   void dispose() {
+    _script++;
     _line.dispose();
+    _director.dispose();
     unawaited(_link.close().then((_) => _link.dispose()));
     super.dispose();
   }
 
   void _send(RobotCommand command) {
-    if (!_link.connected) return;
+    if (!_link.connected || !mounted) return;
     _link.send(command);
     setState(() {
       _sent.insert(0, command.line);
@@ -57,11 +73,26 @@ class _RobotLabPageState extends State<RobotLabPage> {
     }
   }
 
-  /// A small nod made of two moves, as a motion would send it.
-  Future<void> _nod() async {
-    _send(const MoveTo(Pose(tilt: 5), 220));
-    await Future<void>.delayed(const Duration(milliseconds: 240));
-    _send(const MoveTo(Pose.neutral, 300));
+  /// A reply as Avatar mode would play it: each sentence's motion, then the nod
+  /// that hands the turn back; over and over until [until], for the slip test.
+  Future<void> _reply(List<Spoken> lines, {Duration? until}) async {
+    final script = ++_script;
+    final end = DateTime.now().add(until ?? Duration.zero);
+    do {
+      for (final line in lines) {
+        if (script != _script) return;
+        _director.speaking(line);
+        await Future<void>.delayed(line.length);
+      }
+      if (script != _script) return;
+      _director.rested();
+      await Future<void>.delayed(const Duration(seconds: 2));
+    } while (script == _script && DateTime.now().isBefore(end));
+  }
+
+  void _stopScript() {
+    _script++;
+    _director.idle();
   }
 
   @override
@@ -120,7 +151,10 @@ class _RobotLabPageState extends State<RobotLabPage> {
                       child: Text(label),
                     ),
                   OutlinedButton(
-                    onPressed: connected ? _nod : null,
+                    // The beat sentences start with, at the size it is played.
+                    onPressed: connected
+                        ? () => _director.play(beats.first)
+                        : null,
                     child: const Text('Nod'),
                   ),
                 ],
@@ -156,6 +190,82 @@ class _RobotLabPageState extends State<RobotLabPage> {
                 ],
               ),
               const SizedBox(height: 24),
+              Row(
+                children: [
+                  Text('Motions', style: text.titleSmall),
+                  const Spacer(),
+                  const Text('Mirrored'),
+                  Switch(
+                    value: _mirror == -1,
+                    onChanged: (on) => setState(() => _mirror = on ? -1 : 1),
+                  ),
+                ],
+              ),
+              for (final (title, motions) in [
+                for (final MapEntry(:key, :value) in feelings.entries)
+                  (key, value),
+                ('neutral', beats),
+                ('knowledge', introductions),
+                ('states', [waking, leaningIn, ...pondering, handingOver]),
+              ]) ...[
+                const SizedBox(height: 8),
+                Text(title, style: text.bodyMedium),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final motion in motions)
+                      ActionChip(
+                        label: Text(motion.id.split('.').last),
+                        onPressed: connected
+                            ? () => _director.play(motion, side: _mirror)
+                            : null,
+                      ),
+                    if (feelings.containsKey(title))
+                      ActionChip(
+                        avatar: const Icon(Icons.shuffle, size: 16),
+                        label: const Text('as a sentence'),
+                        onPressed: connected
+                            ? () => _director.speaking(
+                                Spoken(
+                                  index: 1,
+                                  text: '這是一句測試的話。',
+                                  emotion: title,
+                                  length: const Duration(seconds: 3),
+                                ),
+                              )
+                            : null,
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text('Scripted replies', style: text.titleSmall),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (label, lines) in _scripts)
+                    OutlinedButton(
+                      onPressed: connected ? () => _reply(lines) : null,
+                      child: Text(label),
+                    ),
+                  OutlinedButton(
+                    onPressed: connected
+                        ? () => _reply(
+                            _scripts.first.$2,
+                            until: const Duration(seconds: 60),
+                          )
+                        : null,
+                    child: const Text('Chat for 60 s (slip test)'),
+                  ),
+                  TextButton(
+                    onPressed: connected ? _stopScript : null,
+                    child: const Text('Stop'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
               Text('Sent, latest first', style: text.titleSmall),
               const SizedBox(height: 8),
               for (final line in _sent)
@@ -173,3 +283,52 @@ class _RobotLabPageState extends State<RobotLabPage> {
     );
   }
 }
+
+Spoken _line(
+  int index,
+  String text,
+  int seconds, {
+  String emotion = 'neutral',
+  String? route,
+}) => Spoken(
+  index: index,
+  text: text,
+  emotion: emotion,
+  length: Duration(milliseconds: seconds * 1000),
+  route: route,
+);
+
+/// Replies as each path speaks them, with their feelings and lengths made up.
+final _scripts = [
+  (
+    'Chat',
+    [
+      _line(0, '哇，你今天也太早起了吧！', 2, emotion: 'joy', route: 'chat'),
+      _line(1, '我還在想你什麼時候會來找我聊天。', 3, route: 'chat'),
+      _line(2, '什麼？你昨天熬夜到三點？', 2, emotion: 'surprise', route: 'chat'),
+      _line(3, '這樣身體會受不了的啦。', 3, emotion: 'sadness', route: 'chat'),
+      _line(4, '下次再這樣我就要生氣了喔。', 2, emotion: 'anger', route: 'chat'),
+      _line(5, '那你今天想先做什麼呢？', 3, route: 'chat'),
+    ],
+  ),
+  (
+    'Knowledge',
+    [
+      _line(0, 'GRC 是元智大學的老人福祉科技研究中心。', 4, route: 'knowledge'),
+      _line(1, '中心由徐業良教授主持，研究長者照護的科技。', 4, route: 'knowledge'),
+      _line(2, '世大智科是從中心衍生出來的公司。', 3, route: 'knowledge'),
+      _line(3, '它的產品包括 WhizPad 和 WhizToys。', 3, route: 'knowledge'),
+      _line(4, '你想進一步了解哪一個呢？', 3, route: 'knowledge'),
+    ],
+  ),
+  (
+    'List',
+    [
+      _line(0, '近三年有五篇期刊論文，先念前三篇。', 3, route: 'list'),
+      _line(1, '2025 年，智慧床墊的離床偵測。', 3, route: 'list'),
+      _line(2, '2024 年，長者互動玩具的使用研究。', 3, route: 'list'),
+      _line(3, '2023 年，照護機構的感測網路。', 3, route: 'list'),
+      _line(4, '還有 2 筆可以繼續聽。', 2, route: 'list'),
+    ],
+  ),
+];

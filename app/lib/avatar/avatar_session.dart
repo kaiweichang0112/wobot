@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../api.dart';
 import '../chat.dart';
+import '../robot/director.dart';
 import '../robot/robot.dart';
 import '../sse.dart';
 import '../voice/listener.dart';
@@ -107,6 +108,7 @@ class AvatarSession extends ChangeNotifier {
     await _silence();
     final generation = _generation;
     _set(AvatarState.listening, 'neutral');
+    robot?.listening();
     final heard = await _listener.listen(localeId: await _locale());
     if (generation != _generation) return;
     if (heard == null) return _idle(error: _listener.error);
@@ -122,6 +124,7 @@ class AvatarSession extends ChangeNotifier {
     await _silence();
     final generation = _generation;
     _set(AvatarState.waiting, 'neutral');
+    robot?.waiting();
     final abort = _reading = Completer<void>();
     try {
       await for (final event in _api.continueReading(
@@ -156,6 +159,7 @@ class AvatarSession extends ChangeNotifier {
 
   Future<void> _ask(String text, int generation) async {
     _set(AvatarState.waiting, 'thinking');
+    robot?.waiting();
     if (!await _previousEnded(generation)) return;
     final before = _chat.turns.length;
     final sending = _chat.send(text, mode: 'avatar');
@@ -213,12 +217,23 @@ class AvatarSession extends ChangeNotifier {
     state = AvatarState.speaking;
     // A few characters is over before a new face could be seen: it would only flicker.
     if (sentence.text.runes.length >= 4) expression = sentence.emotion;
+    robot?.speaking(
+      Spoken(
+        index: sentence.index,
+        text: sentence.text,
+        emotion: sentence.emotion,
+        length: Spoken.lengthOf(sentence.audio.length),
+        route: _speaking?.route,
+        reading: _reading != null,
+      ),
+    );
     _notify();
   }
 
   /// Done speaking: the last expression stays a moment, then the face rests.
   void _rested() {
     state = AvatarState.idle;
+    robot?.rested();
     _notify();
     final generation = _generation;
     _rest = Timer(hold, () {
@@ -252,6 +267,7 @@ class AvatarSession extends ChangeNotifier {
     state = AvatarState.idle;
     expression = 'neutral';
     this.error = error;
+    robot?.idle(error: error != null);
     _notify();
   }
 

@@ -40,6 +40,10 @@ class ChatTurn {
   /// `searching` or `writing` while running, as the server last said.
   String? stage;
 
+  /// The path the reply takes (`chat`, `knowledge`, `list`, `recommend`), once the
+  /// server has said; the robot moves to suit it.
+  String? route;
+
   /// Why the reply failed, for the reader.
   String? error;
 
@@ -281,7 +285,9 @@ class ChatController extends ChangeNotifier {
           ..saved = true
           ..attempt = data['attempt'] as int;
       case 'status':
-        turn.stage = data['stage'] as String?;
+        turn
+          ..stage = data['stage'] as String?
+          ..route = data['route'] as String? ?? turn.route;
       case 'text_delta':
         turn
           ..stage = 'writing'
