@@ -193,7 +193,14 @@ async def list_turns(
 async def delete_conversation(
     conversation_id: uuid.UUID, request: Request, principal: Owner
 ) -> Response:
-    """Deletes the conversation and its memory now, not later (DEC-079).
+    """Deletes the conversation and its memory now, not later (DEC-079)."""
+    if not await remove(request.app.state, principal.account_id, conversation_id):
+        raise not_found()
+    return Response(status_code=204)
+
+
+async def remove(state: Any, owner_id: str, conversation_id: uuid.UUID) -> bool:
+    """Deletes the owner's conversation and its checkpoints; False if there is none.
 
     The two stores share no transaction, so the order makes any failure safe to retry:
     the checkpoints go first, while the row still says they exist. Were the row deleted
@@ -203,13 +210,19 @@ async def delete_conversation(
     either before, and its checkpoint is deleted here, or after, and finds the
     conversation gone and deletes its checkpoint itself.
     """
-    async with request.app.state.sessionmaker() as session, session.begin():
-        await owned(session, principal, conversation_id, lock=True)
-        await request.app.state.checkpointer.adelete_thread(thread_of(conversation_id))
-        await session.execute(
-            delete(Conversation).where(
+    async with state.sessionmaker() as session, session.begin():
+        kept = await session.scalar(
+            select(Conversation.conversation_id)
+            .where(
                 Conversation.conversation_id == conversation_id,
-                Conversation.owner_id == principal.account_id,
+                Conversation.owner_id == owner_id,
             )
+            .with_for_update()
         )
-    return Response(status_code=204)
+        if kept is None:
+            return False
+        await state.checkpointer.adelete_thread(thread_of(conversation_id))
+        await session.execute(
+            delete(Conversation).where(Conversation.conversation_id == conversation_id)
+        )
+    return True

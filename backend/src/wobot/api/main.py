@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from wobot.agent.checkpoints import open_checkpointer
 from wobot.agent.graph import build_graph, models_for
 from wobot.agent.models import openai_model
-from wobot.api import accounts, avatars, conversations, turns, voices
+from wobot.api import accounts, avatars, conversations, deletion, turns, voices
 from wobot.api.errors import (
     ApiError,
     handle_api_error,
@@ -162,6 +162,7 @@ app.add_exception_handler(RequestValidationError, handle_invalid_request)
 for error in DATABASE_UNAVAILABLE:
     app.add_exception_handler(error, handle_database_unavailable)
 app.include_router(accounts.router)
+app.include_router(deletion.router)
 app.include_router(conversations.router)
 app.include_router(turns.router)
 app.include_router(turns.control)

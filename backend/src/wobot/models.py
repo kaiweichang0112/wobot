@@ -34,6 +34,8 @@ class Account(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # When the owner asked for the account to be deleted (spec 04): refused from then on.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AllowedEmail(Base):
