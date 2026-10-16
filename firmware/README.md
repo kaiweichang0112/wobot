@@ -51,25 +51,39 @@ Then open `wobot_robot/wobot_robot.ino`, compile and flash.
 Open the Serial Monitor at **115200 baud**, line ending **Newline**. The banner
 prints the advertised BLE name and the full command list (`help` reprints it).
 
-Servos boot **detached** and the firmware assumes the head is at the **neutral
-pose** (90, 160, 90). `attach` — over Serial or BLE — engages them at full speed
-toward that assumed position. If the head was left somewhere else, run
-`setpos <p> <t> <r>` first so `attach` does not snap across the gap with the
-phone on board.
+Servos **attach at power-on**, driven at full speed to the **neutral pose**
+(90, 160, 90). **Power on before mounting the phone**: a limp tilt sags under
+the phone's weight, and the snap back to neutral should happen with nothing on
+board. If the head is blocked at power-on, the servos push against it.
+
+`detach` and `setpos <p> <t> <r>` remain for bring-up: after a `detach`, if the
+head was left somewhere other than where the firmware thinks it is, run `setpos`
+before `attach` so it does not snap across the gap. A client may still send
+`attach`; it is harmless when already attached.
 
 ## Motion model
 
-A pose is a **centre** plus a per-axis **oscillation** that compose:
+A pose is three layers that compose:
 
 ```
-output = centre + amp · sin(phase)
+output = centre + look + amp · sin(phase)
 ```
 
-- The centre eases to its target with an ease-in-out S-curve over a given duration.
-- The oscillation amplitude slews toward its target at 30 °/s, and the phase
-  runs continuously, so starting, stopping or re-shaping an oscillation never
-  steps the servos.
+- **Centre** (`M`): eases to its target with an ease-in-out S-curve over a given
+  duration. Every `M` restarts that curve from rest, which suits gestures.
+- **Look** (`L`, pan and tilt only): a gaze offset that follows its target with
+  continuous velocity. The desired velocity is 4 × the error, capped at 90 °/s
+  (pan) / 60 °/s (tilt); the velocity itself changes at most 600 / 400 °/s². A
+  new target bends the motion instead of restarting it, so it can be updated
+  many times a second, and it never overshoots. Roll has no look.
+- **Oscillation** (`O`): the amplitude slews toward its target at 30 °/s, and the
+  phase runs continuously, so starting, stopping or re-shaping an oscillation
+  never steps the servos.
 - Output is clamped to each axis's soft limits and written at 50 Hz.
+
+Use `M` for motions with a start and an end, and `L` for anything updated more
+often than its moves last, such as face tracking: tracking with `M` would stop
+the head at every update and overwrite the gesture under way.
 
 ## BLE protocol
 
@@ -93,28 +107,43 @@ whole command; trailing CR/LF/spaces are trimmed.
 **Commands**
 
 ```
-attach                            engage servos — send once after connecting
+attach                            engage servos (already done at power-on)
 M <pan> <tilt> <roll> <ms>        ease all three centres to a pose over <ms>
 O <axis> <amp> <period> <lease>   oscillate one axis around its centre
-X                                 ease back to neutral, stop oscillating
+L <pan> <tilt>                    gaze offsets from the centre, followed smoothly
+X                                 ease back to neutral, look ahead, stop oscillating
 ```
 
 - `<axis>` is `p` | `t` | `r`. All values are degrees and milliseconds.
 - To enact a pose, send one `M`, then an `O` per oscillating axis, then stay
   silent — the oscillation runs by itself.
 - `O` with `amp 0` stops that axis oscillating (the offset eases back to 0).
-- Every Serial command also works over BLE, but only `M`/`O` interact with the lease.
+- `L` offsets are relative to the centre, with the same signs as the angles
+  (pan + = viewer's right, tilt − = nose up). Pan is clamped to ±40°, tilt to
+  −40…+12° (only 20° of nose-down travel exists below neutral). `L 0 0` looks
+  straight ahead; `M` leaves the look offset alone, and the two add.
+- Every Serial command also works over BLE, but only `M`/`O`/`L` interact with
+  the lease.
+
+| Command | Look target becomes |
+|---------|--------------------|
+| `L <pan> <tilt>` | the given offsets |
+| `X`, `neutral`, `datum`, lease expiry | 0 (straight ahead) |
+| `stop` | where look is now (a moving look brakes and settles back there) |
+| `detach` | where look is now, velocity zeroed |
+| `setpos` | 0, with look and its velocity zeroed |
 
 **Lease** — the only disconnect-safety mechanism:
 
-- Only BLE `M` and `O` arm or refresh it; Serial never arms it.
-- `O`'s `<lease>` (ms, if > 0) replaces the timeout, and later `M`s refresh with
-  that value. The default before any `O` is 8000 ms.
-- On expiry the robot eases back to neutral, so a crashed or disconnected client
-  cannot leave it moving. A BLE disconnect by itself does nothing.
+- Only BLE `M`, `O` and `L` arm or refresh it; Serial never arms it.
+- `O`'s `<lease>` (ms, if > 0) replaces the timeout, and later `M`s and `L`s
+  refresh with that value. The default before any `O` is 8000 ms.
+- On expiry the robot eases back to neutral and looks straight ahead, so a
+  crashed or disconnected client cannot leave it moving. A BLE disconnect by
+  itself does nothing.
 - `X`, `stop` and `detach` disarm it.
-- A frozen pose is held alive by re-sending its `M` before the lease expires —
-  there is no separate keep-alive.
+- A frozen pose is held alive by re-sending its `M` (or the last `O`, which
+  changes nothing) before the lease expires — there is no separate keep-alive.
 
 **Delivery limits**
 
@@ -126,18 +155,19 @@ X                                 ease back to neutral, stop oscillating
 Example session in nRF Connect (value type **Text / UTF-8**, written to Command):
 
 ```
-attach
 M 90 160 90 800        -> to neutral over 0.8 s
 O t 5 1500 8000        -> nod: tilt oscillates ±5°, 1.5 s period, 8 s lease
 O p 3 2000 8000        -> add a gentle pan sway on top
-X                      -> stop, return to neutral
+L 15 -5                -> look 15° right and 5° up; the nod and sway continue
+L -10 -5               -> retarget mid-move: the head bends over, no stop
+X                      -> stop, return to neutral, look straight ahead
 ```
 
 ## Serial command reference
 
 ```
 attach / detach          engage / release servos (detached = phone drops)
-pos                      print current angles
+pos                      print current angles and look offsets
 neutral                  go to the neutral pose (90, 160, 90)
 datum                    all axes to 90 — phone mount faces the ceiling
 setpos <p> <t> <r>       declare where the head is, without moving it
@@ -150,7 +180,7 @@ osc <axis> <amp> <ms>    oscillate, prints peak vel/acc
 stop                     stop all motion, hold position
 lim <axis> <min> <max>   set soft limits
 limits                   print soft limits
-M / O / X                the BLE protocol, typeable here (no lease)
+M / O / L / X            the BLE protocol, typeable here (no lease)
 ```
 
 `<axis>` is `pan` | `tilt` | `roll` (or `p` | `t` | `r`).
@@ -160,11 +190,13 @@ mechanical stop makes it stall, overheat and eventually burn out.
 
 ## Verifying a build
 
-**1. Motion logic over Serial.** `M`/`O`/`X` typed in the console do not arm the
-lease, so the motion core can be tested with no BLE involved:
+**0. Boot.** Power on **without the phone**. The servos engage at neutral right
+away, and the banner ends with `attached` and the pose (90, 160, 90, look 0 0).
+
+**1. Motion logic over Serial.** `M`/`O`/`L`/`X` typed in the console do not arm
+the lease, so the motion core can be tested with no BLE involved:
 
 ```
-attach
 M 90 155 90 800        centre eases: head lifts slightly
 O t 5 1500 8000        tilt nods, riding on the centre
 O p 3 2000 8000        add a pan sway on top — both compose
@@ -172,22 +204,44 @@ O t 0 1500 8000        tilt oscillation eases back to rest, pan continues
 X                      stop everything, return to neutral
 ```
 
-**2. BLE transport.** With **nRF Connect** (iOS/Android) or any generic BLE tool:
+**2. Gaze layer over Serial.** `pos` prints the look offsets alongside the angles.
+
+```
+L 20 0                 head turns smoothly right, mostly there in ~0.8 s
+L -20 0                send it while still turning: it reverses without a jolt
+L 0 -15                looks up 15°; pan comes back to centre at the same time
+O t 4 1500 8000        a nod rides on the look
+M 90 150 90 800        the centre moves under the look — the two add
+X                      everything returns: neutral centre, look 0 0, no nod
+```
+
+**3. BLE transport.** With **nRF Connect** (iOS/Android) or any generic BLE tool:
 
 1. Scan and connect to the name printed in the Serial banner.
 2. On the Command characteristic, set the value type to **Text / UTF-8** (not
-   hex) and write `attach`. The Serial Monitor echoes `[BLE] attach`.
-3. Write `osc tilt 5 1500` — tilt nods exactly as it does over Serial. Write `X`.
-4. Read the Status characteristic — it returns the current angles.
+   hex) and write `osc tilt 5 1500`. The Serial Monitor echoes the line and tilt
+   nods exactly as it does over Serial. Write `X`.
+3. Read the Status characteristic — it returns the current angles.
 
 If Serial works but BLE writes do nothing: check the Tools stack setting, that
 the value was sent as **text not hex**, and that you wrote to Command (`…1001`).
 Serial keeps working throughout, so a BLE-only failure is isolated to the
 transport, not the motion core.
 
-**3. Lease.** Write `O t 5 1500 4000` over BLE and send nothing else. After ~4 s
+**4. Lease.** Write `O t 5 1500 4000` over BLE and send nothing else. After ~4 s
 the robot eases back to neutral and the Serial Monitor prints
-`[BLE] lease expired -> neutral`. Another `M` or `O` before then refreshes it.
+`[BLE] lease expired -> neutral`. Another `M`, `O` or `L` before then refreshes
+it. After a reboot, write `L 15 -5` and nothing else: the head looks right and
+up, and after the default 8 s lease it returns to neutral, looking ahead.
+
+**5. Reconnect.** Disconnect in nRF Connect, then scan again without rebooting
+the Pico: the robot must be found and accept writes. If it is not, advertising
+did not restart after the disconnect — a transport fix, not a safety one.
+
+`L`'s caps (600 °/s² on pan, 400 °/s² on tilt) sit far below the measured
+ceilings below (pan > 3300, tilt ≈ 2700 °/s²), and roll has no look, so the gaze
+layer needs no new measurement. A client that layers `M`, `O` and `L` adds their
+accelerations and keeps the sum within budget.
 
 ## Rig measurements
 

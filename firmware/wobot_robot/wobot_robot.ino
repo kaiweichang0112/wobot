@@ -1,15 +1,24 @@
 /*
- * Wobot robot - stage 2b firmware (M/O/X compose protocol + lease).
+ * Wobot robot - stage 3 firmware (M/O/X compose protocol + L gaze layer + lease).
  *
- * Stage 1 measured the rig; stage 2a proved the BLE transport. Stage 2b is the
- * protocol itself: a pose is a CENTRE (moved by M) plus per-axis OSCILLATION
- * (set by O) that compose - output = centre + amp*sin(phase). A single lease
- * timer, armed only by BLE commands, returns the robot to neutral if the app
- * stops refreshing it. All of this is testable over Serial first:
- * M/O/X can be typed in the console, where they do not arm the lease.
+ * Stage 1 measured the rig; stage 2a proved the BLE transport; stage 2b added
+ * the protocol: a pose is a CENTRE (moved by M) plus per-axis OSCILLATION (set
+ * by O) that compose. Stage 3 adds a GAZE (look) offset on pan and tilt, set by
+ * L, for targets updated many times a second (face tracking):
+ *   output = centre + look + amp*sin(phase)
+ * M restarts its S-curve from rest on every command, so tracking with M would
+ * stall the head at each update and overwrite the motion; look follows its
+ * target with continuous velocity instead, and adds to whatever M is doing.
+ * A single lease timer, armed only by BLE commands, returns the robot to
+ * neutral if the app stops refreshing it. All of this is testable over Serial
+ * first: M/O/L/X can be typed in the console, where they do not arm the lease.
  *   M <pan> <tilt> <roll> <ms>          move all centres to a pose
  *   O <axis> <amp> <period_ms> <lease>  oscillate one axis (amp 0 = stop it)
+ *   L <pan> <tilt>                      gaze offsets from the centre (deg)
  *   X                                   stop, return to neutral
+ *
+ * Servos attach at neutral at power-on, before the phone is mounted, so the
+ * full-speed snap of attaching happens with nothing on board.
  *
  * Requires Arduino IDE: Tools -> "IP/Bluetooth Stack" set to an option that
  * includes Bluetooth (e.g. "IPv4 + Bluetooth"), or BLE will not link.
@@ -89,7 +98,25 @@ static const unsigned long DEFAULT_MOVE_MS = 800;
 // slip-prone axis; keeping the slew gentle also keeps its accelerations low.
 static const float AMP_SLEW_DEG_PER_S = 30.0f;
 
-// Lease / liveness: a single timer, armed and refreshed by BLE M and O commands.
+// Gaze layer (L). The look offset follows its target with a desired velocity of
+// LOOK_GAIN per degree of error, capped, and the velocity itself slewed by an
+// acceleration cap - so a new target bends the motion instead of restarting it.
+// Decelerating along v = gain * error needs gain * v, which stays under the
+// acceleration cap (4*90 < 600, 4*60 < 400), so the follower never overshoots.
+// The caps sit far below the measured ceilings (pan > 3300, tilt ~2700 deg/s^2).
+// Roll has no gaze: it is the slip-prone axis.
+static const float LOOK_GAIN = 4.0f;  // 1/s
+static const float LOOK_PAN_MAX_VEL = 90.0f, LOOK_PAN_MAX_ACC = 600.0f;
+static const float LOOK_TILT_MAX_VEL = 60.0f, LOOK_TILT_MAX_ACC = 400.0f;
+// L's targets, as offsets from the centre. Tilt down is short: the mechanical
+// stop is 20 deg below neutral.
+static const float LOOK_PAN_RANGE = 40.0f;  // -40..+40
+static const float LOOK_TILT_UP = -40.0f, LOOK_TILT_DOWN = 12.0f;
+// A long frame (a stalled loop) would make the follower overshoot or diverge, so
+// it never integrates more than this per frame.
+static const float LOOK_MAX_DT_S = 0.05f;
+
+// Lease / liveness: a single timer, armed and refreshed by BLE M, O and L commands.
 // On expiry the robot returns to neutral so a crashed or disconnected app
 // cannot leave it moving. Serial commands do not arm it (a wired console needs
 // no dead-man's switch).
@@ -97,17 +124,19 @@ static const unsigned long DEFAULT_LEASE_MS = 8000;
 
 // ------------------------------------------------------------------- axis model
 
-// A pose composes a CENTRE and an OSCILLATION that ride on top of each other:
-//   output = centre (eased by M / move) + amp * sin(phase) (set by O / osc)
-// The centre eases to its target over a duration; the oscillation's phase is
-// advanced every frame so changing its period or amplitude never steps output.
+// A pose composes a CENTRE, a GAZE and an OSCILLATION that ride on each other:
+//   output = centre (eased by M / move) + look (followed by L)
+//            + amp * sin(phase) (set by O / osc)
+// The centre eases to its target over a duration; look follows its target with
+// continuous velocity; the oscillation's phase is advanced every frame so
+// changing its period or amplitude never steps output.
 struct Axis {
   Servo servo;
   int pin;
   const char *name;
 
   bool attached;
-  float current;    // last output written = centre + oscillation offset
+  float current;    // last output written = centre + look + oscillation offset
   float neutral;
   float minLimit;
   float maxLimit;
@@ -119,6 +148,13 @@ struct Axis {
   unsigned long centerStart;
   unsigned long centerDuration;
   bool centerMoving;
+
+  // Gaze offset on the centre, followed toward lookTarget (see LOOK_GAIN).
+  float look;        // deg
+  float lookVel;     // deg/s
+  float lookTarget;  // deg, commanded offset
+  float lookMaxVel;  // deg/s; 0 = this axis has no gaze (roll)
+  float lookMaxAcc;  // deg/s^2
 
   // Oscillation riding on the centre.
   float oscPhase;      // radians, advanced per frame
@@ -148,7 +184,8 @@ static int degToUs(float deg) {
 }
 
 static void initAxis(Axis &a, int pin, const char *name, float neutral,
-                     float minLimit, float maxLimit) {
+                     float minLimit, float maxLimit,
+                     float lookMaxVel, float lookMaxAcc) {
   a.pin = pin;
   a.name = name;
   a.attached = false;
@@ -163,6 +200,11 @@ static void initAxis(Axis &a, int pin, const char *name, float neutral,
   a.centerFrom = neutral;
   a.centerTarget = neutral;
   a.centerMoving = false;
+  a.look = 0.0f;
+  a.lookVel = 0.0f;
+  a.lookTarget = 0.0f;
+  a.lookMaxVel = lookMaxVel;
+  a.lookMaxAcc = lookMaxAcc;
   a.oscPhase = 0.0f;
   a.oscAmp = 0.0f;
   a.oscAmpTarget = 0.0f;
@@ -193,20 +235,27 @@ static void setAxisPosition(Axis &a, float value) {
   a.centerTarget = value;
   a.oscAmp = 0.0f;
   a.oscAmpTarget = 0.0f;
+  a.look = 0.0f;
+  a.lookVel = 0.0f;
+  a.lookTarget = 0.0f;
   a.current = value;
 }
 
-/// "stop": hold the current centre and damp any oscillation to rest.
+/// "stop": hold the current centre and gaze, and damp any oscillation to rest.
+/// A moving gaze brakes at its acceleration cap and settles back where it was.
 static void haltAxis(Axis &a) {
   a.centerMoving = false;
   a.centerTarget = a.center;
+  a.lookTarget = a.look;
   a.oscAmpTarget = 0.0f;
 }
 
-/// Ease every axis back to the neutral pose and let its oscillation settle.
+/// Ease every axis back to the neutral pose, look straight ahead, and let its
+/// oscillation settle.
 static void goNeutral(unsigned long durationMs) {
   for (int i = 0; i < 3; i++) {
     moveCenter(axes[i], axes[i].neutral, durationMs);
+    axes[i].lookTarget = 0.0f;
     axes[i].oscAmpTarget = 0.0f;
   }
 }
@@ -244,6 +293,16 @@ static void updateAxis(Axis &a, float dt, unsigned long now) {
   if (fabsf(da) <= step) a.oscAmp = a.oscAmpTarget;
   else a.oscAmp += (da > 0.0f) ? step : -step;
 
+  // Gaze follower: capped velocity toward the target, slewed by the capped
+  // acceleration, so retargeting mid-move never steps the velocity.
+  if (a.lookMaxVel > 0.0f) {
+    float ldt = dt > LOOK_MAX_DT_S ? LOOK_MAX_DT_S : dt;
+    float vDes = constrain(LOOK_GAIN * (a.lookTarget - a.look), -a.lookMaxVel, a.lookMaxVel);
+    float dvMax = a.lookMaxAcc * ldt;
+    a.lookVel += constrain(vDes - a.lookVel, -dvMax, dvMax);
+    a.look += a.lookVel * ldt;
+  }
+
   // Advance the phase (rate set by period) and compute the offset.
   float offset = 0.0f;
   if (a.oscAmp != 0.0f) {
@@ -252,7 +311,7 @@ static void updateAxis(Axis &a, float dt, unsigned long now) {
     offset = a.oscAmp * sinf(a.oscPhase);
   }
 
-  float out = constrain(a.center + offset, a.minLimit, a.maxLimit);
+  float out = constrain(a.center + a.look + offset, a.minLimit, a.maxLimit);
   a.current = out;
   if (a.attached) {
     a.servo.writeMicroseconds(degToUs(out));
@@ -297,7 +356,11 @@ static void printPose() {
   Serial.print(F("  tilt="));
   Serial.print(axes[TILT].current, 1);
   Serial.print(F("  roll="));
-  Serial.println(axes[ROLL].current, 1);
+  Serial.print(axes[ROLL].current, 1);
+  Serial.print(F("   look pan="));
+  Serial.print(axes[PAN].look, 1);
+  Serial.print(F("  tilt="));
+  Serial.println(axes[TILT].look, 1);
 }
 
 static void printLimits() {
@@ -314,9 +377,9 @@ static void printLimits() {
 
 static void printHelp() {
   Serial.println(F("--- Wobot robot bring-up -----------------------------------"));
-  Serial.println(F("attach            engage servos (they jump to their current target)"));
+  Serial.println(F("attach            engage servos (done at boot; they jump to their target)"));
   Serial.println(F("detach            release servos - THE PHONE WILL DROP under gravity"));
-  Serial.println(F("pos               print current angles"));
+  Serial.println(F("pos               print current angles and gaze offsets"));
   Serial.println(F("neutral           go to the neutral pose (90, 160, 90)"));
   Serial.println(F("datum             all axes to 90 - phone mount faces the ceiling"));
   Serial.println(F("setpos <p> <t> <r>   declare where the head is, without moving it"));
@@ -333,9 +396,11 @@ static void printHelp() {
   Serial.println(F("--- BLE protocol (also typeable here for testing) ---"));
   Serial.println(F("M <p> <t> <r> <ms>          move all centres to a pose"));
   Serial.println(F("O <axis> <amp> <period> <lease>   oscillate one axis, ms lease"));
+  Serial.println(F("L <pan> <tilt>              gaze offsets (pan +-40, tilt -40..+12)"));
   Serial.println(F("X                           stop, return to neutral"));
-  Serial.println(F("  centre + oscillation compose; over BLE a lease auto-returns"));
-  Serial.println(F("  to neutral if not refreshed. Serial does not arm the lease."));
+  Serial.println(F("  centre + gaze + oscillation compose; over BLE a lease"));
+  Serial.println(F("  auto-returns to neutral if not refreshed. Serial does not"));
+  Serial.println(F("  arm the lease."));
   Serial.println(F(""));
   Serial.println(F("lim <axis> <min> <max>   set soft limits"));
   Serial.println(F("limits            print soft limits"));
@@ -371,6 +436,8 @@ static void detachAll() {
     axes[i].centerMoving = false;
     axes[i].oscAmp = 0.0f;
     axes[i].oscAmpTarget = 0.0f;
+    axes[i].lookVel = 0.0f;
+    axes[i].lookTarget = axes[i].look;
     if (axes[i].attached) {
       axes[i].servo.detach();
       axes[i].attached = false;
@@ -390,7 +457,7 @@ static void handleCommand(char *line, bool fromBLE) {
   }
   if (n == 0) return;
 
-  // --- BLE protocol commands (M / O / X). Only BLE writes arm the lease. ---
+  // --- BLE protocol commands (M / O / L / X). Only BLE writes arm the lease. ---
 
   if (strcmp(tok[0], "M") == 0 && n >= 5) {
     unsigned long ms = (unsigned long)atol(tok[4]);
@@ -413,6 +480,14 @@ static void handleCommand(char *line, bool fromBLE) {
       if (lease > 0) livenessTimeoutMs = lease;
       refreshLiveness();
     }
+    return;
+  }
+
+  // Gaze: only the targets change here; updateAxis() follows them.
+  if (strcmp(tok[0], "L") == 0 && n >= 3) {
+    axes[PAN].lookTarget = constrain(atof(tok[1]), -LOOK_PAN_RANGE, LOOK_PAN_RANGE);
+    axes[TILT].lookTarget = constrain(atof(tok[2]), LOOK_TILT_UP, LOOK_TILT_DOWN);
+    if (fromBLE) refreshLiveness();
     return;
   }
 
@@ -446,7 +521,10 @@ static void handleCommand(char *line, bool fromBLE) {
   }
 
   if (strcmp(tok[0], "datum") == 0) {
-    for (int i = 0; i < 3; i++) moveCenter(axes[i], ASSEMBLY_DATUM, defaultMoveMs);
+    for (int i = 0; i < 3; i++) {
+      moveCenter(axes[i], ASSEMBLY_DATUM, defaultMoveMs);
+      axes[i].lookTarget = 0.0f;
+    }
     Serial.println(F("-> assembly datum (90, 90, 90) - phone mount faces ceiling"));
     return;
   }
@@ -691,9 +769,12 @@ static void setupBLE() {
 void setup() {
   Serial.begin(115200);
 
-  initAxis(axes[PAN], PIN_PAN, "pan", NEUTRAL_PAN, PAN_MIN, PAN_MAX);
-  initAxis(axes[TILT], PIN_TILT, "tilt", NEUTRAL_TILT, TILT_MIN, TILT_MAX);
-  initAxis(axes[ROLL], PIN_ROLL, "roll", NEUTRAL_ROLL, ROLL_MIN, ROLL_MAX);
+  initAxis(axes[PAN], PIN_PAN, "pan", NEUTRAL_PAN, PAN_MIN, PAN_MAX,
+           LOOK_PAN_MAX_VEL, LOOK_PAN_MAX_ACC);
+  initAxis(axes[TILT], PIN_TILT, "tilt", NEUTRAL_TILT, TILT_MIN, TILT_MAX,
+           LOOK_TILT_MAX_VEL, LOOK_TILT_MAX_ACC);
+  initAxis(axes[ROLL], PIN_ROLL, "roll", NEUTRAL_ROLL, ROLL_MIN, ROLL_MAX,
+           0.0f, 0.0f);
 
   unsigned long waitStart = millis();
   while (!Serial && millis() - waitStart < 3000) {
@@ -703,14 +784,18 @@ void setup() {
   setupBLE();
 
   Serial.println();
-  Serial.println(F("Wobot robot - stage 2b (M/O/X compose protocol + lease)"));
+  Serial.println(F("Wobot robot - stage 3 (M/O/X + L gaze layer + lease)"));
   Serial.print(F("Advertising as: "));
   Serial.println(deviceName);
-  Serial.println(F("Servos are DETACHED and assumed to be at the NEUTRAL pose."));
-  Serial.println(F("Write 'attach' (Serial or the BLE Command characteristic) to"));
-  Serial.println(F("engage them. Every Serial command also works over BLE."));
+  Serial.println(F("Servos ATTACH NOW at the NEUTRAL pose, at full speed: power on"));
+  Serial.println(F("before mounting the phone. 'detach' and 'setpos' remain for"));
+  Serial.println(F("bring-up. Every Serial command also works over BLE."));
   Serial.println();
   printHelp();
+
+  // Engage at neutral before the phone is mounted, so the client never needs
+  // to attach with the phone on board (a limp tilt sags under its weight).
+  attachAll();
 }
 
 void loop() {

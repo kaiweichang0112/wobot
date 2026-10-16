@@ -16,13 +16,19 @@ from the terminal, so changes cannot be compiled or tested here.
 ## Constraints
 
 - **The firmware knows motion primitives, not meanings.** `M` (move centres),
-  `O` (oscillate an axis), `X` (stop → neutral). Poses such as "happy" or
-  "listening" belong to the BLE client; do not add them here.
+  `O` (oscillate an axis), `L` (gaze offsets on pan and tilt), `X` (stop →
+  neutral). Poses such as "happy" or "listening" belong to the BLE client; do
+  not add them here.
+- **Anything updated more often than its moves last goes through `L`.** Each `M`
+  restarts its S-curve from rest, so tracking a face with `M` stalls the head at
+  every update; `L`'s follower keeps its velocity continuous and adds to `M`.
 - **One parser for both transports.** BLE writes and Serial lines both go
   through `handleCommand()`; BLE changes the command source, not the motion.
   The BLE write callback may run in BTstack context, so it only enqueues —
   parsing and servo mutation stay in `loop()`.
-- **The lease is the only disconnect-safety mechanism.** Only BLE `M`/`O` arm
+- **Servos attach at boot, at neutral,** before the phone is mounted, so a client
+  never attaches with the phone on board. Keep `detach`/`setpos` for bring-up.
+- **The lease is the only disconnect-safety mechanism.** Only BLE `M`/`O`/`L` arm
   it; `DEFAULT_LEASE_MS` (8000) applies until an `O` supplies its own value.
   Do not add behaviour to the disconnect callback instead.
 - **Status (`6b9a1002-…`) is Read only — no NOTIFY.** It reports the computed
