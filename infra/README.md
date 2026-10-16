@@ -1381,6 +1381,57 @@ and new revisions can both scale to it. Pools open connections lazily, so real
 usage stays well below the table. If connection-slot errors appear, move to
 `db-g1-small` (50 connections): the pools are already at their smallest useful size.
 
+## Alerts and budget
+
+During the pilot, failures should reach the developer without anyone reading logs.
+Three alert policies, kept in [`monitoring/`](monitoring/) without their channel, send
+an email to one notification channel:
+
+| Policy | Fires when | Why |
+| --- | --- | --- |
+| `errors.json` | `wobot-api` or a `wobot-*` job logs ERROR (at most one email an hour) | A turn that failed, a node whose provider failed, a job that crashed |
+| `5xx.json` | `wobot-api` answers more than two 5xx in 5 minutes | Errors before any log line, such as `503 DATABASE_UNAVAILABLE` |
+| `jobs.json` | An execution of any job fails | Ingestion, asset work, the sweep or a migration |
+
+No uptime check: it would keep waking an API that scales to zero. A budget emails the
+same channel at 50, 90 and 100 % of NT$650 (about US$20) a month for this project; it
+only tells, never stops anything, and OpenAI and ElevenLabs bill on their own platforms.
+
+**Console:** Monitoring → Alerting → Edit notification channels → Email → the
+developer's address; Alerting → Create policy, one per file above; Billing → Budgets &
+alerts → Create budget, scoped to the project, in the billing account's currency.
+
+Equivalent (the alpha and beta components, or the REST API with an access token):
+
+```sh
+gcloud beta monitoring channels create --display-name="Wobot owner" --type=email \
+  --channel-labels=email_address=<developer email>
+CHANNEL=$(gcloud beta monitoring channels list --filter='displayName="Wobot owner"' --format='value(name)')
+for f in errors 5xx jobs; do
+  gcloud alpha monitoring policies create --policy-from-file=infra/monitoring/$f.json \
+    --notification-channels=$CHANNEL
+done
+gcloud services enable billingbudgets.googleapis.com
+gcloud billing budgets create --billing-account=<BILLING_ACCOUNT_ID> --display-name="Wobot monthly" \
+  --budget-amount=650TWD --filter-projects=projects/$PROJECT_ID \
+  --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0 \
+  --notifications-rule-monitoring-notification-channels=$CHANNEL
+```
+
+Verify, and try the error alert with a log line of its own (an email within minutes):
+
+```sh
+gcloud alpha monitoring policies list --format="table(displayName, enabled)"
+gcloud billing budgets list --billing-account=<BILLING_ACCOUNT_ID> --format="value(displayName, amount)"
+curl -s -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" https://logging.googleapis.com/v2/entries:write \
+  -d '{"logName":"projects/'$PROJECT_ID'/logs/run.googleapis.com%2Fstdout","resource":{"type":"cloud_run_job","labels":{"job_name":"wobot-sweep","location":"'$REGION'","project_id":"'$PROJECT_ID'"}},"entries":[{"severity":"ERROR","jsonPayload":{"message":"alert test"}}]}'
+```
+
+An email names the policy; read what fired with `gcloud logging read` on the same
+filter. Alerting is billed by Cloud Monitoring's pricing (per condition, and per
+log-matched notification); check it before adding many more policies.
+
 ## Cost controls
 
 - Cloud SQL bills for every hour the instance runs, even when Cloud Run has
