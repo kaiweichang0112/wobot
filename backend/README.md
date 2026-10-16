@@ -96,7 +96,7 @@ in order:
 | Event | Data, besides `turn_id` and `attempt` |
 | --- | --- |
 | `accepted` | none: the turn is saved as running |
-| `status` | `stage`: `searching` while a path looks things up, `writing` once only words are left |
+| `status` | `stage`: `searching` while a path looks things up, `writing` once only words are left; `route`: the path, `chat`, `knowledge`, `list` or `recommend`, so the app can move the robot to suit it |
 | `text_delta` | `text`: the next words, from chat and knowledge answers only |
 | `reply` | the whole reply: `text`, and `action` and `products` on the recommendation path. It replaces the deltas; the lists' record keys stay in the turn's row |
 | `speech` | Avatar mode only, between the others: `index`, `text`, `emotion` and `audio` (base64 MP3) of the next sentence spoken, in order |

@@ -98,5 +98,5 @@ async def play(
                     status = new
                     if played.first_status is None:
                         played.first_status = now - started
-                    yield "status", {"stage": status}
+                    yield "status", {"stage": status, "route": played.route}
             last = now
