@@ -147,9 +147,9 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context) => AlertDialog(
         title: const Text('Delete account?'),
         content: const Text(
-          'Your conversations, voice and avatar are deleted, and this account '
-          'is signed out. This cannot be undone. You will be asked to sign in '
-          'with Google again first.',
+          'Sign in with Google once more to confirm. Your conversations, '
+          'voice and avatar are then deleted and you are signed out. This '
+          'cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -159,7 +159,7 @@ class _SettingsPageState extends State<SettingsPage> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: WobotColors.danger),
-            child: const Text('Delete'),
+            child: const Text('Continue'),
           ),
         ],
       ),

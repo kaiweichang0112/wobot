@@ -46,7 +46,7 @@ void main() {
       tester,
     ) async {
       await show(tester);
-      await tester.tap(find.text('Delete'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       expect(server.count('DELETE /v1/me'), 1);
@@ -65,7 +65,7 @@ void main() {
 
     testWidgets('a sign-in the user cancels deletes nothing', (tester) async {
       await show(tester, signsInAgain: false);
-      await tester.tap(find.text('Delete'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       expect(server.count('DELETE /v1/me'), 0);
