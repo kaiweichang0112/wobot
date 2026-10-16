@@ -14,7 +14,7 @@ from; in Avatar mode the avatar speaks the replies in that voice.
 | `lib/assets.dart` | What voices and avatars share: their status in a word, failures, and reading one being made every 2.5 s |
 | `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with; `QuestionListener`, which turns a spoken question into text on the phone; `SpeechQueue`, which plays a reply's sentences in order; the question language; Voice lab's script and CER |
 | `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device; `AvatarSession`, Avatar mode's state; `AnimatedAvatar`, the face that breathes and speaks |
-| `lib/robot/` | The robot's wire format; `RobotLink`, which finds the robot over Bluetooth, attaches it, keeps its lease and writes commands in order; `Robot`, what Avatar mode holds of it |
+| `lib/robot/` | The robot's wire format; `RobotLink`, which finds the robot over Bluetooth, attaches it, keeps its lease and writes commands in order; the motions and their budget; `Director`, which plays them as Avatar mode goes; `Robot`, what Avatar mode holds of it |
 | `lib/pages/` | Sign-in, chat, the chats drawer, settings, the Voice and Avatar pages, Avatar mode, and the debug Voice and Robot labs |
 | `lib/widgets/` | The thinking mark shown while a reply is awaited, replies with tappable links, and the setup pages' notes |
 | `lib/theme.dart` | The dark theme and its orange accent |
@@ -78,7 +78,18 @@ How the app keeps to the API's rules:
   the smallest MTU; poses go without a response, since the next one sets the head
   again, and a look still waiting is replaced by a newer one. Leaving Avatar mode or
   going out of sight sends `X` and lets go; back in sight, it connects again. Robot
-  lab (Settings, debug builds) connects the same way and sends commands by hand.
+  lab (Settings, debug builds) connects the same way, sends commands by hand, plays
+  each motion and scripted replies, and runs a minute of chat for the slip test.
+- **The robot moves with each sentence as it starts** (DEC-103), when the avatar
+  shows its face. A feeling (only chat has them, DEC-097) starts with one of four or
+  five motions, never the one before, at random sizes and sides; said again it
+  calms, the third time to a nod. A sentence without one gets a beat, or none, and
+  the path adds its way: a list steps from item to item, knowledge shows the centre
+  or the company it introduces; a question tilts the head as it ends. Listening
+  leans in, waiting ponders, the end of a reply nods. Accents are chains of `M`
+  moves, never cut into; carriers are slow `O`s. Every motion is checked against
+  80% of the rig's measured limits (`Budget`), and a move between motions that
+  would exceed them is slowed.
 - **Questions are spoken in the language chosen in Settings** (中文 or English, kept on
   the phone), never switched on the Avatar screen (VOI-012).
 
