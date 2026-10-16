@@ -109,8 +109,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: SecretStr | None = None
     elevenlabs_timeout_seconds: float = 60
     # Speaks replies and the voice preview: it takes audio tags for feelings, which flash
-    # does not. Chosen without a comparison, to move faster (D7, DEC-094).
-    tts_model: str = "eleven_v4_turbo"
+    # does not, and speaks no Cantonese, which eleven_v4_turbo drifted into whatever
+    # language it was told (DEC-100).
+    tts_model: str = "eleven_v3_conversational"
     # Each spoken sentence's feeling (DEC-095): Jev, chosen without a comparison. Below the
     # threshold, or slower than the timeout, a sentence is neutral: a feeling shown wrongly
     # is worse than none, and the voice must not wait long.
