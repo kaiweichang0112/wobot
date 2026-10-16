@@ -14,7 +14,8 @@ from; in Avatar mode the avatar speaks the replies in that voice.
 | `lib/assets.dart` | What voices and avatars share: their status in a word, failures, and reading one being made every 2.5 s |
 | `lib/voice/` | `VoiceSetupController`, and the microphone and speaker it records and plays with; `QuestionListener`, which turns a spoken question into text on the phone; `SpeechQueue`, which plays a reply's sentences in order; the question language; Voice lab's script and CER |
 | `lib/avatar/` | `AvatarSetupController`, the 21 frame keys, and the frames kept on the device; `AvatarSession`, Avatar mode's state; `AnimatedAvatar`, the face that breathes and speaks |
-| `lib/robot/` | The robot's wire format; `RobotLink`, which finds the robot over Bluetooth, attaches it, keeps its lease and writes commands in order; the motions and their budget; `Director`, which plays them as Avatar mode goes; `Robot`, what Avatar mode holds of it |
+| `lib/robot/` | The robot's wire format; `RobotLink`, which finds the robot over Bluetooth, attaches it, keeps its lease and writes commands in order; the motions and their budget; `Director`, which plays them as Avatar mode goes; `GazeTracker`, which turns the phone toward the user; `Robot`, what Avatar mode holds of it |
+| `packages/wobot_faces/` | A plugin of this workspace: faces seen by the front camera, found on the phone with Apple's Vision |
 | `lib/pages/` | Sign-in, chat, the chats drawer, settings, the Voice and Avatar pages, Avatar mode, and the debug Voice and Robot labs |
 | `lib/widgets/` | The thinking mark shown while a reply is awaited, replies with tappable links, and the setup pages' notes |
 | `lib/theme.dart` | The dark theme and its orange accent |
@@ -90,6 +91,14 @@ How the app keeps to the API's rules:
   moves, never cut into; carriers are slow `O`s. Every motion is checked against
   80% of the rig's measured limits (`Budget`), and a move between motions that
   would exceed them is slowed.
+- **The phone keeps turned toward the user** (ROB-D01, DEC-104). While a robot is
+  connected, and only then, the front camera looks for faces a dozen times a second,
+  on the phone; no picture is kept or sent. The camera rides on the head, so where
+  the user is comes from the head's own direction when the frame was taken (worked
+  out from what was sent, as the firmware moves) plus the face's angle in the
+  picture; the gaze (`L`) aims there, past a 3° deadband. It holds its aim while a
+  motion turns the head away on purpose, and looks ahead after 5 s without a face.
+  Robot lab shows the faces, the estimate and the aim, to check the signs.
 - **Questions are spoken in the language chosen in Settings** (中文 or English, kept on
   the phone), never switched on the Avatar screen (VOI-012).
 

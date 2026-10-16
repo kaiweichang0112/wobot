@@ -95,6 +95,7 @@ class Director {
     _swings.clear();
     final cue = _cue;
     final generation = _begin();
+    holding.value = true; // the greeting looks up; tracking starts after it
     unawaited(() async {
       await _play(generation, waking.steps);
       if (generation != _generation) return;

@@ -4,15 +4,6 @@ import 'package:wobot/robot/protocol.dart';
 
 import 'fake_robot.dart';
 
-/// Waits, a little at a time, until [ok] holds.
-Future<void> until(bool Function() ok) async {
-  final deadline = DateTime.now().add(const Duration(seconds: 2));
-  while (!ok()) {
-    if (DateTime.now().isAfter(deadline)) fail('timed out waiting');
-    await Future<void>.delayed(const Duration(milliseconds: 5));
-  }
-}
-
 void main() {
   late FakeBle ble;
   late FakeMemory memory;
