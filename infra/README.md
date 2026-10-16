@@ -144,6 +144,7 @@ resources each account needs.
 | `wobot-deployer` | GitHub Actions, through Workload Identity Federation |
 | `wobot-scheduler` | Cloud Scheduler, starting the `wobot-ingest` job on its schedule |
 | `wobot-assets` | The `wobot-assets` Cloud Run job (voices and avatars) |
+| `wobot-sweep` | The `wobot-sweep` Cloud Run job (the daily sweep) |
 
 One account per workload keeps a compromise contained: the API cannot change
 the schema and cannot deploy, and ingestion cannot read private data. Every Cloud Run service and job names its account
@@ -449,6 +450,7 @@ SQL Studio, database `wobot`, user `postgres`, built-in authentication.
    GRANT wobot_api TO "wobot-api@<PROJECT_ID>.iam";
    GRANT wobot_ingest TO "wobot-ingest@<PROJECT_ID>.iam";
    GRANT wobot_assets TO "wobot-assets@<PROJECT_ID>.iam";
+   GRANT wobot_api TO "wobot-sweep@<PROJECT_ID>.iam";
    GRANT wobot_migrator TO "<developer@gmail.com>";
    ```
 
@@ -988,6 +990,82 @@ gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name=
 
 Measured on the first executions: see `backend/README.md`, "Voices".
 
+### Sweep job
+
+Puts right each day what requests left undone (`backend/README.md`, "Sweep"):
+turns left running, workers that stopped, accounts deleted over an hour ago, and
+voice and avatar files no longer used, which it hands to `wobot-assets` to remove.
+It holds no provider secret and shares the API's database role, `wobot_api`: one
+role less to keep in step, at the price of the sweep being allowed what the API is.
+
+**Database user:** SQL → `wobot-pg` → Users → Add user account → Google Cloud IAM →
+`wobot-sweep@…`; IAM → Grant access → `wobot-sweep` → Cloud SQL Client; then the
+`GRANT wobot_api TO "wobot-sweep@…"` line of section 8 in Cloud SQL Studio, as
+`postgres`.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Image | `api` at the commit's tag | CI swaps it on each deploy |
+| Name / region | `wobot-sweep`, `asia-east1` | |
+| Tasks / retries | 1 / 0 | Tomorrow's pass is the retry: every step starts from how the rows stand |
+| Command | `wobot-sweep` | |
+| Task timeout | 10 minutes | A pass takes seconds at the pilot's size |
+| Environment | `GOOGLE_CLOUD_PROJECT`, `APP_VERSION=<git sha>`, `DB_MODE=cloudsql`, `INSTANCE_CONNECTION_NAME`, `DB_USER=wobot-sweep@$PROJECT_ID.iam`, `DB_POOL_SIZE=1`, `DB_MAX_OVERFLOW=0`, `ASSETS_JOB=wobot-assets` | One connection (connection budget); checkpoints are deleted with SQL, so no checkpointer pool or Cloud SQL connection |
+| Service account | `wobot-sweep` | |
+
+**Who may start what:** `wobot-sweep` gets Cloud Run Jobs Executor With Overrides on
+`wobot-assets` alone, as `wobot-api` has; `wobot-scheduler` gets Cloud Run Jobs
+Executor (no overrides: the sweep takes no arguments) on `wobot-sweep` alone; the
+deployer gets Service Account User on `wobot-sweep` to update the job's image.
+
+**Schedule:** Cloud Scheduler → `wobot-sweep-daily`, `0 4 * * *`, `Asia/Taipei`,
+`POST https://run.googleapis.com/v2/projects/<PROJECT_ID>/locations/asia-east1/jobs/wobot-sweep:run`,
+OAuth token as `wobot-scheduler`. 04:00 keeps clear of the monthly ingestion at 03:00.
+
+Equivalent:
+
+```sh
+gcloud iam service-accounts create wobot-sweep \
+  --description="Runtime identity of the wobot-sweep Cloud Run job"
+SA=wobot-sweep@$PROJECT_ID.iam.gserviceaccount.com
+gcloud sql users create wobot-sweep@$PROJECT_ID.iam --instance=wobot-pg --type=cloud_iam_service_account
+for role in roles/cloudsql.client roles/cloudsql.instanceUser; do
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA" --role=$role
+done
+gcloud run jobs deploy wobot-sweep --image "$IMAGE" --region $REGION \
+  --command wobot-sweep --tasks 1 --max-retries 0 --task-timeout 10m \
+  --service-account $SA \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APP_VERSION=$(git rev-parse HEAD),DB_MODE=cloudsql,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_USER=wobot-sweep@$PROJECT_ID.iam,DB_POOL_SIZE=1,DB_MAX_OVERFLOW=0,ASSETS_JOB=wobot-assets"
+gcloud run jobs add-iam-policy-binding wobot-assets --region $REGION \
+  --member="serviceAccount:$SA" --role=roles/run.jobsExecutorWithOverrides
+gcloud run jobs add-iam-policy-binding wobot-sweep --region $REGION \
+  --member="serviceAccount:wobot-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role=roles/run.jobsExecutor
+gcloud iam service-accounts add-iam-policy-binding $SA --role=roles/iam.serviceAccountUser \
+  --member="serviceAccount:wobot-deployer@$PROJECT_ID.iam.gserviceaccount.com"
+gcloud scheduler jobs create http wobot-sweep-daily --location $REGION \
+  --schedule="0 4 * * *" --time-zone="Asia/Taipei" \
+  --uri="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/wobot-sweep:run" \
+  --http-method=POST \
+  --oauth-service-account-email="wobot-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \
+  --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
+```
+
+Create the job before merging the deploy step that updates it.
+
+Verify:
+
+```sh
+gcloud run jobs describe wobot-sweep --region $REGION
+gcloud run jobs get-iam-policy wobot-assets --region $REGION   # wobot-api and wobot-sweep: jobsExecutorWithOverrides
+gcloud run jobs get-iam-policy wobot-sweep --region $REGION    # wobot-scheduler: jobsExecutor only
+gcloud scheduler jobs describe wobot-sweep-daily --location $REGION \
+  --format="value(schedule, timeZone, state)"   # 0 4 * * *  Asia/Taipei  ENABLED
+gcloud scheduler jobs run wobot-sweep-daily --location $REGION   # a pass now
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="wobot-sweep" AND jsonPayload.message="sweep finished"' \
+  --limit 1 --format=json
+```
+
 ## 10. Firebase Authentication
 
 Firebase runs on the same project. The app signs in with Google through
@@ -1293,7 +1371,8 @@ Wobot's roles.
 | Developer (Cloud SQL Studio or proxy) | 2 |
 | Ingestion job (pool 2 + overflow 1, one holding the run lock) | 3 |
 | Asset job: up to 2 executions at once × pool 1 | 2 |
-| **Total** | **20 of 22** |
+| Sweep job: pool 1 | 1 |
+| **Total** | **21 of 22** |
 
 Cap the API at the [service level](https://docs.cloud.google.com/run/docs/configuring/max-instances)
 (`gcloud run services update wobot-api --max 3`), not only per revision:
