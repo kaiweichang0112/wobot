@@ -109,7 +109,7 @@ async def test_a_feeling_is_spoken_with_its_tag_by_a_model_that_takes_tags():
         if name == "speech_end":
             done.set()
 
-    speaker = Speaker(voice, "v-1", "eleven_v4_turbo", emit, feel=feel)
+    speaker = Speaker(voice, "v-1", "eleven_v4", emit, feel=feel)
     speaker.say("太好了！")
     speaker.say("地址在桃園。")
     speaker.close()
