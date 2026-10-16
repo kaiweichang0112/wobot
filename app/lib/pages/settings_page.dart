@@ -9,11 +9,13 @@ import '../auth.dart';
 import '../avatar/avatar_setup.dart';
 import '../avatar/frame_cache.dart';
 import '../chat.dart';
+import '../robot/link.dart';
 import '../theme.dart';
 import '../voice/audio.dart';
 import '../voice/question_language.dart';
 import '../voice/voice_setup.dart';
 import 'avatar_setup_page.dart';
+import 'robot_lab_page.dart';
 import 'voice_lab_page.dart';
 import 'voice_setup_page.dart';
 
@@ -42,6 +44,7 @@ class SettingsPage extends StatefulWidget {
     required this.onSettings,
     required this.beforeSignOut,
     this.frames,
+    this.robots,
     this.reauthenticate = signInAgain,
     this.deleteUser = deleteFirebaseUser,
   });
@@ -63,6 +66,9 @@ class SettingsPage extends StatefulWidget {
   /// Where the avatar's frames are kept; the account's own directory by default.
   final FrameCache? frames;
 
+  /// The robot this phone remembers; the phone's own settings by default.
+  final RobotMemory? robots;
+
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
@@ -77,12 +83,28 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String _language = QuestionLanguage.chinese;
 
+  late final RobotMemory _robots = widget.robots ?? PhoneRobotMemory();
+  RememberedRobot? _robot;
+
   @override
   void initState() {
     super.initState();
     QuestionLanguage.read().then((locale) {
       if (mounted) setState(() => _language = locale);
     });
+    _robots.read().then((robot) {
+      if (mounted) setState(() => _robot = robot);
+    });
+  }
+
+  /// Avatar mode then connects to the nearest robot, and remembers that one.
+  Future<void> _forgetRobot() async {
+    try {
+      await _robots.forget();
+      if (mounted) setState(() => _robot = null);
+    } on Exception {
+      _show('The robot could not be forgotten on this phone.');
+    }
   }
 
   Future<void> _speakIn(String locale) async {
@@ -320,6 +342,26 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+          const _Header('Robot'),
+          _Section(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.smart_toy_outlined),
+                title: Text(_robot?.name ?? 'No robot yet'),
+                subtitle: Text(
+                  _robot == null
+                      ? 'Avatar mode connects to the nearest one'
+                      : 'Avatar mode connects to this one',
+                ),
+                trailing: _robot == null
+                    ? null
+                    : TextButton(
+                        onPressed: _forgetRobot,
+                        child: const Text('Forget'),
+                      ),
+              ),
+            ],
+          ),
           if (kDebugMode) ...[
             const _Header('Developer'),
             _Section(
@@ -339,6 +381,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const VoiceLabPage(),
+                    ),
+                  ),
+                ),
+                // Debug builds only: drives the robot by hand.
+                ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: const Text('Robot lab'),
+                  subtitle: const Text('Connect and send commands'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RobotLabPage(),
                     ),
                   ),
                 ),
