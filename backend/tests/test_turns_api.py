@@ -32,6 +32,7 @@ def test_a_chat_reply_streams_word_by_word_then_completes(client, as_member, cha
     assert names[0] == "accepted" and names[1] == "status"
     assert names[-3:] == ["reply", "title", "completed"]
     assert events[1][1]["stage"] == "writing"
+    assert events[1][1]["route"] == "chat"
     deltas = [data["text"] for name, data in events if name == "text_delta"]
     assert len(deltas) > 1  # word by word, not at once
     assert "".join(deltas) == events[-3][1]["text"] == "你好 我是 Wobot"
