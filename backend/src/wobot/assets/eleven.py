@@ -79,14 +79,23 @@ class ElevenLabs:
                 raise
 
     async def speak(
-        self, provider_voice_id: str, text: str, model: str, output_format: str = PREVIEW_FORMAT
+        self,
+        provider_voice_id: str,
+        text: str,
+        model: str,
+        output_format: str = PREVIEW_FORMAT,
+        language: str | None = None,
     ) -> bytes:
-        """The text spoken in the voice, as MP3."""
+        """The text spoken in the voice, as MP3; in the language given (ISO 639-1), or
+        the one the model guesses."""
+        body = {"text": text, "model_id": model}
+        if language is not None:
+            body["language_code"] = language
         response = await self._send(
             "POST",
             f"/v1/text-to-speech/{provider_voice_id}",
             params={"output_format": output_format},
-            json={"text": text, "model_id": model},
+            json=body,
         )
         return response.content
 

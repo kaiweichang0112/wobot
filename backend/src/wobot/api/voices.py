@@ -24,6 +24,7 @@ from wobot.assets.eleven import ElevenLabsError
 from wobot.assets.media import voice_sample_key
 from wobot.config import get_settings
 from wobot.models import VoiceVersion
+from wobot.speech.tts import language_of
 
 router = APIRouter(prefix="/v1/voices")
 
@@ -137,7 +138,10 @@ async def preview_voice(voice_id: uuid.UUID, request: Request, principal: Owner)
         raise ApiError(503, "PROVIDER_UNAVAILABLE", "Voice is unavailable right now.")
     try:
         audio = await eleven.speak(
-            version.provider_voice_id, PREVIEW_TEXT, get_settings().tts_model
+            version.provider_voice_id,
+            PREVIEW_TEXT,
+            get_settings().tts_model,
+            language=language_of(PREVIEW_TEXT),
         )
     except ElevenLabsError as exc:
         logger.warning("preview failed: %s", exc)
