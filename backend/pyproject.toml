@@ -42,6 +42,7 @@ wobot-eval = "wobot.eval.cli:main"
 wobot-chat = "wobot.agent.cli:main"
 wobot-checkpoint = "wobot.agent.checkpoint_cli:main"
 wobot-assets = "wobot.assets.cli:main"
+wobot-sweep = "wobot.maintenance.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.16,<0.13.0"]

@@ -240,6 +240,32 @@ uv run --env-file .env wobot-assets paint --photo <photo> --frames fear_closed -
 
 The last makes `fear_closed` and its two mouths again from an earlier run's base.
 
+## Sweep
+
+`wobot-sweep` is one pass of the daily sweep (`wobot/maintenance/sweep.py`), run by the
+`wobot-sweep` Cloud Run job at 04:00 Asia/Taipei. It looks at how the rows stand, not at
+what happened, so a start the API could not send or a job Cloud Run stopped is made good
+the next day, and a pass may run again:
+
+1. Turns still running 3 minutes after they started are failed.
+2. Versions whose worker stopped beating for 5 minutes are failed (`WORKER_LOST`).
+3. Accounts deleted over an hour ago lose what is left of their conversations and
+   checkpoints, and their versions are marked deleted; once the asset job has removed
+   every version's files, the account's row goes. The hour outlives the account's last ID
+   token, which would otherwise register an empty account under the same ID.
+4. Retired and deleted versions whose files remain, and failed ones a newer version
+   replaced or that failed over 7 days ago, are handed to `wobot-assets clean`. An
+   avatar whose files were removed can no longer be retried.
+5. Versions queued for over a minute that no execution claimed are started again.
+
+It logs `sweep finished` with a count for each step and the size of the three checkpoint
+tables. Without `ASSETS_JOB`, as in development, it starts no asset work and counts it
+as `not_started`:
+
+```bash
+DB_USER=wobot_api_user uv run wobot-sweep
+```
+
 ## Knowledge ingestion
 
 `wobot-ingest` reads the knowledge sources, stores them as records, chunks and

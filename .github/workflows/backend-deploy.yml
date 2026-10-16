@@ -82,3 +82,9 @@ jobs:
         run: |
           gcloud run jobs update wobot-ingest --image "$IMAGE" --region "$REGION" \
             --update-env-vars "APP_VERSION=$GITHUB_SHA"
+
+      # The image only: the sweep runs on its schedule, never on a deploy.
+      - name: Update the sweep job
+        run: |
+          gcloud run jobs update wobot-sweep --image "$IMAGE" --region "$REGION" \
+            --update-env-vars "APP_VERSION=$GITHUB_SHA"

@@ -251,6 +251,19 @@ def test_a_retry_queues_the_failed_frames_and_keeps_the_rest(client, as_member, 
     assert assets.dispatcher.started[-1] == ("make", "avatar", str(avatar_id))
 
 
+def test_an_avatar_whose_frames_were_removed_is_not_retried(client, as_member, assets):
+    # The sweep removed a failed avatar's files (E2): a retry would build on nothing.
+    as_member("uid-a")
+    avatar_id = created(client)
+    painted(assets, avatar_id, FRAME_KEYS[:18], status="failed")
+    migrate("UPDATE app.avatar_versions SET cleaned_at = now() WHERE avatar_id = $1", avatar_id)
+
+    response = client.post(f"/v1/avatars/{avatar_id}/retry", headers=AUTH)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ASSET_NOT_EDITABLE"
+
+
 def test_only_a_failed_avatar_is_retried(client, as_member, assets):
     as_member("uid-a")
     avatar_id = created(client)
