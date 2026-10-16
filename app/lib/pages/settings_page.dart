@@ -42,6 +42,8 @@ class SettingsPage extends StatefulWidget {
     required this.onSettings,
     required this.beforeSignOut,
     this.frames,
+    this.reauthenticate = signInAgain,
+    this.deleteUser = deleteFirebaseUser,
   });
 
   final WobotApi api;
@@ -51,6 +53,12 @@ class SettingsPage extends StatefulWidget {
   final AssistantSettings settings;
   final ValueChanged<AssistantSettings> onSettings;
   final Future<void> Function() beforeSignOut;
+
+  /// Signs in with Google again before a deletion; false when the user cancels.
+  final Future<bool> Function() reauthenticate;
+
+  /// Deletes the Firebase user and signs out, once the account is deleted.
+  final Future<void> Function() deleteUser;
 
   /// Where the avatar's frames are kept; the account's own directory by default.
   final FrameCache? frames;
@@ -131,6 +139,51 @@ class _SettingsPageState extends State<SettingsPage> {
       // Signing out goes on; the frames are the account's own, under its ID.
     }
     await signOutAll();
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: const Text(
+          'Your conversations, voice and avatar are deleted, and this account '
+          'is signed out. This cannot be undone. You will be asked to sign in '
+          'with Google again first.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: WobotColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final navigator = Navigator.of(context);
+    try {
+      if (!await widget.reauthenticate()) return;
+      await widget.beforeSignOut();
+      await widget.api.deleteAccount();
+    } on ApiException catch (e) {
+      _show(e.message);
+      return;
+    } on Exception catch (e) {
+      _show(describe(e));
+      return;
+    }
+    navigator.popUntil((route) => route.isFirst);
+    try {
+      await _frames.clear();
+    } on Exception {
+      // The account is deleted; the frames are its own, under its ID.
+    }
+    await widget.deleteUser();
   }
 
   Future<void> _copyIdToken() async {
@@ -302,6 +355,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: TextStyle(color: WobotColors.danger),
                 ),
                 onTap: _signOut,
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_forever_outlined,
+                  color: WobotColors.danger,
+                ),
+                title: const Text(
+                  'Delete account',
+                  style: TextStyle(color: WobotColors.danger),
+                ),
+                onTap: _deleteAccount,
               ),
             ],
           ),

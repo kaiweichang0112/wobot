@@ -301,6 +301,9 @@ class WobotApi {
     return AssistantSettings.fromJson(body);
   }
 
+  /// Deletes the account and all it owns; the ID token must say the sign-in is recent.
+  Future<void> deleteAccount() => _json('DELETE', '/v1/me');
+
   Future<Conversation> startConversation() async =>
       Conversation.fromJson(await _json('POST', '/v1/conversations'));
 
