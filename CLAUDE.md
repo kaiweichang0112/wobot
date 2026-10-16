@@ -34,6 +34,7 @@ uv run --env-file .env wobot-eval judge <write-list, recommend or turns run>.jso
 uv run wobot-eval judge-sample|judge-agreement <judge run>.json
 DB_USER=wobot_assets_user uv run --env-file .env wobot-assets make|clean voice|avatar <id>
 uv run --env-file .env wobot-assets paint --photo <path> [--frames <key> ... [--only]] [--quality high]
+DB_USER=wobot_api_user uv run wobot-sweep
 ```
 
 `docker compose down -v` resets the local database: its init scripts run only
@@ -65,7 +66,7 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
 - **The API's database role is limited on purpose.** `wobot_api` has no DDL,
   only reads `knowledge`, and cannot write `app.allowed_emails`. `wobot_assets`, the
   asset worker's, only reads and updates the three asset tables: the API adds and
-  removes their rows. Do not widen either to make something work.
+  removes their rows. The daily sweep's job shares `wobot_api`. Do not widen either to make something work.
 - **Ingestion publishes by itself only what loses nothing.** A version that empties a
   source or drops more than `PUBLISH_MAX_DROP` of its records is held for
   `wobot-ingest accept`. The schedule lives in two places: Cloud Scheduler starts

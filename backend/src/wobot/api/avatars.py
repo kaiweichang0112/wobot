@@ -195,6 +195,9 @@ async def _remake(
     try:
         async with request.app.state.sessionmaker() as session, session.begin():
             version = await versions.owned(session, AVATAR_ASSET, principal, avatar_id)
+            if version.cleaned_at is not None:
+                # The sweep removed its frames (E2): there is nothing left to build on.
+                raise not_editable("This avatar was removed. Take a new photo.")
             if frame_keys is None and version.status != "failed":
                 raise not_editable("Only an avatar that failed can be tried again.")
             if frame_keys is not None and version.status not in ("ready", "failed"):
