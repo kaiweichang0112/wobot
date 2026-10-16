@@ -23,7 +23,7 @@ CONCURRENCY = 2
 SPEECH_FORMAT = "mp3_44100_64"
 NEUTRAL = "neutral"
 # The models that take audio tags, such as [excited], to speak with a feeling (DEC-091).
-TAGGED_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo", "eleven_v3", "eleven_v3_conversational"})
+TAGGED_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo", "eleven_v3"})
 
 # Han characters, the basic block and extension A.
 HAN = (("\u4e00", "\u9fff"), ("\u3400", "\u4dbf"))
