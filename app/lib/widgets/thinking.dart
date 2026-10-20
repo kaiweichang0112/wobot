@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Wobot's mark: eight orange rays. While `animate`, the rays breathe in turn and the
-/// mark turns slowly, so a reader waiting on a reply sees the app is working.
+/// Wobot's mark: an orange W. While `animate`, its corners rise and fall in turn like
+/// a wave, so a reader waiting on a reply sees the app is working.
 class ThinkingMark extends StatefulWidget {
   const ThinkingMark({super.key, this.size = 22, this.animate = true});
 
@@ -20,7 +20,7 @@ class _ThinkingMarkState extends State<ThinkingMark>
     with SingleTickerProviderStateMixin {
   late final AnimationController _clock = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: const Duration(milliseconds: 1600),
   );
 
   @override
@@ -49,48 +49,64 @@ class _ThinkingMarkState extends State<ThinkingMark>
         animation: _clock,
         builder: (context, _) => CustomPaint(
           size: Size.square(widget.size),
-          painter: _RaysPainter(widget.animate ? _clock.value : null),
+          painter: _WavePainter(widget.animate ? _clock.value : null),
         ),
       ),
     );
   }
 }
 
-class _RaysPainter extends CustomPainter {
-  _RaysPainter(this.t);
+/// The W's five corners in a square of side `side`: with the wave at `t`, 0 to 1, or
+/// level for the mark at rest.
+List<Offset> wCorners(double side, {double? t}) {
+  const corners = [
+    (0.1, 0.25),
+    (0.3, 0.78),
+    (0.5, 0.4),
+    (0.7, 0.78),
+    (0.9, 0.25),
+  ];
+  return [
+    for (final (i, (x, y)) in corners.indexed)
+      // Each corner rises a little after the one before it.
+      Offset(
+        x * side,
+        (y + (t == null ? 0 : 0.07 * sin(2 * pi * t - i * 0.9))) * side,
+      ),
+  ];
+}
+
+/// The W through `corners`.
+Path wPath(List<Offset> corners) {
+  final path = Path()..moveTo(corners.first.dx, corners.first.dy);
+  for (final corner in corners.skip(1)) {
+    path.lineTo(corner.dx, corner.dy);
+  }
+  return path;
+}
+
+/// The paint the W is stroked with in a square of side `side`.
+Paint wPaint(double side) => Paint()
+  ..color = WobotColors.accent
+  ..style = PaintingStyle.stroke
+  ..strokeCap = StrokeCap.round
+  ..strokeJoin = StrokeJoin.round
+  ..strokeWidth = side * 0.11;
+
+class _WavePainter extends CustomPainter {
+  _WavePainter(this.t);
 
   /// Where the animation is, 0 to 1; null for the mark at rest.
   final double? t;
 
-  static const _rays = 8;
-
   @override
   void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = size.shortestSide / 2;
-    final paint = Paint()
-      ..color = WobotColors.accent
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = radius * 0.24;
-    final phase = t ?? 0;
-    final turn = t == null ? 0.0 : phase * pi / 2;
-    for (var i = 0; i < _rays; i++) {
-      final angle = turn + i * 2 * pi / _rays;
-      // Each ray breathes a little after the one before it.
-      final breath = t == null
-          ? 1.0
-          : 0.55 + 0.45 * (0.5 + 0.5 * sin(2 * pi * phase - i * pi / 4));
-      final direction = Offset(cos(angle), sin(angle));
-      canvas.drawLine(
-        center + direction * radius * 0.22,
-        center + direction * radius * (0.22 + 0.68 * breath),
-        paint,
-      );
-    }
+    final side = size.shortestSide;
+    canvas.drawPath(wPath(wCorners(side, t: t)), wPaint(side));
   }
 
   @override
-  bool shouldRepaint(_RaysPainter old) => old.t != t;
+  bool shouldRepaint(_WavePainter old) => old.t != t;
 }
 
 /// A label with light sweeping across it, as the mark's companion while waiting.

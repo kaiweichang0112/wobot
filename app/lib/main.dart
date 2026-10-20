@@ -11,6 +11,7 @@ import 'pages/chat_page.dart';
 import 'pages/sign_in_page.dart';
 import 'theme.dart';
 import 'widgets/thinking.dart';
+import 'widgets/w_mark.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -115,7 +116,7 @@ class _Waiting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: ThinkingMark(size: 36)));
+    return const Scaffold(body: Center(child: WMark()));
   }
 }
 
