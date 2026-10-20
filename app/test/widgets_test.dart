@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wobot/pages/history_drawer.dart';
 import 'package:wobot/widgets/linked_text.dart';
+import 'package:wobot/widgets/thinking.dart';
+import 'package:wobot/widgets/w_mark.dart';
 
 void main() {
   test('an address after its label is shown as the label', () {
@@ -46,5 +48,35 @@ void main() {
     expect(when(DateTime(2026, 10, 12, 23), now: now), 'Yesterday');
     expect(when(DateTime(2026, 3, 2), now: now), '3/2');
     expect(when(DateTime(2025, 12, 31), now: now), '2025/12/31');
+  });
+
+  test(
+    'the W waves inside its square, each corner a little after the last',
+    () {
+      for (var t = 0.0; t < 1; t += 0.05) {
+        final corners = wCorners(100, t: t);
+        expect(corners, hasLength(5));
+        // Its stroke, 11 wide, stays inside the square.
+        for (final c in corners) {
+          expect(c.dy, inInclusiveRange(5.5, 94.5));
+        }
+      }
+      final rest = wCorners(100);
+      final start = wCorners(100, t: 0);
+      final later = wCorners(100, t: 0.25);
+      expect(later.map((c) => c.dx), rest.map((c) => c.dx));
+      expect(later[0].dy, isNot(start[0].dy));
+      expect(
+        start[0].dy - rest[0].dy,
+        isNot(closeTo(start[1].dy - rest[1].dy, 0.01)),
+      );
+    },
+  );
+
+  test('the starting W writes itself, holds, then fades', () {
+    expect(wStroke(0).written, 0);
+    expect(wStroke(0.15).written, inExclusiveRange(0.5, 1));
+    expect(wStroke(0.3), (written: 1.0, opacity: 1.0));
+    expect(wStroke(0.9).opacity, closeTo(0.5, 0.001));
   });
 }
