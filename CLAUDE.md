@@ -138,8 +138,9 @@ flutter run -d <device> --dart-define=API_BASE_URL=<API URL>
   the old version before it activates the new one, in one transaction.
 - **Photos, recordings and frames never enter git.** The repository is public: they live
   in the media bucket, or locally under `backend/.data/` (gitignored), and `paint` writes
-  there. Avatar prompts are versioned like the graph's: `avatar_prompts.PROMPT_VERSION`
-  is pinned with the prompts' hash.
+  there. The one exception is `docs/images/wobot.jpg`, the README's product photo. Avatar
+  prompts are versioned like the graph's: `avatar_prompts.PROMPT_VERSION` is pinned with
+  the prompts' hash.
 - **The robot is optional, and the app choreographs it.** Avatar mode works the same
   without one (AC-AVA-05). The firmware knows primitives (`M`, `O`, `L`, `X`;
   `firmware/CLAUDE.md`); motions are data in `app/lib/robot/motions.dart`, played
