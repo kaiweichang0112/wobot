@@ -1,84 +1,121 @@
 # Wobot
 
-Wobot is an AI spokesperson app for a gerontechnology research center and its
-affiliated smart-care company. It answers questions grounded in approved
-sources — the organizations' public websites and a product catalog — recommends
-smart-care products neutrally, and talks through either a text chat or a
-personalized cartoon avatar that speaks with the user's cloned voice.
+<img align="right" width="300" src="docs/images/wobot.jpg" alt="Wobot: a cartoon avatar on a phone, carried by a robot head">
 
-It is built for an internal pilot of up to ten people.
+**Wobot is an AI spokesperson you can talk to. It answers from approved sources, shows
+your own cartoon face, and speaks in your own cloned voice.**
 
-**Status:** Phases 0 to F are done. The iOS app signs in with Google and chats over a
-streamed turn API on Cloud Run, in text or as the user's own avatar speaking in their
-cloned voice. A LangGraph router answers from versioned knowledge ingested monthly
-from the two websites, their images, three PDFs and the product catalog, lists records
-in full, and recommends products from facets the code checks; each of the graph's
-model nodes was chosen by its own evaluation. Accounts can be deleted, a daily job
-finishes what requests left undone, and errors and spending email the developer. In
-Avatar mode the phone can ride a three-axis robot head: the app finds it over
-Bluetooth, moves it with each spoken sentence's feeling, and keeps the phone turned
-toward the user's face, found on the phone. Not done yet: the Android build and a
-pilot with other users.
+Wobot speaks for a Gerontechnology Research Center (GRC) and SEDA G-Tech. Ask it
+about the two organizations, their people and research, or which smart care product suits a
+need. It answers in Chinese or English, by text or by voice.
 
-## Architecture
+## What Wobot does
 
-```mermaid
-flowchart LR
-    App["Flutter app<br/>iOS / Android"] --> Auth["Firebase Authentication<br/>Google Sign-In"]
-    App --> API["Cloud Run service<br/>FastAPI + LangGraph"]
-    App -- BLE --> Robot["Robot head<br/>Pico W"]
-    API --> DB["Cloud SQL<br/>PostgreSQL + pgvector"]
-    API --> AI["OpenAI / ElevenLabs"]
-    Jobs["Cloud Run jobs<br/>migrations · ingestion · assets · sweep"] --> DB
-    Jobs --> Store["Cloud Storage"]
-    Jobs --> AI
-```
+- **Answers questions** from the two websites and a product catalog.
+- **Lists records in full**, such as talks, publications, projects and graduates.
+- **Recommends smart care products.** It asks about the need, then shows the products that fit.
+- **Looks and sounds like you.** Take a photo and record your voice in the app, and
+  Wobot makes your avatar and your voice.
+- **Moves on a robot head.** The phone sits on a small robot that moves as Wobot talks
+  and turns toward your face. The robot is optional.
 
-- One public API service. Long-running work — schema migrations, knowledge
-  ingestion, avatar and voice creation — runs as Cloud Run jobs.
-- All Google Cloud resources live in `asia-east1` (Taiwan).
-- The app never holds provider secrets or database credentials. The API
-  verifies a Firebase ID token and an email allowlist on every request.
-- Each workload runs as its own service account, and no service account key
-  exists: the database accepts IAM logins, and CI deploys through Workload
-  Identity Federation.
+<br clear="right">
 
-## Repository layout
+## System architecture
+
+![Wobot system architecture](docs/images/system-architecture.drawio.png)
+
+- **The phone app** talks to one API on Cloud Run, and the reply streams back.
+- **Every request is checked.** The user must be signed in with Google and be on the
+  allowed list.
+- **Slow work runs as separate jobs**: updating the knowledge, and making voices and
+  avatars.
+- **One database** (PostgreSQL with pgvector) holds the knowledge and the conversations.
+- **The app holds no secrets.** Only the cloud calls the AI providers, and the cloud
+  services use no stored service account keys.
+
+## How a message is answered
+
+![The LangGraph chat graph](docs/images/chat-graph.drawio.png)
+
+The agent is built with LangGraph. The router uses **Jev**, a fast classification model:
+it reads each message and picks one of four paths in about 0.2 seconds. If Jev is down,
+a GPT model takes over.
+
+| Path | Example | What happens |
+| --- | --- | --- |
+| Chat | "Hello, how are you" | Writes a friendly reply, with no lookup |
+| Knowledge | "What is WhizPad?" | Rewrites the question for search, finds the closest passages, and answers from them only |
+| List | "Prof. Hsu's talks in 2024" | Picks the list and filters, then reads every item from the database |
+| Recommend | "Warn me when Dad leaves the bed" | Asks about the need, then checks which products fit |
+
+- **Each AI step has its own model.** Each was chosen by testing: correct answers first,
+  then speed, then cost.
+- **Code writes the facts.** Lists and product cards come from the database, so a phone
+  number or a link is never a model's guess.
+- **Code decides which products fit.** The model only turns the need into a search.
+- **Code sets the reply language**, from the user's latest message.
+
+## See it in action
+
+Every message takes one of four paths. Each video shows one path. Click a picture to
+watch it on YouTube.
+
+| Chat | Knowledge | List | Recommend |
+| --- | --- | --- | --- |
+| <a href="https://youtube.com/shorts/2pJmUlaOHHw"><img src="https://img.youtube.com/vi/2pJmUlaOHHw/oar2.jpg" width="160" alt="Chat demo video"></a> | <a href="https://youtube.com/shorts/ePhVM3UiwGc"><img src="https://img.youtube.com/vi/ePhVM3UiwGc/oar2.jpg" width="160" alt="Knowledge demo video"></a> | <a href="https://youtube.com/shorts/wd0N2lE5txk"><img src="https://img.youtube.com/vi/wd0N2lE5txk/oar2.jpg" width="160" alt="List demo video"></a> | <a href="https://youtube.com/shorts/F9wW4oWX53A"><img src="https://img.youtube.com/vi/F9wW4oWX53A/oar2.jpg" width="160" alt="Recommend demo video"></a> |
+| Small talk | Answers from sources | A full list | Product suggestions |
+
+## Avatar, voice and robot
+
+![Jev picks the feeling of each sentence](docs/images/jev-emotions.png)
+
+- **Avatar:** an image model draws 21 frames from the user's photo, with seven
+  expressions.
+- **Voice:** ElevenLabs clones the user's voice and speaks each reply one sentence at a
+  time.
+- **Feelings:** in small talk, Jev picks a feeling for each sentence, from seven choices.
+  The face, the voice and the robot all follow it.
+- **When Jev is unsure:** if it is under 70% sure, or takes over 0.8 seconds, the sentence
+  stays neutral.
+- **Answers stay plain:** answers, lists and recommendations use a neutral tone.
+- **Robot:** a Raspberry Pi Pico W moves three servos, and the app sends it motions over
+  Bluetooth.
+- **Face tracking:** the phone finds the user's face itself, and camera frames never
+  leave the phone.
+
+## Knowledge updates
+
+Once a month, a job reads every source and builds a new version of the knowledge.
+
+1. **Read:** fetch the websites, images, PDFs and product catalog.
+2. **Split:** cut the content into small passages.
+3. **Index:** turn each passage into a vector, so search can find it by meaning.
+4. **Check:** make sure nothing was lost.
+5. **Publish:** switch Wobot to the new version.
+
+If a source comes back empty, or more than 20% of its records are gone, the new version
+waits for a person to approve it. Old versions are kept, so Wobot can go back to one.
+
+## Tech stack
+
+| Area | Tools |
+| --- | --- |
+| Agent and RAG | LangGraph, LangChain, OpenAI models, Jev, text-embedding-3-small, pgvector, LangSmith |
+| Backend | Python, FastAPI, SQLAlchemy (async), Alembic, uv, pytest |
+| Google Cloud | Cloud Run (service and jobs), Cloud SQL for PostgreSQL, Cloud Storage, Cloud Scheduler, Secret Manager, Firebase Authentication |
+| Delivery | GitHub Actions with Workload Identity Federation |
+| App | Flutter (iOS), server-sent events, on-device speech-to-text, Apple Vision |
+| Voice and avatar | ElevenLabs voice cloning and text-to-speech, an OpenAI image model |
+| Robot | Raspberry Pi Pico W, Arduino (C++), Bluetooth Low Energy |
+
+## Repository
 
 | Path | Contents |
 | --- | --- |
-| [`app/`](app/README.md) | Flutter client on iOS (Android follows): text chat, Avatar mode, and the robot's motions and face tracking |
-| [`backend/`](backend/README.md) | FastAPI service, database migrations, knowledge ingestion and its evaluation; LangGraph agents to come |
-| [`infra/`](infra/README.md) | Google Cloud runbook, environment template, database bootstrap |
-| [`firmware/`](firmware/README.md) | Raspberry Pi Pico W firmware for the robot head: motion primitives over BLE, a gaze layer and a lease |
+| [`backend/`](backend/README.md) | API, chat agent, knowledge updates, evaluation, database migrations |
+| [`app/`](app/README.md) | Flutter app: text chat, Avatar mode, robot motions and face tracking |
+| [`infra/`](infra/README.md) | Google Cloud setup guide |
+| [`firmware/`](firmware/README.md) | Robot head firmware |
 
-## Development
-
-- Backend: `docker compose up -d` starts PostgreSQL with pgvector, bootstrapped
-  as in Cloud SQL; [`backend/README.md`](backend/README.md) covers the rest.
-- App: [`app/README.md`](app/README.md) generates the Firebase config and runs
-  the app against an API URL.
-- Cloud: [`infra/README.md`](infra/README.md) records every Google Cloud
-  resource, its console path, the equivalent `gcloud` command and a read-only
-  check.
-
-## Delivery
-
-- Pull requests that touch the backend run lint, a migration of an empty
-  database, a check that models and migrations agree, and the tests
-  ([`backend-ci.yml`](.github/workflows/backend-ci.yml)).
-- A merge to `main` deploys ([`backend-deploy.yml`](.github/workflows/backend-deploy.yml)):
-  the same checks, then the image, the migration job and the API, in that order.
-  The run fails unless `/health` reports the merged commit.
-
-## Roadmap
-
-| Phase | Scope |
-| --- | --- |
-| 0 · Deployment skeleton | Sign-in → Cloud Run → Cloud SQL end to end; migrations as a job; keyless CI/CD |
-| A · Knowledge | Ingest websites, images, PDFs and the product catalog into versioned records, chunks and embeddings; monthly updates held when records go missing; RAGAS evaluation of ingestion and retrieval |
-| B · Agentic RAG | LangGraph routing, retrieval tools, neutral recommendation, RAGAS evaluation |
-| C · Identity & chat | Conversations, streaming, cancellation and retry in the app |
-| D · Avatar & voice | 21-frame cartoon avatar, voice clone, spoken turns |
-| E · Operations | Account deletion, a daily sweep, alerts and a budget (Android and the pilot come later) |
-| F · Robot | The robot head in Avatar mode: connected by itself, a motion for each sentence's feeling, the phone turned toward the user's face |
+A merge to `main` runs the tests and deploys the system.
